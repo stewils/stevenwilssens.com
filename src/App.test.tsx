@@ -25,6 +25,25 @@ describe('resume site', () => {
     expect(screen.getByRole('link', { name: /Connect on LinkedIn/ })).toHaveAttribute('href', 'https://www.linkedin.com/in/steven-wilssens-59495889/')
   })
 
+  it('offers the resume PDF as a download from the home page', () => {
+    render(<App />)
+
+    const links = screen.getAllByRole('link', { name: /Download resume/ })
+    expect(links.length).toBeGreaterThan(0)
+    for (const link of links) {
+      expect(link).toHaveAttribute('href', '/steven-wilssens-resume-2026.pdf')
+      expect(link).toHaveAttribute('download', 'Steven Wilssens Resume 2026.pdf')
+    }
+  })
+
+  it('offers the resume PDF on the experience page', () => {
+    setPath('/experience')
+    render(<App />)
+
+    const heading = screen.getByRole('heading', { name: 'Experience' }).parentElement!
+    expect(within(heading).getByRole('link', { name: /Download resume/ })).toHaveAttribute('href', '/steven-wilssens-resume-2026.pdf')
+  })
+
   it.each([
     ['/about', 'About'],
     ['/experience', 'Experience'],
