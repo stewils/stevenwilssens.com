@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseUserAgent, isBot } from '../functions/_lib/useragent'
-import { fillDays, formatDuration } from './admin/format'
+import { summarizeVitals } from '../functions/_lib/vitals'
+import { fillDays, formatDuration, formatVital, rateVital } from './admin/format'
 import { classifyLink, describeClick } from './analytics'
 
 describe('click tracking', () => {
@@ -48,5 +49,23 @@ describe('dashboard formatting', () => {
     expect(formatDuration(null)).toBe('—')
     expect(formatDuration(42_000)).toBe('42s')
     expect(formatDuration(83_000)).toBe('1m 23s')
+  })
+})
+
+describe('web vitals', () => {
+  it('summarizes the 75th percentile and rating shares per metric and page', () => {
+    const rows = [100, 200, 300, 4000].map((value, index) => ({ metric: 'LCP', value, rating: index === 3 ? 'poor' : 'good', path: index % 2 ? '/about' : '/' }))
+    const summary = summarizeVitals(rows)
+    expect(summary.metrics).toEqual([{ metric: 'LCP', p75: 4000, samples: 4, good: 0.75, needsImprovement: 0, poor: 0.25 }])
+    expect(summary.pages).toEqual([{ path: '/', LCP: 300 }, { path: '/about', LCP: 4000 }])
+  })
+
+  it('rates and formats values with Google thresholds', () => {
+    expect(rateVital('LCP', 2400)).toBe('good')
+    expect(rateVital('INP', 350)).toBe('needs-improvement')
+    expect(rateVital('CLS', 0.3)).toBe('poor')
+    expect(formatVital('LCP', 2400)).toBe('2.40s')
+    expect(formatVital('INP', 96.4)).toBe('96ms')
+    expect(formatVital('CLS', 0.042)).toBe('0.04')
   })
 })

@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from 'react'
 import { ignoreKey } from '../analytics'
-import { fillDays, formatDuration, formatNumber, formatPercent, formatTime } from './format'
+import { fillDays, formatDuration, formatNumber, formatPercent, formatTime, formatVital, rateVital, vitalInfo } from './format'
 
 type Row = { name: string; visitors: number; pageviews?: number }
 type PageRow = { name: string; views: number; visitors: number; avgDurationMs: number | null; avgScrollPct: number | null }
@@ -13,6 +13,7 @@ type RecentRow = {
   ts: number; type: string; path: string | null; category: string | null; label: string | null; durationMs: number | null; scrollPct: number | null
   referrer: string | null; city: string | null; country: string | null; organization: string | null; browser: string; os: string; device: string
 }
+type VitalSummary = { metric: string; p75: number; samples: number; good: number; needsImprovement: number; poor: number }
 type Stats = {
   days: number
   generatedAt: number
@@ -24,6 +25,7 @@ type Stats = {
   clicks: ClickRow[]
   visitors: VisitorRow[]
   recent: RecentRow[]
+  vitals: { metrics: VitalSummary[]; pages: ({ path: string } & Record<string, number>)[] }
 } & Record<'referrers' | 'utmSources' | 'utmCampaigns' | 'countries' | 'cities' | 'organizations' | 'browsers' | 'systems' | 'devices' | 'languages' | 'screens', Row[]>
 
 const tokenKey = 'sw-admin-token'
@@ -82,6 +84,47 @@ function RankedList({ title, rows, unit = 'visitors', empty = 'No data yet' }: {
             </li>
           ))}
         </ol>
+      )}
+    </section>
+  )
+}
+
+const ratingLabel = { good: '✓ Good', 'needs-improvement': '! Needs work', poor: '✕ Poor' } as const
+
+function WebVitals({ vitals }: { vitals: Stats['vitals'] }) {
+  const order = ['LCP', 'INP', 'CLS', 'FCP', 'TTFB']
+  const metrics = order.map((metric) => vitals.metrics.find((row) => row.metric === metric)).filter((row): row is VitalSummary => Boolean(row))
+  return (
+    <section className="panel wide">
+      <h2>Page speed (Core Web Vitals)</h2>
+      <p className="note">Measured in visitors' browsers. Values are the 75th percentile, the number Google uses to rate a site; the bar shows the share of visits rated good, needs work, and poor.</p>
+      {metrics.length === 0 ? <p className="empty">No measurements yet</p> : (
+        <>
+          <div className="vitals">
+            {metrics.map((row) => {
+              const rating = rateVital(row.metric, row.p75)
+              return (
+                <div key={row.metric} className="vital">
+                  <span className="vital-name" title={vitalInfo[row.metric]?.name}>{row.metric} <small>{vitalInfo[row.metric]?.name}</small></span>
+                  <strong>{formatVital(row.metric, row.p75)}</strong>
+                  <span className={`status ${rating}`}>{ratingLabel[rating]}</span>
+                  <span className="vital-share" aria-label={`${formatPercent(row.good, true)} good, ${formatPercent(row.needsImprovement, true)} needs work, ${formatPercent(row.poor, true)} poor`}>
+                    <span className="good" style={{ flexGrow: row.good }} />
+                    <span className="needs-improvement" style={{ flexGrow: row.needsImprovement }} />
+                    <span className="poor" style={{ flexGrow: row.poor }} />
+                  </span>
+                  <small>{formatPercent(row.good, true)} good · {formatNumber(row.samples)} visits</small>
+                </div>
+              )
+            })}
+          </div>
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Page</th>{order.map((metric) => <th className="num" key={metric}>{metric}</th>)}</tr></thead>
+              <tbody>{vitals.pages.map((row) => <tr key={row.path}><td className="strong">{row.path}</td>{order.map((metric) => <td className="num" key={metric}>{row[metric] == null ? '—' : <span className={`status-text ${rateVital(metric, row[metric])}`}>{formatVital(metric, row[metric])}</span>}</td>)}</tr>)}</tbody>
+            </table>
+          </div>
+        </>
       )}
     </section>
   )
@@ -260,6 +303,8 @@ export default function Admin() {
             <RankedList title="Screen sizes" rows={stats.screens} />
           </div>
 
+          <WebVitals vitals={stats.vitals} />
+
           <section className="panel wide">
             <h2>Clicks</h2>
             {stats.clicks.length === 0 ? <p className="empty">No clicks yet</p> : (
@@ -297,7 +342,7 @@ export default function Admin() {
 
           <footer className="admin-footer">
             <label><input type="checkbox" checked={ignored} onChange={toggleIgnored} /> Exclude this browser from tracking</label>
-            <a href={cloudflareAnalyticsUrl} target="_blank" rel="noreferrer">Cloudflare Web Analytics (page speed, Core Web Vitals) ↗</a>
+            <a href={cloudflareAnalyticsUrl} target="_blank" rel="noreferrer">Cloudflare Web Analytics ↗</a>
             <span>Updated {formatTime(stats.generatedAt)}</span>
             <button type="button" className="ghost" onClick={() => { storage.set(tokenKey, null); setToken(''); setStats(null) }}>Sign out</button>
           </footer>

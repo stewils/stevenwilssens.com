@@ -17,9 +17,14 @@ type Payload = {
   language?: string
   screen?: string
   viewport?: string
+  metric?: string
+  value?: number
+  rating?: string
 }
 
-const eventTypes = new Set(['pageview', 'engagement', 'click'])
+const eventTypes = new Set(['pageview', 'engagement', 'click', 'vital'])
+const metrics = new Set(['LCP', 'INP', 'CLS', 'FCP', 'TTFB'])
+const ratings = new Set(['good', 'needs-improvement', 'poor'])
 const text = (value: unknown, max = 300) => (typeof value === 'string' && value ? value.slice(0, max) : null)
 const int = (value: unknown, max: number) => (typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(Math.round(value), max)) : null)
 
@@ -57,8 +62,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const referrerHost = hostOf(referrer)
   const utm = payload.utm ?? {}
 
-  await env.DB.prepare(`INSERT INTO events (ts, type, visitor, pageview_id, host, path, title, referrer, referrer_host, utm_source, utm_medium, utm_campaign, utm_term, utm_content, category, label, target, context, duration_ms, scroll_pct, country, region, city, postal_code, timezone, latitude, longitude, asn, as_org, colo, browser, browser_version, os, device, language, screen, viewport)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+  await env.DB.prepare(`INSERT INTO events (ts, type, visitor, pageview_id, host, path, title, referrer, referrer_host, utm_source, utm_medium, utm_campaign, utm_term, utm_content, category, label, target, context, duration_ms, scroll_pct, country, region, city, postal_code, timezone, latitude, longitude, asn, as_org, colo, browser, browser_version, os, device, language, screen, viewport, metric, metric_value, metric_rating)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
     now, payload.type, visitor, text(payload.pageviewId, 40), requestUrl.hostname, text(payload.path, 300), text(payload.title, 200),
     referrer, referrerHost === requestUrl.hostname.replace(/^www\./, '') ? null : referrerHost,
     text(utm.source, 100), text(utm.medium, 100), text(utm.campaign, 100), text(utm.term, 100), text(utm.content, 100),
@@ -69,6 +74,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     cf.asn ?? null, cf.asOrganization ?? null, cf.colo ?? null,
     agent.browser, agent.browserVersion, agent.os, agent.device,
     text(payload.language, 20), text(payload.screen, 20), text(payload.viewport, 20),
+    metrics.has(payload.metric ?? '') ? payload.metric : null,
+    typeof payload.value === 'number' && Number.isFinite(payload.value) ? Math.max(0, Math.min(payload.value, 600_000)) : null,
+    ratings.has(payload.rating ?? '') ? payload.rating : null,
   ).run()
 
   return new Response(null, { status: 204 })

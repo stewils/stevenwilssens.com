@@ -44,6 +44,21 @@ describe('resume site', () => {
     expect(within(heading).getByRole('link', { name: /Download resume/ })).toHaveAttribute('href', '/steven-wilssens-resume-2026.pdf')
   })
 
+  it('shows a not-found page for unknown paths', () => {
+    setPath('/does-not-exist')
+    render(<App />)
+
+    expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
+    expect(document.title).toBe('Page not found | Steven Wilssens')
+  })
+
+  it('treats generated .html paths as their page', () => {
+    setPath('/about.html')
+    render(<App />)
+
+    expect(screen.getByRole('heading', { name: 'About' })).toBeInTheDocument()
+  })
+
   it.each([
     ['/about', 'About'],
     ['/experience', 'Experience'],

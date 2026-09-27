@@ -1,3 +1,5 @@
+import { onCLS, onFCP, onINP, onLCP, onTTFB, type Metric } from 'web-vitals'
+
 // First-party, cookie-free analytics. Events go to /api/collect (a Pages Function
 // that writes to D1). Nothing is stored on the visitor's device except the
 // opt-out flag the admin dashboard sets for Steven's own browsers.
@@ -5,7 +7,7 @@
 export const ignoreKey = 'sw-analytics-ignore'
 const endpoint = '/api/collect'
 
-type EventPayload = Record<string, unknown> & { type: 'pageview' | 'engagement' | 'click' }
+type EventPayload = Record<string, unknown> & { type: 'pageview' | 'engagement' | 'click' | 'vital' }
 
 const isIgnored = () => {
   try { return localStorage.getItem(ignoreKey) === '1' } catch { return false }
@@ -101,4 +103,12 @@ export const startAnalytics = () => {
   }, { capture: true })
 
   trackPageview()
+
+  // Core Web Vitals from real visits. Each metric reports once per page load.
+  const reportVital = (metric: Metric) => send({ type: 'vital', pageviewId, path: window.location.pathname, metric: metric.name, value: metric.value, rating: metric.rating })
+  onLCP(reportVital)
+  onINP(reportVital)
+  onCLS(reportVital)
+  onFCP(reportVital)
+  onTTFB(reportVital)
 }

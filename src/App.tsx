@@ -8,11 +8,11 @@ import tomMereckisImage from './assets/tom-mereckis.jpg'
 import varnithaSonnegowdaImage from './assets/varnitha-sonnegowda.jpg'
 import vladGoncharovImage from './assets/vlad-goncharov.jpg'
 import './App.css'
+import { pageMeta, routes, type Page } from './pageMeta'
 
 const resumeUrl = '/steven-wilssens-resume-2026.pdf'
 const resumeFileName = 'Steven Wilssens Resume 2026.pdf'
 
-type Page = 'home' | 'about' | 'experience' | 'recommendations' | 'patents' | 'honors' | 'news' | 'projects'
 type Entry = { role: string; company: string; dates: string; location: string; summary: string; points: string[] }
 
 const experiences: Entry[] = [
@@ -119,17 +119,7 @@ const recommendationImages: Record<string, string> = {
   'Jayant Arora': jayantAroraImage,
 }
 
-const pageFromLocation = (): Page => { const page = window.location.pathname.replace(/^\/+/, '') as Page; return ['about', 'experience', 'recommendations', 'patents', 'honors', 'news', 'projects'].includes(page) ? page : 'home' }
-const pageMeta: Record<Page, { title: string; description: string }> = {
-  home: { title: 'Steven Wilssens | Product leadership', description: 'Product leadership grounded in strategy, portfolio oversight, team growth, and technically grounded innovation.' },
-  about: { title: 'About | Steven Wilssens', description: 'Learn about Steven Wilssens and his approach to product, portfolio, and people leadership.' },
-  experience: { title: 'Experience | Steven Wilssens', description: 'A career across product leadership, Windows & Devices, spatial audio, Azure DevOps, and software.' },
-  recommendations: { title: 'Recommendations | Steven Wilssens', description: 'Recommendations from leaders, peers, and teammates who worked with Steven Wilssens.' },
-  patents: { title: 'Patents | Steven Wilssens', description: 'Patents across spatial audio, media, streaming, and connected computing.' },
-  honors: { title: 'Honors & awards | Steven Wilssens', description: 'Recognition for teamwork, individual excellence, and technical leadership.' },
-  news: { title: 'In the News | Steven Wilssens', description: 'Coverage of Steven Wilssens and spatial audio work across Windows and Xbox.' },
-  projects: { title: 'Projects & interests | Steven Wilssens', description: 'Projects where product thinking meets family, community, and the joy of making things useful.' },
-}
+const pageFromLocation = (): Page => { const path = window.location.pathname.replace(/^\/+|\/+$/g, '').replace(/\.html$/, ''); if (path === '' || path === 'index') return 'home'; return (routes as readonly string[]).includes(path) ? path as Page : 'notFound' }
 
 function App() {
   const [page, setPage] = useState<Page>(pageFromLocation)
@@ -152,7 +142,9 @@ function App() {
   const renderNews = () => <>{renderPageHeader({ title: 'In the News', intro: 'Coverage of spatial audio work from the Windows and Xbox era.' })}<section className="archive-list news-list">{news.map((item, index) => <article key={item.title}><span className="archive-index">{String(index + 1).padStart(2, '0')}</span><div><p className="news-publication">{item.publication}</p><h2>{item.title}</h2><p className="news-summary">{item.summary}</p><blockquote className="news-quote">{item.quote}<cite>Steven Wilssens · {item.publication}</cite></blockquote><a href={item.url} target="_blank" rel="noreferrer">Read article ↗</a></div></article>)}</section></>
   const renderProjects = () => <>{renderPageHeader({ title: 'Projects & interests', intro: 'A few projects where product thinking meets family, community, and the joy of making things useful.' })}<section className="project-grid">{projects.map((project) => <article className="project-card" key={project.name}><p className="project-tag">{project.tag}</p><h2>{project.name}</h2><p>{project.summary}</p><a href={project.url} target="_blank" rel="noreferrer">Visit project ↗</a></article>)}</section></>
 
-  return <div className="site-shell"><header className="site-header"><a className="wordmark" href="/">steven<span>.</span>wilssens</a><nav>{navItems.map(([href, label]) => <a className={page === href ? 'active' : ''} href={`/${href}`} key={href}>{label}</a>)}</nav><div className="header-contact">{renderResumeLink('text-link')}<a className="primary-button" href="mailto:steven@wilssens.com">Email ↗</a></div></header><main>{page === 'home' && <>{renderHome()}{renderCapabilities()}{renderImpactStrip()}{renderContactBand()}</>}{page === 'about' && renderAbout()}{page === 'experience' && renderExperience()}{page === 'recommendations' && renderRecommendations()}{page === 'patents' && renderArchive({ title: 'Patents', intro: 'Inventing at the edge of audio, media, and connected computing.', items: patents, kind: 'patent' })}{page === 'honors' && renderArchive({ title: 'Honors & awards', intro: 'Recognition for teamwork, individual excellence, and a long practice of building useful things.', items: honors, kind: 'honor' })}{page === 'news' && renderNews()}{page === 'projects' && renderProjects()}</main><footer><span>Steven Wilssens · 2026</span><span><a href="https://www.linkedin.com/in/steven-wilssens-59495889/" target="_blank" rel="noreferrer">LinkedIn</a> · <a href={resumeUrl} download={resumeFileName}>Resume</a> · steven@wilssens.com</span></footer></div>
+  const renderNotFound = () => <>{renderPageHeader({ title: 'Page not found', intro: 'That page does not exist or has moved. Try the profile, the experience timeline, or the resume.', showResume: true })}</>
+
+  return <div className="site-shell"><header className="site-header"><a className="wordmark" href="/">steven<span>.</span>wilssens</a><nav>{navItems.map(([href, label]) => <a className={page === href ? 'active' : ''} href={`/${href}`} key={href}>{label}</a>)}</nav><div className="header-contact">{renderResumeLink('text-link')}<a className="primary-button" href="mailto:steven@wilssens.com">Email ↗</a></div></header><main>{page === 'home' && <>{renderHome()}{renderCapabilities()}{renderImpactStrip()}{renderContactBand()}</>}{page === 'about' && renderAbout()}{page === 'experience' && renderExperience()}{page === 'recommendations' && renderRecommendations()}{page === 'patents' && renderArchive({ title: 'Patents', intro: 'Inventing at the edge of audio, media, and connected computing.', items: patents, kind: 'patent' })}{page === 'honors' && renderArchive({ title: 'Honors & awards', intro: 'Recognition for teamwork, individual excellence, and a long practice of building useful things.', items: honors, kind: 'honor' })}{page === 'news' && renderNews()}{page === 'projects' && renderProjects()}{page === 'notFound' && renderNotFound()}</main><footer><span>Steven Wilssens · 2026</span><span><a href="https://www.linkedin.com/in/steven-wilssens-59495889/" target="_blank" rel="noreferrer">LinkedIn</a> · <a href={resumeUrl} download={resumeFileName}>Resume</a> · steven@wilssens.com</span></footer></div>
 }
 
 export default App

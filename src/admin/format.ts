@@ -1,3 +1,24 @@
+// Google's Core Web Vitals thresholds: [good up to, poor above].
+export const vitalInfo: Record<string, { name: string; good: number; poor: number; unit: 'ms' | '' }> = {
+  LCP: { name: 'Largest Contentful Paint', good: 2500, poor: 4000, unit: 'ms' },
+  INP: { name: 'Interaction to Next Paint', good: 200, poor: 500, unit: 'ms' },
+  CLS: { name: 'Cumulative Layout Shift', good: 0.1, poor: 0.25, unit: '' },
+  FCP: { name: 'First Contentful Paint', good: 1800, poor: 3000, unit: 'ms' },
+  TTFB: { name: 'Time to First Byte', good: 800, poor: 1800, unit: 'ms' },
+}
+
+export const rateVital = (metric: string, value: number) => {
+  const info = vitalInfo[metric]
+  if (!info) return 'good'
+  return value <= info.good ? 'good' : value <= info.poor ? 'needs-improvement' : 'poor'
+}
+
+export const formatVital = (metric: string, value: number | undefined) => {
+  if (value == null) return '—'
+  if (vitalInfo[metric]?.unit !== 'ms') return value.toFixed(2)
+  return value >= 1000 ? `${(value / 1000).toFixed(2)}s` : `${Math.round(value)}ms`
+}
+
 export const formatNumber = (value: number | null | undefined) => (value ?? 0).toLocaleString('en-US')
 
 export const formatDuration = (ms: number | null | undefined) => {

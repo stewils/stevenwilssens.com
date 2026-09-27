@@ -68,6 +68,24 @@ tr.detail p { margin: 0 0 4px; }
 .badge { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 700; background: var(--series-track); color: var(--green); white-space: nowrap; }
 .badge.download { background: var(--green); color: #fff; }
 
+.vitals { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.vital { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--line); border-radius: 6px; padding: 12px; }
+.vital-name { font-size: 12px; font-weight: 800; }
+.vital-name small { display: block; font-weight: 500; color: var(--muted); }
+.vital strong { font-size: 24px; letter-spacing: -0.5px; }
+.vital > small { font-size: 11px; color: var(--muted); }
+.status { align-self: flex-start; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 10px; color: var(--ink); }
+.status.good { background: #d8f0d8; }
+.status.needs-improvement { background: #fdecc4; }
+.status.poor { background: #f6d6d6; }
+.status-text.needs-improvement { color: #8a5a00; font-weight: 700; }
+.status-text.poor { color: #b3261e; font-weight: 700; }
+.vital-share { display: flex; gap: 2px; height: 6px; }
+.vital-share span { border-radius: 3px; min-width: 0; }
+.vital-share .good { background: #0ca30c; }
+.vital-share .needs-improvement { background: #fab219; }
+.vital-share .poor { background: #d03b3b; }
+
 .admin-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; font-size: 13px; color: var(--muted); }
 .admin-footer a { color: var(--green); font-weight: 700; text-decoration: none; }
 .admin-footer .ghost { margin-left: auto; }
