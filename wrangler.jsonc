@@ -2,5 +2,12 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "stevenwilssens",
   "compatibility_date": "2026-09-26",
-  "pages_build_output_dir": "./dist"
+  "pages_build_output_dir": "./dist",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "stevenwilssens-analytics",
+      "database_id": "478992a9-35fd-4c20-8e81-849a1ce6ad69"
+    }
+  ]
 }
