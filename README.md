@@ -43,7 +43,7 @@ Add the route to `routes` and its title/description to `pageMeta` in `src/pageMe
 
 ### Updating the resume
 
-The resume PDF is generated from `resume/resume.html`. Edit the HTML, run `npm run resume` (prints it to `public/steven-wilssens-resume-2026.pdf` with the locally installed Microsoft Edge), check the PDF, then commit both files and push. Keep it to two pages.
+The resume is exported from a resume builder. Replace `public/steven-wilssens-resume-2026.pdf` with the new export (keep the filename, or update `resumeUrl` in `App.tsx`) and push.
 
 ## Deployment
 

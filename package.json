@@ -11,8 +11,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler pages deploy --branch main",
-    "db:migrate": "wrangler d1 migrations apply stevenwilssens-analytics --remote",
-    "resume": "node resume/build.mjs"
+    "db:migrate": "wrangler d1 migrations apply stevenwilssens-analytics --remote"
   },
   "dependencies": {
     "react": "^19.2.8",
@@ -30,7 +29,6 @@
     "@vitejs/plugin-react": "^6.1.1",
     "jsdom": "^30.1.1",
     "oxlint": "^1.81.0",
-    "playwright-core": "^1.63.0",
     "typescript": "~7.0.2",
     "vite": "^8.3.0",
     "vitest": "^5.0.2",
