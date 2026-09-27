@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Steven Wilssens - Resume</title>
+<meta name="author" content="Steven Wilssens">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  @page { size: Letter; margin: 0.45in 0.55in; }
+  :root { --ink: #172121; --muted: #5d6766; --line: #d7dfd8; --green: #096b50; }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: var(--ink); font: 400 9.2pt/1.38 Manrope, 'Segoe UI', sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  a { color: inherit; text-decoration: none; }
+
+  header { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding-bottom: 12px; border-bottom: 2.5px solid var(--green); }
+  h1 { margin: 0; font-size: 24pt; font-weight: 800; line-height: 1; word-spacing: 2px; }
+  .tagline { margin-top: 6px; color: var(--green); font-size: 11pt; font-weight: 700; }
+  .contact { text-align: right; font: 8.4pt/1.6 'DM Mono', monospace; color: var(--muted); }
+  .contact span { display: block; }
+
+  h2 { margin: 12px 0 5px; font: 500 8.2pt 'DM Mono', monospace; letter-spacing: 1.2px; text-transform: uppercase; color: var(--green); }
+  .summary { margin: 0; }
+
+  .role { margin-bottom: 8px; break-inside: avoid; }
+  .role-head { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
+  .role h3 { margin: 0; font-size: 10.4pt; font-weight: 800; }
+  .dates { flex: none; font: 8.4pt 'DM Mono', monospace; color: var(--muted); }
+  .org { font-weight: 700; color: var(--green); }
+  .org small { font-weight: 500; color: var(--muted); font-size: 8.8pt; }
+  .role p { margin: 3px 0 0; }
+  ul { margin: 4px 0 0; padding-left: 15px; }
+  li { margin-bottom: 1px; }
+  li::marker { color: var(--green); }
+
+  .columns { display: grid; grid-template-columns: 1.15fr 1fr; gap: 0 26px; }
+  .list { margin: 0; padding: 0; list-style: none; }
+  .list li { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; border-bottom: 1px solid var(--line); }
+  .list li span:last-child { flex: none; font: 8.2pt 'DM Mono', monospace; color: var(--muted); }
+  .skills { margin: 0; }
+  .page-break { break-before: page; }
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Steven Wilssens</h1>
+      <div class="tagline">Product leader · Data, experimentation, and AI</div>
+    </div>
+    <div class="contact">
+      <span><a href="mailto:steven@wilssens.com">steven@wilssens.com</a></span>
+      <span>425.533.7722 · Seattle area</span>
+      <span><a href="https://steven.wilssens.com">steven.wilssens.com</a></span>
+      <span><a href="https://www.linkedin.com/in/steven-wilssens-59495889/">linkedin.com/in/steven-wilssens-59495889</a></span>
+    </div>
+  </header>
+
+  <h2>Summary</h2>
+  <p class="summary">Product and technology leader with more than a decade at Microsoft, most recently Principal Group Product Manager for Windows + Devices Data. Led the product team behind the data platform, experimentation, and machine-learning insights that informed product decisions across more than a billion Windows devices. Earlier, led the Microsoft Spatial Audio Platform across Windows and Xbox (seven granted US patents) and defined new products for Azure DevOps. Began as a software developer and team lead in Belgium, and still builds hands-on, including AI tools for internal teams. Now exploring product leadership roles in data, experimentation, audio, and AI.</p>
+
+  <h2>Key achievements</h2>
+  <ul>
+    <li>Increased Windows adoption by 15% through data-driven product improvements and strategic initiatives.</li>
+    <li>Improved user retention by 20% through enhanced adoption strategies and engagement programs.</li>
+    <li>Reduced customer issues by 30% through telemetry integration and analysis.</li>
+    <li>Increased product quality by 25% by applying AI and ML in development processes.</li>
+  </ul>
+
+  <h2>Experience</h2>
+
+  <div class="role">
+    <div class="role-head"><h3>Principal Group Product Manager, Windows + Devices Data</h3><span class="dates">Dec 2024 – Sep 2026</span></div>
+    <div class="org">Microsoft <small>· Redmond, WA</small></div>
+    <p>Led the PM team responsible for the data, insights, experimentation, and ML models that power decision-making across Windows and Devices.</p>
+    <ul>
+      <li>Owned strategy and roadmap for the data platform and insights products that Windows engineers and PMs used to ship higher-quality releases.</li>
+      <li>Led product managers driving experimentation, customer-signal analysis, and ML-powered insight products.</li>
+      <li>Partnered with engineering, data science, and research leadership to turn telemetry from more than a billion Windows devices into decisions on adoption, retention, quality, and engagement.</li>
+      <li>Set the vision for how AI and ML are used internally to accelerate Windows product development.</li>
+    </ul>
+  </div>
+
+  <div class="role">
+    <div class="role-head"><h3>Principal Product Manager Lead, CSX Data</h3><span class="dates">Feb 2020 – Dec 2024</span></div>
+    <div class="org">Microsoft <small>· Redmond, WA</small></div>
+    <p>Led the team that used big data to tell the story of the Windows customer experience and inform its continuous improvement.</p>
+    <ul>
+      <li>Combined customer signals and machine learning into insights for Microsoft engineers.</li>
+      <li>Enabled data-supported decisions to release higher-quality hardware, software, and services.</li>
+      <li>Helped teams quickly detect and address real issues affecting customers' experiences.</li>
+    </ul>
+  </div>
+
+  <div class="role">
+    <div class="role-head"><h3>Principal Product Manager Lead, Azure DevOps</h3><span class="dates">Sep 2019 – Feb 2020</span></div>
+    <div class="org">Microsoft <small>· Redmond, WA</small></div>
+    <ul>
+      <li>Increased market penetration by defining new products, go-to-market strategies, and business decisions for the Azure DevOps Platform.</li>
+      <li>Spearheaded rapid business and product analysis for a new product that became a core priority for GitHub following its $7B+ acquisition.</li>
+    </ul>
+  </div>
+
+  <div class="role">
+    <div class="role-head"><h3>Principal Product Manager Lead, Silicon, Graphics &amp; Media</h3><span class="dates">Jan 2018 – Sep 2019</span></div>
+    <div class="org">Microsoft <small>· Operating Systems Group · Redmond, WA</small></div>
+    <p>Led audio, spatial audio, game streaming, xCloud, Game DVR &amp; broadcast, and casting.</p>
+    <ul>
+      <li>Led the Microsoft Spatial Audio Platform, working with developers and data insights to deliver essential spatial audio features on Windows, Xbox One, and new platforms.</li>
+      <li>Grew monthly active devices playing spatial audio by more than 250% over 1.5 years, reaching millions of users across OEM devices, Xbox consoles, and consumer acquisitions.</li>
+    </ul>
+  </div>
+
+  <div class="role">
+    <div class="role-head"><h3>Principal Product Manager, Silicon, Graphics &amp; Media</h3><span class="dates">Sep 2017 – Jan 2018</span></div>
+    <div class="org">Microsoft <small>· Operating Systems Group · Redmond, WA</small></div>
+    <p>Drove the Windows Sonic spatial audio platform for Windows and Xbox One; spoke at major game and developer conferences.</p>
+    <ul>
+      <li>Drove the launch of Dolby Access v3 and DTS Sound Unbound with new app services, licensing, and customization models on PC and Xbox.</li>
+      <li>Established partnerships with Surface, Store, Marketing, and Gaming to bring spatial audio to more endpoints and games.</li>
+      <li>Collaborated with Disney+ and Netflix to bring Dolby Atmos to Xbox and Windows.</li>
+    </ul>
+  </div>
+
+  <div class="role">
+    <div class="role-head"><h3>Senior Product Manager, Silicon, Graphics &amp; Media</h3><span class="dates">Oct 2008 – Aug 2017</span></div>
+    <div class="org">Microsoft <small>· Operating Systems Group · Redmond, WA</small></div>
+    <ul>
+      <li>Developed the Spatial Audio Platform, including Windows Sonic, for Windows and Xbox One.</li>
+      <li>Shipped platform technology spanning audio, media, and connected entertainment experiences.</li>
+      <li>Built the technical and partner foundation for a portfolio of spatial audio patents.</li>
+    </ul>
+  </div>
+
+  <div class="role">
+    <div class="role-head"><h3>Lead Developer and Team Lead</h3><span class="dates">Jan 2005 – Dec 2006</span></div>
+    <div class="org">Compuware <small>· Belgium</small></div>
+    <ul>
+      <li>Hired, evaluated, trained, and assigned work for a team of about 15 developers.</li>
+      <li>Led the Project Support Office at Fluxys: implemented a new development process and framework, coached developers and architects, and managed the build team and infrastructure.</li>
+      <li>Spoke at Microsoft Belgium Developer &amp; IT Pro Days on application development and advanced source control, and presented Visual Studio Team System to customers for Microsoft Belgium.</li>
+    </ul>
+  </div>
+
+  <div class="role">
+    <div class="role-head"><h3>Software Developer</h3><span class="dates">Jan 2004 – Dec 2005</span></div>
+    <div class="org">Cosmos <small>· Antwerp area, Belgium</small></div>
+    <ul>
+      <li>Built and supported core software components in C# (client) and Java (server) using CORBA middleware.</li>
+      <li>Provided technical guidance and education as a member of the Cosmos Institute; redesigned existing applications and led code reviews.</li>
+    </ul>
+  </div>
+
+  <div class="role">
+    <div class="role-head"><h3>Developer and Trainer</h3><span class="dates">Jan 2001 – Dec 2004</span></div>
+    <div class="org">Info Support <small>· Belgium</small></div>
+    <ul>
+      <li>Led a development team at Agfa Gevaert and built .NET Windows and web applications in C# for Agfa Gevaert, Cosmos, De Post, Petrobel, and Info Support.</li>
+      <li>Built scalable distributed applications with ADO.NET and SQL Server, and advised project and management teams on .NET architecture.</li>
+    </ul>
+  </div>
+
+  <div class="columns">
+    <div>
+      <h2>Patents</h2>
+      <ul class="list">
+        <li><span>Spatializing audio data based on analysis of incoming audio data</span><span>US 11,595,774</span></li>
+        <li><span>Frame coding for spatial audio data</span><span>US 10,535,355</span></li>
+        <li><span>Personalization of spatial audio for streaming platforms</span><span>US 10,469,975</span></li>
+        <li><span>Shared three-dimensional audio bed</span><span>US 10,419,866</span></li>
+        <li><span>Adaptive audio rendering</span><span>US 10,325,610</span></li>
+        <li><span>Game streaming with spatial audio</span><span>US 10,123,150</span></li>
+        <li><span>Spatial audio resource management using minimum resource working sets</span><span>US 10,056,086</span></li>
+      </ul>
+    </div>
+    <div>
+      <h2>Awards</h2>
+      <ul class="list">
+        <li><span>Microsoft Lighthouse Award for Teamwork</span><span>2012</span></li>
+        <li><span>Microsoft Compass Award for Individual Excellence</span><span>2011</span></li>
+        <li><span>Microsoft Gold Star Award</span><span>2011</span></li>
+        <li><span>Most Valuable Professional (MVP): VS Team System</span><span>2006</span></li>
+      </ul>
+      <h2>Education</h2>
+      <ul class="list">
+        <li><span>Bachelor's degree, Computer Science · Karel de Grote, Belgium</span><span>2000 – 2004</span></li>
+      </ul>
+      <h2>Languages</h2>
+      <p class="skills">Dutch and English (native), French (intermediate)</p>
+    </div>
+  </div>
+
+  <h2>Skills</h2>
+  <p class="skills">Product strategy and roadmaps · Data platforms and telemetry · Experimentation · ML and AI products · People leadership and PM team building · Stakeholder and budget management · Partnerships · Streaming media and audio technologies · Software development (C#, .NET) · Agile delivery</p>
+</body>
+</html>
