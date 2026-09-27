@@ -10,7 +10,7 @@
     "test:watch": "vitest",
     "lint": "oxlint",
     "preview": "vite preview",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler pages deploy --branch main"
   },
   "dependencies": {
     "react": "^19.2.8",

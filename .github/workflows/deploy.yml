@@ -33,4 +33,4 @@ jobs:
             echo "::warning::CLOUDFLARE_API_TOKEN secret is not set; skipping deploy."
             exit 0
           fi
-          npx wrangler deploy
+          npx wrangler pages deploy --branch main --commit-hash "$GITHUB_SHA" --commit-message "$(git log -1 --format=%s)"
