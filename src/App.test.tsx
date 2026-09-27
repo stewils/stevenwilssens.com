@@ -44,6 +44,24 @@ describe('resume site', () => {
     expect(within(heading).getByRole('link', { name: /Download resume/ })).toHaveAttribute('href', '/steven-wilssens-resume-2026.pdf')
   })
 
+  it('highlights colleague quotes on the home page', () => {
+    render(<App />)
+
+    const quotes = screen.getByRole('region', { name: 'What colleagues say' })
+    expect(within(quotes).getByText(/He leads by building rather than just delegating/)).toBeInTheDocument()
+    expect(within(quotes).getByRole('link', { name: /Read all 8 recommendations/ })).toHaveAttribute('href', '/recommendations')
+  })
+
+  it('links each patent to its Google Patents record', () => {
+    setPath('/patents')
+    render(<App />)
+
+    const links = screen.getAllByRole('link', { name: /View on Google Patents/ })
+    expect(links).toHaveLength(9)
+    expect(links[0]).toHaveAttribute('href', 'https://patents.google.com/patent/US11595774B2/en')
+    expect(screen.getAllByText(/^US Patent /)).toHaveLength(7)
+  })
+
   it('shows a not-found page for unknown paths', () => {
     setPath('/does-not-exist')
     render(<App />)
