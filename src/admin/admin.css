@@ -86,6 +86,17 @@ tr.detail p { margin: 0 0 4px; }
 .vital-share .needs-improvement { background: #fab219; }
 .vital-share .poor { background: #d03b3b; }
 
+.channel-row { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; margin-bottom: 16px; }
+.ranked-name small { color: var(--muted); }
+.links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.links li { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.links li div { display: flex; flex-direction: column; min-width: 0; }
+.links strong { font-size: 13px; }
+.links small { font-size: 11px; color: var(--muted); }
+.links code { font: 12px 'DM Mono', monospace; color: var(--green); overflow-wrap: anywhere; }
+.strong { font-weight: 700; }
+.muted { color: var(--muted); }
+
 .admin-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; font-size: 13px; color: var(--muted); }
 .admin-footer a { color: var(--green); font-weight: 700; text-decoration: none; }
 .admin-footer .ghost { margin-left: auto; }
@@ -97,7 +108,7 @@ tr.detail p { margin: 0 0 4px; }
 .login input { padding: 10px 12px; border: 1px solid var(--line); border-radius: 4px; font: inherit; }
 
 @media (max-width: 900px) {
-  .charts { grid-template-columns: 1fr; }
+  .charts, .channel-row { grid-template-columns: 1fr; }
 }
 @media (max-width: 600px) {
   .admin { padding: 0 16px 32px; }

@@ -1,5 +1,6 @@
 import type { Env } from '../_lib/env'
 import { summarizeVitals, type VitalRow } from '../_lib/vitals'
+import { classifyChannel } from '../_lib/channel'
 
 // Breakdown dimensions. Keys are fixed here so no request input reaches the SQL text.
 // Acquisition dimensions are credited to each visitor's first pageview, so moving
@@ -62,11 +63,13 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     visitors: `${views}, journeys AS (SELECT visitor, group_concat(path, ' → ') AS journey FROM (SELECT visitor, path FROM pv ORDER BY ts) GROUP BY visitor)
       SELECT pv.visitor, MIN(pv.ts) AS firstSeen, MAX(pv.ts) AS lastSeen, COUNT(*) AS pageviews, journeys.journey,
         MAX(pv.city) AS city, MAX(pv.region) AS region, MAX(pv.country) AS country, MAX(pv.as_org) AS organization,
-        MAX(pv.browser) AS browser, MAX(pv.os) AS os, MAX(pv.device) AS device, (SELECT referrer_host FROM pv AS e WHERE e.visitor = pv.visitor ORDER BY ts LIMIT 1) AS referrer, (SELECT utm_source FROM pv AS e WHERE e.visitor = pv.visitor ORDER BY ts LIMIT 1) AS utmSource,
+        MAX(pv.browser) AS browser, MAX(pv.os) AS os, MAX(pv.device) AS device, (SELECT referrer_host FROM pv AS e WHERE e.visitor = pv.visitor ORDER BY ts LIMIT 1) AS referrer, (SELECT utm_source FROM pv AS e WHERE e.visitor = pv.visitor ORDER BY ts LIMIT 1) AS utmSource, (SELECT utm_medium FROM pv AS e WHERE e.visitor = pv.visitor ORDER BY ts LIMIT 1) AS utmMedium,
         (SELECT SUM(duration) FROM eng WHERE pageview_id IN (SELECT pageview_id FROM pv AS p2 WHERE p2.visitor = pv.visitor)) AS engagedMs,
         EXISTS (SELECT 1 FROM events AS c WHERE c.visitor = pv.visitor AND c.type = 'click' AND c.category = 'download') AS downloaded,
         (SELECT group_concat(DISTINCT c.label) FROM events AS c WHERE c.visitor = pv.visitor AND c.type = 'click') AS clicked
       FROM pv JOIN journeys USING (visitor) GROUP BY pv.visitor ORDER BY lastSeen DESC LIMIT 200`,
+    entries: `SELECT utm_source AS source, utm_medium AS medium, referrer_host AS referrer, COUNT(*) AS visitors
+      FROM (SELECT *, MIN(ts) FROM events WHERE type = 'pageview' AND ts >= ?1 GROUP BY visitor) GROUP BY source, medium, referrer`,
     vitals: `SELECT metric, metric_value AS value, metric_rating AS rating, COALESCE(path, '/') AS path FROM events
       WHERE type = 'vital' AND ts >= ?1 AND metric IS NOT NULL AND metric_value IS NOT NULL ORDER BY ts DESC LIMIT 20000`,
     recent: `SELECT ts, type, path, category, label, duration_ms AS durationMs, scroll_pct AS scrollPct, referrer_host AS referrer,
@@ -86,5 +89,21 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const data: Record<string, unknown> = { days, generatedAt: Date.now() }
   keys.forEach((key, index) => { data[key] = key === 'totals' ? results[index].results[0] : results[index].results })
   data.vitals = summarizeVitals(data.vitals as VitalRow[])
+
+  // Channels need pattern matching, so they are grouped here rather than in SQL.
+  const channels = new Map<string, { visitors: number; detail: Map<string, number> }>()
+  for (const row of data.entries as { source: string | null; medium: string | null; referrer: string | null; visitors: number }[]) {
+    const channel = classifyChannel(row.source, row.medium, row.referrer)
+    const entry = channels.get(channel) ?? { visitors: 0, detail: new Map() }
+    entry.visitors += row.visitors
+    const detail = row.source ?? row.referrer
+    if (detail && detail.toLowerCase() !== channel.toLowerCase()) entry.detail.set(detail, (entry.detail.get(detail) ?? 0) + row.visitors)
+    channels.set(channel, entry)
+  }
+  data.channels = [...channels].map(([name, entry]) => ({ name, visitors: entry.visitors, detail: [...entry.detail].sort((a, b) => b[1] - a[1]).map(([label]) => label).slice(0, 3).join(', ') })).sort((a, b) => b.visitors - a.visitors)
+  delete data.entries
+  for (const visitor of data.visitors as { utmSource: string | null; utmMedium: string | null; referrer: string | null; channel?: string }[]) {
+    visitor.channel = classifyChannel(visitor.utmSource, visitor.utmMedium, visitor.referrer)
+  }
   return json(data)
 }

@@ -2,12 +2,12 @@ import { Fragment, useEffect, useState } from 'react'
 import { ignoreKey } from '../analytics'
 import { fillDays, formatDuration, formatNumber, formatPercent, formatTime, formatVital, rateVital, vitalInfo } from './format'
 
-type Row = { name: string; visitors: number; pageviews?: number }
+type Row = { name: string; visitors: number; pageviews?: number; detail?: string }
 type PageRow = { name: string; views: number; visitors: number; avgDurationMs: number | null; avgScrollPct: number | null }
 type ClickRow = { category: string; label: string; target: string | null; context: string | null; clicks: number; visitors: number }
 type VisitorRow = {
   visitor: string; firstSeen: number; lastSeen: number; pageviews: number; journey: string; city: string | null; region: string | null; country: string | null
-  organization: string | null; browser: string; os: string; device: string; referrer: string | null; utmSource: string | null; engagedMs: number | null; downloaded: number; clicked: string | null
+  organization: string | null; browser: string; os: string; device: string; referrer: string | null; utmSource: string | null; channel: string; engagedMs: number | null; downloaded: number; clicked: string | null
 }
 type RecentRow = {
   ts: number; type: string; path: string | null; category: string | null; label: string | null; durationMs: number | null; scrollPct: number | null
@@ -25,11 +25,18 @@ type Stats = {
   clicks: ClickRow[]
   visitors: VisitorRow[]
   recent: RecentRow[]
+  channels: Row[]
   vitals: { metrics: VitalSummary[]; pages: ({ path: string } & Record<string, number>)[] }
 } & Record<'referrers' | 'utmSources' | 'utmCampaigns' | 'countries' | 'cities' | 'organizations' | 'browsers' | 'systems' | 'devices' | 'languages' | 'screens', Row[]>
 
 const tokenKey = 'sw-admin-token'
 const ranges = [[1, 'Today'], [7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '1 year']] as const
+const trackingLinks = [
+  ['Resume', 'https://steven.wilssens.com/?ref=resume', 'Link from the resume PDF'],
+  ['LinkedIn', 'https://steven.wilssens.com/?ref=linkedin', 'Profile website field, Featured section, posts'],
+  ['Email', 'https://steven.wilssens.com/?ref=email', 'Email signature and messages'],
+] as const
+
 const cloudflareAnalyticsUrl = 'https://dash.cloudflare.com/?to=/:account/web-analytics'
 
 const storage = {
@@ -79,7 +86,7 @@ function RankedList({ title, rows, unit = 'visitors', empty = 'No data yet' }: {
           {rows.map((row) => (
             <li key={row.name} title={row.pageviews ? `${formatNumber(row.visitors)} ${unit} · ${formatNumber(row.pageviews)} pageviews` : undefined}>
               <span className="ranked-bar" style={{ width: `${(row.visitors / max) * 100}%` }} />
-              <span className="ranked-name">{row.name}</span>
+              <span className="ranked-name">{row.name}{row.detail && <small> · {row.detail}</small>}</span>
               <span className="ranked-value">{formatNumber(row.visitors)}</span>
             </li>
           ))}
@@ -126,6 +133,25 @@ function WebVitals({ vitals }: { vitals: Stats['vitals'] }) {
           </div>
         </>
       )}
+    </section>
+  )
+}
+
+function TrackingLinks() {
+  const [copied, setCopied] = useState('')
+  const copy = (url: string) => { void navigator.clipboard?.writeText(url).then(() => setCopied(url)) }
+  return (
+    <section className="panel">
+      <h2>Your tracking links</h2>
+      <p className="note">Use these so visits are credited to the right channel. PDFs, email apps, and the LinkedIn app usually don't say where a visitor came from.</p>
+      <ul className="links">
+        {trackingLinks.map(([name, url, where]) => (
+          <li key={name}>
+            <div><strong>{name}</strong><small>{where}</small><code>{url}</code></div>
+            <button type="button" className="ghost" onClick={() => copy(url)}>{copied === url ? 'Copied' : 'Copy'}</button>
+          </li>
+        ))}
+      </ul>
     </section>
   )
 }
@@ -239,13 +265,18 @@ export default function Admin() {
             />
           </section>
 
+          <div className="channel-row">
+            <RankedList title="Channels" rows={stats.channels} />
+            <TrackingLinks />
+          </div>
+
           <section className="panel wide">
             <h2>Visitors</h2>
             <p className="note">Each row is one visitor on one day, with the pages they viewed in order. Organization is the network they browsed from, which is often their employer.</p>
             {stats.visitors.length === 0 ? <p className="empty">No visitors in this range yet</p> : (
               <div className="table-scroll">
                 <table>
-                  <thead><tr><th>Last seen</th><th>Organization</th><th>Location</th><th>Came from</th><th>Pages</th><th>Time</th><th>Device</th><th>Resume</th></tr></thead>
+                  <thead><tr><th>Last seen</th><th>Organization</th><th>Location</th><th>Channel</th><th>Pages</th><th>Time</th><th>Device</th><th>Resume</th></tr></thead>
                   <tbody>
                     {stats.visitors.map((row) => (
                       <Fragment key={row.visitor}>
@@ -253,7 +284,7 @@ export default function Admin() {
                           <td>{formatTime(row.lastSeen)}</td>
                           <td className="strong">{row.organization ?? 'Unknown'}</td>
                           <td>{place(row)}</td>
-                          <td>{row.utmSource ?? row.referrer ?? 'Direct'}</td>
+                          <td><span className="strong">{row.channel}</span>{(row.utmSource ?? row.referrer) && <small className="muted"> · {row.utmSource ?? row.referrer}</small>}</td>
                           <td className="num">{row.pageviews}</td>
                           <td className="num">{formatDuration(row.engagedMs)}</td>
                           <td>{row.device} · {row.os} · {row.browser}</td>

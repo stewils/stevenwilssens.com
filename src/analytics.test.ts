@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { parseUserAgent, isBot } from '../functions/_lib/useragent'
 import { summarizeVitals } from '../functions/_lib/vitals'
 import { fillDays, formatDuration, formatVital, rateVital } from './admin/format'
-import { classifyLink, describeClick } from './analytics'
+import { classifyChannel } from '../functions/_lib/channel'
+import { classifyLink, describeClick, removeTrackingParams } from './analytics'
 
 describe('click tracking', () => {
   it('classifies links by what they do', () => {
@@ -67,5 +68,27 @@ describe('web vitals', () => {
     expect(formatVital('LCP', 2400)).toBe('2.40s')
     expect(formatVital('INP', 96.4)).toBe('96ms')
     expect(formatVital('CLS', 0.042)).toBe('0.04')
+  })
+})
+
+describe('traffic channels', () => {
+  it('credits tagged links first, then the referring site, then direct', () => {
+    expect(classifyChannel('resume', null, null)).toBe('Resume')
+    expect(classifyChannel('LinkedIn', null, 'google.com')).toBe('LinkedIn')
+    expect(classifyChannel('email', null, null)).toBe('Email')
+    expect(classifyChannel(null, 'email', null)).toBe('Email')
+    expect(classifyChannel('twitter', null, null)).toBe('Tagged')
+    expect(classifyChannel(null, null, 'linkedin.com')).toBe('LinkedIn')
+    expect(classifyChannel(null, null, 'lnkd.in')).toBe('LinkedIn')
+    expect(classifyChannel(null, null, 'mail.google.com')).toBe('Email')
+    expect(classifyChannel(null, null, 'google.co.uk')).toBe('Search')
+    expect(classifyChannel(null, null, 'github.com')).toBe('Referral')
+    expect(classifyChannel(null, null, null)).toBe('Direct')
+  })
+
+  it('removes tracking tags from the address bar but keeps other parameters', () => {
+    window.history.replaceState({}, '', '/experience?ref=resume&utm_campaign=x&tab=2#top')
+    removeTrackingParams()
+    expect(window.location.pathname + window.location.search + window.location.hash).toBe('/experience?tab=2#top')
   })
 })

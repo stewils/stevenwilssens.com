@@ -42,6 +42,16 @@ export const describeClick = (element: Element) => {
   return { category: 'button', label, target: null, context }
 }
 
+// Once a visit is recorded, drop ?ref= and utm_ tags from the address bar so
+// links people copy and share do not carry the original source.
+export const removeTrackingParams = () => {
+  const url = new URL(window.location.href)
+  const tracking = [...url.searchParams.keys()].filter((key) => key === 'ref' || key.startsWith('utm_'))
+  if (tracking.length === 0) return
+  for (const key of tracking) url.searchParams.delete(key)
+  window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
+}
+
 let started = false
 
 export const startAnalytics = () => {
@@ -88,6 +98,7 @@ export const startAnalytics = () => {
       viewport: `${window.innerWidth}x${window.innerHeight}`,
     })
     requestAnimationFrame(measureScroll)
+    removeTrackingParams()
   }
 
   window.addEventListener('scroll', measureScroll, { passive: true })
