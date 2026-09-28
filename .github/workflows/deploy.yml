@@ -2,7 +2,9 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
+    # main deploys to production; other branches get a preview at
+    # https://<branch>.stevenwilssens.pages.dev
+    branches: ['**', '!dependabot/**']
   pull_request:
   workflow_dispatch:
 
@@ -27,10 +29,14 @@ jobs:
       - run: npm test
       - run: npm run build
       - name: Deploy to Cloudflare
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request'
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo "::warning::CLOUDFLARE_API_TOKEN secret is not set; skipping deploy."
             exit 0
           fi
-          npx wrangler pages deploy --branch main --commit-hash "$GITHUB_SHA" --commit-message "$(git log -1 --format=%s)"
+          npx wrangler pages deploy --branch "$GITHUB_REF_NAME" --commit-hash "$GITHUB_SHA" --commit-message "$(git log -1 --format=%s)"
+          if [ "$GITHUB_REF_NAME" != main ]; then
+            alias=$(printf '%s' "$GITHUB_REF_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | cut -c1-28)
+            echo "### Preview: https://$alias.stevenwilssens.pages.dev" >> "$GITHUB_STEP_SUMMARY"
+          fi

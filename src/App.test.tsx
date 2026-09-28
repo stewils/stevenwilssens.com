@@ -62,6 +62,29 @@ describe('resume site', () => {
     expect(screen.getAllByText(/^US Patent /)).toHaveLength(7)
   })
 
+  it('defaults to dark mode, switches to light, and remembers the choice', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to light mode' }))
+    expect(document.documentElement.dataset.theme).toBe('light')
+    expect(localStorage.getItem('sw-theme')).toBe('light')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to dark mode' }))
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    localStorage.removeItem('sw-theme')
+    delete document.documentElement.dataset.theme
+  })
+
+  it('keeps the experience timeline in sync with the selected role', () => {
+    setPath('/experience')
+    render(<App />)
+
+    const nodes = screen.getAllByRole('button', { name: /^Scroll to / })
+    fireEvent.click(nodes[3])
+    expect(nodes[3]).toHaveAttribute('aria-pressed', 'true')
+    expect(nodes[0]).toHaveAttribute('aria-pressed', 'false')
+  })
+
   it('shows a not-found page for unknown paths', () => {
     setPath('/does-not-exist')
     render(<App />)

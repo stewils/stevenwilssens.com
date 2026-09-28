@@ -43,6 +43,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const origin = request.headers.get('Origin')
   if (origin && new URL(origin).host !== requestUrl.host) return new Response(null, { status: 403 })
 
+  // Preview deployments share this database; only production and local dev count.
+  if (requestUrl.hostname.endsWith('.pages.dev')) return new Response(null, { status: 204 })
+
   const userAgent = request.headers.get('User-Agent') ?? ''
   if (isBot(userAgent)) return new Response(null, { status: 204 })
 
