@@ -52,14 +52,16 @@ describe('resume site', () => {
     expect(within(quotes).getByRole('link', { name: /Read all 8 recommendations/ })).toHaveAttribute('href', '/recommendations')
   })
 
-  it('links each patent to its Google Patents record', () => {
+  it('links each patent to its Justia record, granted patents first', () => {
     setPath('/patents')
     render(<App />)
 
-    const links = screen.getAllByRole('link', { name: /View on Google Patents/ })
-    expect(links).toHaveLength(9)
-    expect(links[0]).toHaveAttribute('href', 'https://patents.google.com/patent/US11595774B2/en')
-    expect(screen.getAllByText(/^US Patent /)).toHaveLength(7)
+    const links = screen.getAllByRole('link', { name: /on Justia Patents/ })
+    expect(links).toHaveLength(26)
+    expect(links[0]).toHaveAttribute('href', 'https://patents.justia.com/patent/12436860')
+    expect(within(screen.getByRole('region', { name: /Granted patents/ })).getAllByRole('link', { name: /on Justia Patents/ })).toHaveLength(19)
+    expect(screen.getByRole('link', { name: 'US 2018/0315437 on Justia Patents' })).toHaveAttribute('href', 'https://patents.justia.com/patent/20180315437')
+    expect(screen.getByText('19 granted US patents and 7 published applications', { exact: false })).toBeInTheDocument()
   })
 
   it('defaults to dark mode, switches to light, and remembers the choice', () => {
