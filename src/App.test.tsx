@@ -62,15 +62,15 @@ describe('resume site', () => {
     expect(screen.getAllByText(/^US Patent /)).toHaveLength(7)
   })
 
-  it('switches between light and dark mode and remembers the choice', () => {
+  it('defaults to dark mode, switches to light, and remembers the choice', () => {
     render(<App />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Switch to dark mode' }))
-    expect(document.documentElement.dataset.theme).toBe('dark')
-    expect(localStorage.getItem('sw-theme')).toBe('dark')
 
     fireEvent.click(screen.getByRole('button', { name: 'Switch to light mode' }))
     expect(document.documentElement.dataset.theme).toBe('light')
+    expect(localStorage.getItem('sw-theme')).toBe('light')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to dark mode' }))
+    expect(document.documentElement.dataset.theme).toBe('dark')
     localStorage.removeItem('sw-theme')
     delete document.documentElement.dataset.theme
   })
