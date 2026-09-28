@@ -95,3 +95,13 @@ nav a, .nav-measure span { white-space: nowrap; }
 nav a:focus-visible, .nav-more > button:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 2px; }
 @media (max-width: 800px) { nav, .nav-more { position: static; } nav, .nav-measure { gap: 18px; } nav a, .nav-more > button, .nav-measure span { padding: 22px 0 19px; } .nav-panel { top: 100%; left: 0; right: 0; min-width: 0; } .nav-panel a { padding: 14px 20px; } }
 @media (max-width: 520px) { .header-contact .text-link { display: none; } }
+/* Patents: grouped by status, each invention with a plain-language summary and its Justia records. */
+.patent-group + .patent-group { margin-top: 76px; }
+.patent-group h2 { margin: 0 0 18px; font-size: 24px; letter-spacing: -.6px; }
+.patent-group h2 span { margin-left: 6px; color: var(--muted); font: 14px 'DM Mono', monospace; letter-spacing: 0; }
+.patent-year { padding-top: 5px; color: var(--green); font: 12px 'DM Mono', monospace; }
+.patent-list h3 { max-width: 700px; margin: 0 0 8px; font-size: 19px; line-height: 1.3; letter-spacing: -.3px; }
+.archive-list .patent-summary { max-width: 660px; margin: 0 0 14px; color: var(--quote); font-size: 15px; line-height: 1.55; }
+.patent-records { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.patent-records li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 18px; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.patent-records a { min-width: 128px; }
