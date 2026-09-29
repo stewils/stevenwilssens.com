@@ -4,10 +4,14 @@ const maxStaggerMs = 450
 
 // Rows arrive like a signal sweeping across the page: a playhead draws the row's
 // rule and uncovers its content as it scrolls into view. Rows only start hidden
-// once this runs, so the page is complete without JavaScript or with reduced motion.
+// once this runs (or the matching inline script in index.html), so the page is complete
+// without JavaScript or with reduced motion.
 export function revealRows(root: ParentNode = document): () => void {
   const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-  if (reducedMotion || !('IntersectionObserver' in window)) return () => {}
+  if (reducedMotion || !('IntersectionObserver' in window)) {
+    delete document.documentElement.dataset.rowReveal
+    return () => {}
+  }
   document.documentElement.dataset.rowReveal = 'on'
   const observer = new IntersectionObserver((entries) => {
     const arriving = entries.filter((entry) => entry.isIntersecting).map((entry) => entry.target as HTMLElement)

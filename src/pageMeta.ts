@@ -19,3 +19,30 @@ export const pageMeta: Record<Page, { title: string; description: string }> = {
   projects: { title: 'Projects & interests | Steven Wilssens', description: 'Projects where product thinking meets family, community, and the joy of making things useful.' },
   notFound: { title: 'Page not found | Steven Wilssens', description: 'This page does not exist on steven.wilssens.com.' },
 }
+
+// Structured data for search engines: who the site is about and where else he appears.
+// Added to the home page's HTML at build time.
+export const personJsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Person',
+      '@id': `${siteUrl}/#person`,
+      name: 'Steven Wilssens',
+      url: `${siteUrl}/`,
+      image: `${siteUrl}/profile.jpg`,
+      jobTitle: 'Product leader',
+      description: pageMeta.home.description,
+      knowsAbout: ['Product management', 'Product strategy', 'Data platforms', 'Experimentation', 'Machine learning', 'Spatial audio', 'Windows'],
+      knowsLanguage: ['nl', 'en', 'fr'],
+      alumniOf: { '@type': 'CollegeOrUniversity', name: 'Karel de Grote', address: { '@type': 'PostalAddress', addressCountry: 'BE' } },
+      homeLocation: { '@type': 'Place', name: 'Seattle area, Washington, United States' },
+      sameAs: [
+        'https://www.linkedin.com/in/steven-wilssens-59495889/',
+        'https://patents.justia.com/inventor/steven-wilssens',
+        'https://patents.justia.com/inventor/steven-marcel-elza-wilssens',
+      ],
+    },
+    { '@type': 'WebSite', '@id': `${siteUrl}/#website`, name: 'Steven Wilssens', url: `${siteUrl}/`, about: { '@id': `${siteUrl}/#person` } },
+  ],
+}

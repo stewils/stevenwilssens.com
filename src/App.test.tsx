@@ -16,7 +16,8 @@ describe('resume site', () => {
   it('shows the homepage positioning, impact proof, and contact actions', () => {
     render(<App />)
 
-    expect(screen.getByRole('heading', { name: 'Product leadership for the next chapter.' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Steven Wilssens' })).toBeInTheDocument()
+    expect(screen.getByText('Product leadership for the next chapter.')).toBeInTheDocument()
     expect(screen.getByText('250%+')).toBeInTheDocument()
     expect(screen.getByText('1B+')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Leadership that turns ambiguity into momentum.' })).toBeInTheDocument()
