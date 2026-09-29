@@ -40,3 +40,7 @@ jobs:
             alias=$(printf '%s' "$GITHUB_REF_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | cut -c1-28)
             echo "### Preview: https://$alias.stevenwilssens.pages.dev" >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Notify search engines (IndexNow)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.CLOUDFLARE_API_TOKEN != ''
+        continue-on-error: true
+        run: node scripts/indexnow.mjs
