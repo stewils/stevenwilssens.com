@@ -9,7 +9,7 @@ export const routes = ['about', 'experience', 'recommendations', 'patents', 'hon
 export type Page = 'home' | (typeof routes)[number] | 'notFound'
 
 export const pageMeta: Record<Page, { title: string; description: string }> = {
-  home: { title: 'Steven Wilssens | Product leader', description: 'Independent product and technology leader beginning a new chapter after more than a decade at Microsoft, most recently leading Windows & Devices Data product management.' },
+  home: { title: 'Steven Wilssens | Product leader', description: 'Steven Wilssens, product and technology leader: more than a decade at Microsoft, most recently leading Windows & Devices Data product management.' },
   about: { title: 'About | Steven Wilssens', description: 'Learn about Steven Wilssens and his approach to product, portfolio, and people leadership.' },
   experience: { title: 'Experience | Steven Wilssens', description: 'A career across product leadership, Windows & Devices, spatial audio, Azure DevOps, and software.' },
   recommendations: { title: 'Recommendations | Steven Wilssens', description: 'Recommendations from leaders, peers, and teammates who worked with Steven Wilssens.' },
