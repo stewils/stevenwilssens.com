@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;700;800&display=swap');
 
 :root { --ink: #172121; --muted: #6a7473; --paper: #f4f6f1; --card: #ffffff; --line: #d7dfd8; --green: #096b50; --series: #0b8a5f; --series-track: #e3ece6; --yellow: #e8b84a; }
 body { background: var(--paper); color: var(--ink); }

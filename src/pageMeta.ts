@@ -4,7 +4,7 @@
 
 export const siteUrl = 'https://steven.wilssens.com'
 
-export const routes = ['about', 'experience', 'recommendations', 'patents', 'honors', 'news', 'projects'] as const
+export const routes = ['about', 'experience', 'recommendations', 'patents', 'honors', 'news', 'projects', 'privacy'] as const
 
 export type Page = 'home' | (typeof routes)[number] | 'notFound'
 
@@ -17,6 +17,7 @@ export const pageMeta: Record<Page, { title: string; description: string }> = {
   honors: { title: 'Honors & awards | Steven Wilssens', description: 'Recognition for teamwork, individual excellence, and technical leadership.' },
   news: { title: 'In the News | Steven Wilssens', description: 'Coverage of Steven Wilssens and spatial audio work across Windows and Xbox.' },
   projects: { title: 'Projects & interests | Steven Wilssens', description: 'Projects where product thinking meets family, community, and the joy of making things useful.' },
+  privacy: { title: 'Privacy | Steven Wilssens', description: 'What steven.wilssens.com records about visits and what it does not: first-party, cookie-free analytics hosted on Cloudflare.' },
   notFound: { title: 'Page not found | Steven Wilssens', description: 'This page does not exist on steven.wilssens.com.' },
 }
 

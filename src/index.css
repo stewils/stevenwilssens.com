@@ -1,4 +1,4 @@
-:root { font-family: 'Manrope', 'Segoe UI', sans-serif; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+:root { font-family: 'Manrope Variable', 'Manrope', 'Segoe UI', sans-serif; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
 html { scroll-behavior: smooth; }
 body { margin: 0; min-width: 320px; }
 h1, h2, p { margin-top: 0; }

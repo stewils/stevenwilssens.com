@@ -9,7 +9,10 @@ const endpoint = '/api/collect'
 
 type EventPayload = Record<string, unknown> & { type: 'pageview' | 'engagement' | 'click' | 'vital' }
 
+const optedOut = () => (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true || navigator.doNotTrack === '1'
+
 const isIgnored = () => {
+  if (optedOut()) return true
   try { return localStorage.getItem(ignoreKey) === '1' } catch { return false }
 }
 

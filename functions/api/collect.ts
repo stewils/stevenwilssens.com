@@ -38,7 +38,9 @@ const hostOf = (url: string | null) => {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return null }
 }
 
-export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+const retentionMs = 395 * 86_400_000 // 13 months, as stated on /privacy
+
+export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   const requestUrl = new URL(request.url)
   const origin = request.headers.get('Origin')
   if (origin && new URL(origin).host !== requestUrl.host) return new Response(null, { status: 403 })
@@ -81,6 +83,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     typeof payload.value === 'number' && Number.isFinite(payload.value) ? Math.max(0, Math.min(payload.value, 600_000)) : null,
     ratings.has(payload.rating ?? '') ? payload.rating : null,
   ).run()
+
+  if (Math.random() < 0.02) waitUntil(env.DB.prepare('DELETE FROM events WHERE ts < ?').bind(now - retentionMs).run())
 
   return new Response(null, { status: 204 })
 }
