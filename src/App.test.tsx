@@ -111,6 +111,7 @@ describe('resume site', () => {
     ['/honors', 'Honors & awards'],
     ['/news', 'In the News'],
     ['/projects', 'Projects & interests'],
+    ['/privacy', 'Privacy'],
   ])('renders the %s page', (path, heading) => {
     setPath(path)
     render(<App />)
