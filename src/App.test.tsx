@@ -175,11 +175,11 @@ describe('resume site', () => {
     expect(screen.getAllByRole('link', { name: 'Read article ↗' })).toHaveLength(5)
   })
 
-  it('exposes both external project links', () => {
+  it('links every project to its site', () => {
     setPath('/projects')
     render(<App />)
 
-    expect(screen.getAllByRole('link', { name: 'Visit project ↗' })[0]).toHaveAttribute('href', 'https://juniortrackcycling.com')
-    expect(screen.getAllByRole('link', { name: 'Visit project ↗' })[1]).toHaveAttribute('href', 'https://leo.wilssens.com')
+    const links = screen.getAllByRole('link', { name: 'Visit project ↗' })
+    expect(links.map((link) => link.getAttribute('href'))).toEqual(['https://wilssens.com', 'https://juniortrackcycling.com', 'https://leo.wilssens.com'])
   })
 })

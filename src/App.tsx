@@ -42,6 +42,7 @@ const news = [
   { title: '“Throwing your voice” with Spatial Audio', publication: 'Windows Developer Blog', url: 'https://blogs.windows.com/windowsdeveloper/2016/09/15/throwing-your-voice-with-spatial-audio/', summary: 'A Windows developer story exploring how spatial audio can place a voice in a three-dimensional environment and make sound feel more present and directional.', quote: 'Steven Wilssens is associated with the Windows spatial-audio work discussed in this developer story.' },
 ]
 const projects = [
+  { name: 'wilssens.com', url: 'https://wilssens.com', tag: 'Lean startup experiment', summary: 'Email and web addresses at the family domain, like jan@wilssens.com and jan.wilssens.com, for everyone named Wilssens. Run as a lean startup test: requests are free and each one is set up by hand, so real sign-ups show whether there is demand before more gets built.' },
   { name: 'Junior Track Cycling', url: 'https://juniortrackcycling.com', tag: 'Community project', summary: 'A project focused on making junior track cycling easier to discover, follow, and celebrate.' },
   { name: 'Leo Wilssens', url: 'https://leo.wilssens.com', tag: 'Family project', summary: 'A race journal and results site for Leo Wilssens, a junior track cyclist racing with Jerry Baker Juniors.' },
 ]
