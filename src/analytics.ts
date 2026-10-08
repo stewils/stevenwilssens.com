@@ -1,4 +1,4 @@
-import { onCLS, onFCP, onINP, onLCP, onTTFB, type Metric } from 'web-vitals'
+import { onCLS, onFCP, onINP, onLCP, onTTFB, type MetricWithAttribution } from 'web-vitals/attribution'
 
 // First-party, cookie-free analytics. Events go to /api/collect (a Pages Function
 // that writes to D1). Nothing is stored on the visitor's device except the
@@ -53,6 +53,13 @@ export const removeTrackingParams = () => {
   if (tracking.length === 0) return
   for (const key of tracking) url.searchParams.delete(key)
   window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
+}
+
+export const vitalTarget = (metric: MetricWithAttribution) => {
+  if (metric.name === 'LCP') return metric.attribution.target
+  if (metric.name === 'INP') return metric.attribution.interactionTarget && [metric.attribution.interactionType, metric.attribution.interactionTarget].filter(Boolean).join(': ')
+  if (metric.name === 'CLS') return metric.attribution.largestShiftTarget
+  return undefined
 }
 
 let started = false
@@ -118,8 +125,9 @@ export const startAnalytics = () => {
 
   trackPageview()
 
-  // Core Web Vitals from real visits. Each metric reports once per page load.
-  const reportVital = (metric: Metric) => send({ type: 'vital', pageviewId, path: window.location.pathname, metric: metric.name, value: metric.value, rating: metric.rating })
+  // Core Web Vitals from real visits. Each metric reports once per page load, with the
+  // page element responsible (largest image or text, slowest interaction, biggest shift).
+  const reportVital = (metric: MetricWithAttribution) => send({ type: 'vital', pageviewId, path: window.location.pathname, metric: metric.name, value: metric.value, rating: metric.rating, target: vitalTarget(metric) })
   onLCP(reportVital)
   onINP(reportVital)
   onCLS(reportVital)

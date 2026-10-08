@@ -14,6 +14,8 @@ type RecentRow = {
   referrer: string | null; city: string | null; country: string | null; organization: string | null; browser: string; os: string; device: string
 }
 type VitalSummary = { metric: string; p75: number; samples: number; good: number; needsImprovement: number; poor: number }
+type DeviceVitals = { device: string; visits: number; passes: boolean | null } & Partial<Record<'LCP' | 'INP' | 'CLS', number>>
+type VitalCulprit = { metric: string; path: string; target: string; samples: number; p75: number }
 type Stats = {
   days: number
   generatedAt: number
@@ -26,7 +28,7 @@ type Stats = {
   visitors: VisitorRow[]
   recent: RecentRow[]
   channels: Row[]
-  vitals: { metrics: VitalSummary[]; pages: ({ path: string } & Record<string, number>)[] }
+  vitals: { metrics: VitalSummary[]; pages: ({ path: string } & Record<string, number>)[]; devices: DeviceVitals[]; culprits: VitalCulprit[] }
 } & Record<'referrers' | 'utmSources' | 'utmCampaigns' | 'countries' | 'cities' | 'organizations' | 'browsers' | 'systems' | 'devices' | 'languages' | 'screens', Row[]>
 
 const tokenKey = 'sw-admin-token'
@@ -104,9 +106,18 @@ function WebVitals({ vitals }: { vitals: Stats['vitals'] }) {
   return (
     <section className="panel wide">
       <h2>Page speed (Core Web Vitals)</h2>
-      <p className="note">Measured in visitors' browsers. Values are the 75th percentile, the number Google uses to rate a site; the bar shows the share of visits rated good, needs work, and poor.</p>
+      <p className="note">Measured in visitors' browsers. Values are the 75th percentile, the number Google uses to rate a site. Google rates phones and desktops separately; a device type passes when LCP, INP and CLS are all good. The bar shows the share of visits rated good, needs work, and poor.</p>
       {metrics.length === 0 ? <p className="empty">No measurements yet</p> : (
         <>
+          <div className="assessments">
+            {vitals.devices.map((row) => (
+              <div key={row.device} className={`assessment ${row.passes === null ? '' : row.passes ? 'good' : 'poor'}`}>
+                <span className="vital-name">{row.device} <small>{formatNumber(row.visits)} visits</small></span>
+                <strong>{row.passes === null ? 'Not enough data' : row.passes ? '✓ Passes' : '✕ Fails'}</strong>
+                <small>{(['LCP', 'INP', 'CLS'] as const).map((metric) => `${metric} ${formatVital(metric, row[metric])}`).join(' · ')}</small>
+              </div>
+            ))}
+          </div>
           <div className="vitals">
             {metrics.map((row) => {
               const rating = rateVital(row.metric, row.p75)
@@ -131,6 +142,16 @@ function WebVitals({ vitals }: { vitals: Stats['vitals'] }) {
               <tbody>{vitals.pages.map((row) => <tr key={row.path}><td className="strong">{row.path}</td>{order.map((metric) => <td className="num" key={metric}>{row[metric] == null ? '—' : <span className={`status-text ${rateVital(metric, row[metric])}`}>{formatVital(metric, row[metric])}</span>}</td>)}</tr>)}</tbody>
             </table>
           </div>
+          <h3>What to fix</h3>
+          <p className="note">The page elements behind visits rated needs work or poor: the largest image or text block (LCP), the control that responded slowly (INP), and the element that moved most (CLS).</p>
+          {vitals.culprits.length === 0 ? <p className="empty">Nothing slow to report</p> : (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>Metric</th><th>Page</th><th>Element</th><th className="num">Visits</th><th className="num">75th pct</th></tr></thead>
+                <tbody>{vitals.culprits.map((row) => <tr key={`${row.metric}|${row.path}|${row.target}`}><td className="strong">{row.metric}</td><td>{row.path}</td><td className="target" title={row.target}>{row.target}</td><td className="num">{formatNumber(row.samples)}</td><td className="num"><span className={`status-text ${rateVital(row.metric, row.p75)}`}>{formatVital(row.metric, row.p75)}</span></td></tr>)}</tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
     </section>

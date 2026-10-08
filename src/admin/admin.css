@@ -67,6 +67,14 @@ tr.detail p { margin: 0 0 4px; }
 .badge { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 700; background: var(--series-track); color: var(--green); white-space: nowrap; }
 .badge.download { background: var(--green); color: #fff; }
 
+.assessments { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.assessment { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--line); border-left-width: 4px; border-radius: 6px; padding: 12px; }
+.assessment.good { border-left-color: #0ca30c; }
+.assessment.poor { border-left-color: #d03b3b; }
+.assessment .vital-name { text-transform: capitalize; }
+.assessment strong { font-size: 18px; }
+.assessment > small { font: 11px 'DM Mono', monospace; color: var(--muted); }
+.panel h3 { margin: 20px 0 10px; font-size: 14px; font-weight: 800; }
 .vitals { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .vital { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--line); border-radius: 6px; padding: 12px; }
 .vital-name { font-size: 12px; font-weight: 800; }
