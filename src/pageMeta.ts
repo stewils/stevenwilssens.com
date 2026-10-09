@@ -21,7 +21,8 @@ export const pageMeta: Record<Page, { title: string; description: string }> = {
   notFound: { title: 'Page not found | Steven Wilssens', description: 'This page does not exist on steven.wilssens.com.' },
 }
 
-// Structured data for search engines: who the site is about and where else he appears.
+// Structured data for search engines: who the site is about, where else he appears,
+// and that the home page is his profile.
 // Added to the home page's HTML at build time.
 export const personJsonLd = {
   '@context': 'https://schema.org',
@@ -45,5 +46,7 @@ export const personJsonLd = {
       ],
     },
     { '@type': 'WebSite', '@id': `${siteUrl}/#website`, name: 'Steven Wilssens', url: `${siteUrl}/`, about: { '@id': `${siteUrl}/#person` } },
+    // Marks the home page as a profile of Steven, which Google uses for profile results.
+    { '@type': 'ProfilePage', '@id': `${siteUrl}/#profile`, url: `${siteUrl}/`, name: pageMeta.home.title, mainEntity: { '@id': `${siteUrl}/#person` }, isPartOf: { '@id': `${siteUrl}/#website` } },
   ],
 }

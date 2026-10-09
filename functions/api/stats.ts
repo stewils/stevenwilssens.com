@@ -70,7 +70,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
       FROM pv JOIN journeys USING (visitor) GROUP BY pv.visitor ORDER BY lastSeen DESC LIMIT 200`,
     entries: `SELECT utm_source AS source, utm_medium AS medium, referrer_host AS referrer, COUNT(*) AS visitors
       FROM (SELECT *, MIN(ts) FROM events WHERE type = 'pageview' AND ts >= ?1 GROUP BY visitor) GROUP BY source, medium, referrer`,
-    vitals: `SELECT metric, metric_value AS value, metric_rating AS rating, COALESCE(path, '/') AS path FROM events
+    vitals: `SELECT metric, metric_value AS value, metric_rating AS rating, COALESCE(path, '/') AS path, device, target FROM events
       WHERE type = 'vital' AND ts >= ?1 AND metric IS NOT NULL AND metric_value IS NOT NULL ORDER BY ts DESC LIMIT 20000`,
     recent: `SELECT ts, type, path, category, label, duration_ms AS durationMs, scroll_pct AS scrollPct, referrer_host AS referrer,
       city, country, as_org AS organization, browser, os, device FROM events WHERE ts >= ?1 AND type != 'vital' ORDER BY ts DESC LIMIT 200`,

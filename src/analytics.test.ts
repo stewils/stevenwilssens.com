@@ -61,6 +61,26 @@ describe('web vitals', () => {
     expect(summary.pages).toEqual([{ path: '/', LCP: 300 }, { path: '/about', LCP: 4000 }])
   })
 
+  it('assesses each device type and lists the elements behind slow visits', () => {
+    const rows = [
+      { metric: 'LCP', value: 1800, rating: 'good', path: '/', device: 'desktop', target: 'img.profile' },
+      { metric: 'CLS', value: 0.02, rating: 'good', path: '/', device: 'desktop' },
+      { metric: 'TTFB', value: 300, rating: 'good', path: '/', device: 'desktop' },
+      { metric: 'LCP', value: 3100, rating: 'needs-improvement', path: '/', device: 'mobile', target: 'img.profile' },
+      { metric: 'CLS', value: 0.01, rating: 'good', path: '/', device: 'mobile' },
+      { metric: 'INP', value: 90, rating: 'good', path: '/', device: 'mobile', target: 'pointer: button' },
+      { metric: 'TTFB', value: 500, rating: 'good', path: '/', device: 'mobile' },
+      { metric: 'LCP', value: 1200, rating: 'good', path: '/about', device: 'tablet' },
+    ]
+    const summary = summarizeVitals(rows)
+    expect(summary.devices).toEqual([
+      { device: 'mobile', visits: 1, passes: false, LCP: 3100, CLS: 0.01, INP: 90, TTFB: 500 },
+      { device: 'desktop', visits: 1, passes: true, LCP: 1800, CLS: 0.02, TTFB: 300 },
+      { device: 'tablet', visits: 0, passes: null, LCP: 1200 },
+    ])
+    expect(summary.culprits).toEqual([{ metric: 'LCP', path: '/', target: 'img.profile', samples: 1, p75: 3100 }])
+  })
+
   it('rates and formats values with Google thresholds', () => {
     expect(rateVital('LCP', 2400)).toBe('good')
     expect(rateVital('INP', 350)).toBe('needs-improvement')
