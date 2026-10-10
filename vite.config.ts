@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
-import { pageMeta, personJsonLd, routes, siteUrl, type Page } from './src/pageMeta.ts'
+import { markdownPath, pageJsonLd, pageMeta, pagePath, routes, siteUrl, type Page } from './src/pageMeta.ts'
 
 const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 
@@ -19,28 +19,29 @@ const staticPages = (): Plugin => {
     closeBundle() {
       if (serverBuild) return
       const template = readFileSync(resolve(outDir, 'index.html'), 'utf8')
-      const render = (page: Page, path: string) => {
+      const render = (page: Page) => {
         const { title, description } = pageMeta[page]
-        const url = `${siteUrl}${path}`
+        const url = `${siteUrl}${pagePath(page)}`
         let html = template
           .replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(title)}</title>`)
           .replace(/(<meta (?:name|property)="(?:description|og:description|twitter:description)" content=")[^"]*/g, `$1${escapeHtml(description)}`)
           .replace(/(<meta (?:property|name)="(?:og:title|twitter:title)" content=")[^"]*/g, `$1${escapeHtml(title)}`)
           .replace(/(<meta property="og:url" content=")[^"]*/, `$1${url}`)
           .replace(/(<link rel="canonical" href=")[^"]*/, `$1${url}`)
-        if (page === 'notFound') html = html.replace(/<link rel="canonical"[^>]*>\s*/, '').replace('<meta name="viewport"', '<meta name="robots" content="noindex" />\n    <meta name="viewport"')
-        return html
+          .replace(/(<link rel="alternate" type="text\/markdown" href=")[^"]*/, `$1${siteUrl}${markdownPath(page)}`)
+        if (page === 'notFound') return html.replace(/<link rel="(?:canonical|alternate)"[^>]*>\s*/g, '').replace(/(<meta name="robots" content=")[^"]*/, '$1noindex')
+        const jsonLd = `  <script type="application/ld+json">${JSON.stringify(pageJsonLd(page)).replace(/</g, '\\u003c')}</script>\n  </head>`
+        return html.replace('</head>', () => jsonLd)
       }
-      // Structured data about Steven goes on the home page only.
-      const jsonLd = `  <script type="application/ld+json">${JSON.stringify(personJsonLd).replace(/</g, '\\u003c')}</script>\n  </head>`
-      writeFileSync(resolve(outDir, 'index.html'), render('home', '/').replace('</head>', () => jsonLd))
-      for (const route of routes) writeFileSync(resolve(outDir, `${route}.html`), render(route, `/${route}`))
-      writeFileSync(resolve(outDir, '404.html'), render('notFound', '/404'))
+      writeFileSync(resolve(outDir, 'index.html'), render('home'))
+      for (const route of routes) writeFileSync(resolve(outDir, `${route}.html`), render(route))
+      writeFileSync(resolve(outDir, '404.html'), render('notFound'))
 
       const today = new Date().toISOString().slice(0, 10)
       const urls = ['', ...routes].map((route) => `  <url><loc>${siteUrl}/${route}</loc><lastmod>${today}</lastmod></url>`).join('\n')
       writeFileSync(resolve(outDir, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`)
-      writeFileSync(resolve(outDir, 'robots.txt'), `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\n\nSitemap: ${siteUrl}/sitemap.xml\n`)
+      // Open to every crawler, AI crawlers included. llms.txt is the short guide to the site for LLMs.
+      writeFileSync(resolve(outDir, 'robots.txt'), `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\n\n# For LLMs: ${siteUrl}/llms.txt\nSitemap: ${siteUrl}/sitemap.xml\n`)
 
       // Security and caching headers for Cloudflare Pages. The content security policy
       // allows the small inline scripts in <head> (theme, row reveal) by hash only.

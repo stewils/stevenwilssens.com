@@ -36,6 +36,7 @@ npm run build && npx wrangler pages dev
 | `migrations/` | D1 schema migrations |
 | `public/` | Static files, including the resume PDF and the 1200×630 `og-image.png` |
 | `vite.config.ts` | Also generates one HTML file per route with its own metadata, plus `404.html`, `sitemap.xml`, and `robots.txt` |
+| `scripts/prerender.mjs` | Fills each page's HTML with its content, and writes a Markdown copy of each page (`/about.md`, …) plus `llms.txt` and `llms-full.txt` for LLMs |
 
 ### Adding a page
 
