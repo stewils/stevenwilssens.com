@@ -21,32 +21,66 @@ export const pageMeta: Record<Page, { title: string; description: string }> = {
   notFound: { title: 'Page not found | Steven Wilssens', description: 'This page does not exist on steven.wilssens.com.' },
 }
 
-// Structured data for search engines: who the site is about, where else he appears,
-// and that the home page is his profile.
-// Added to the home page's HTML at build time.
-export const personJsonLd = {
-  '@context': 'https://schema.org',
-  '@graph': [
-    {
-      '@type': 'Person',
-      '@id': `${siteUrl}/#person`,
-      name: 'Steven Wilssens',
-      url: `${siteUrl}/`,
-      image: `${siteUrl}/profile.jpg`,
-      jobTitle: 'Product leader',
-      description: pageMeta.home.description,
-      knowsAbout: ['Product management', 'Product strategy', 'Data platforms', 'Experimentation', 'Machine learning', 'Spatial audio', 'Windows'],
-      knowsLanguage: ['nl', 'en', 'fr'],
-      alumniOf: { '@type': 'CollegeOrUniversity', name: 'Karel de Grote', address: { '@type': 'PostalAddress', addressCountry: 'BE' } },
-      homeLocation: { '@type': 'Place', name: 'Seattle area, Washington, United States' },
-      sameAs: [
-        'https://www.linkedin.com/in/steven-wilssens-59495889/',
-        'https://patents.justia.com/inventor/steven-wilssens',
-        'https://patents.justia.com/inventor/steven-marcel-elza-wilssens',
-      ],
-    },
-    { '@type': 'WebSite', '@id': `${siteUrl}/#website`, name: 'Steven Wilssens', url: `${siteUrl}/`, about: { '@id': `${siteUrl}/#person` } },
-    // Marks the home page as a profile of Steven, which Google uses for profile results.
-    { '@type': 'ProfilePage', '@id': `${siteUrl}/#profile`, url: `${siteUrl}/`, name: pageMeta.home.title, mainEntity: { '@id': `${siteUrl}/#person` }, isPartOf: { '@id': `${siteUrl}/#website` } },
+// Address of a page: '/' for home, '/about' for the others.
+export const pagePath = (page: Page) => page === 'home' ? '/' : `/${page}`
+
+// Plain-text Markdown copy of each page for LLMs and AI agents, written by scripts/prerender.mjs.
+export const markdownPath = (page: Page) => page === 'home' ? '/index.md' : `/${page}.md`
+
+const person = {
+  '@type': 'Person',
+  '@id': `${siteUrl}/#person`,
+  name: 'Steven Wilssens',
+  url: `${siteUrl}/`,
+  image: `${siteUrl}/profile.jpg`,
+  email: 'mailto:steven@wilssens.com',
+  jobTitle: 'Product leader',
+  description: pageMeta.home.description,
+  knowsAbout: ['Product management', 'Product strategy', 'Product leadership', 'Data platforms', 'Experimentation', 'Machine learning', 'AI', 'Telemetry', 'Spatial audio', 'Game streaming', 'Windows', 'Xbox'],
+  knowsLanguage: ['nl', 'en', 'fr'],
+  alumniOf: [
+    { '@type': 'CollegeOrUniversity', name: 'Karel de Grote', address: { '@type': 'PostalAddress', addressCountry: 'BE' } },
+    { '@type': 'Organization', name: 'Microsoft', url: 'https://www.microsoft.com/' },
   ],
+  homeLocation: { '@type': 'Place', name: 'Seattle area, Washington, United States' },
+  sameAs: [
+    'https://www.linkedin.com/in/steven-wilssens-59495889/',
+    'https://patents.justia.com/inventor/steven-wilssens',
+    'https://patents.justia.com/inventor/steven-marcel-elza-wilssens',
+  ],
+}
+
+// Structured data for search engines: who the site is about, where else he appears,
+// what each page is, and where it sits on the site. The home page is marked as his
+// profile, which Google uses for profile results; the others get breadcrumbs.
+// Added to each page's HTML at build time.
+export const pageJsonLd = (page: Exclude<Page, 'notFound'>) => {
+  const url = `${siteUrl}${pagePath(page)}`
+  const webPage = {
+    '@type': page === 'home' ? 'ProfilePage' : page === 'about' ? 'AboutPage' : 'WebPage',
+    '@id': `${url}#webpage`,
+    url,
+    name: pageMeta[page].title,
+    description: pageMeta[page].description,
+    inLanguage: 'en',
+    isPartOf: { '@id': `${siteUrl}/#website` },
+    ...(page === 'home' ? { mainEntity: { '@id': `${siteUrl}/#person` } } : { about: { '@id': `${siteUrl}/#person` }, breadcrumb: { '@id': `${url}#breadcrumb` } }),
+  }
+  const breadcrumb = {
+    '@type': 'BreadcrumbList',
+    '@id': `${url}#breadcrumb`,
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Steven Wilssens', item: `${siteUrl}/` },
+      { '@type': 'ListItem', position: 2, name: pageMeta[page].title.replace(/ \| Steven Wilssens$/, ''), item: url },
+    ],
+  }
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      person,
+      { '@type': 'WebSite', '@id': `${siteUrl}/#website`, name: 'Steven Wilssens', url: `${siteUrl}/`, inLanguage: 'en', about: { '@id': `${siteUrl}/#person` }, publisher: { '@id': `${siteUrl}/#person` } },
+      webPage,
+      ...(page === 'home' ? [] : [breadcrumb]),
+    ],
+  }
 }
