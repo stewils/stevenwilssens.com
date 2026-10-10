@@ -16,7 +16,15 @@ type RecentRow = {
 type VitalSummary = { metric: string; p75: number; samples: number; good: number; needsImprovement: number; poor: number }
 type DeviceVitals = { device: string; visits: number; passes: boolean | null } & Partial<Record<'LCP' | 'INP' | 'CLS', number>>
 type VitalCulprit = { metric: string; path: string; target: string; samples: number; p75: number }
-type Stats = {
+type CrawlCategory = 'search' | 'ai-search' | 'ai-training' | 'ai-assistant' | 'social' | 'seo' | 'other'
+type Crawls = {
+  crawlTotals: { requests: number; bots: number; search: number; ai: number; assistant: number; other: number; errors: number }
+  crawlDaily: { day: string; requests: number; search: number; ai: number }[]
+  crawlBots: { bot: string; operator: string | null; category: CrawlCategory; requests: number; pages: number; lastSeen: number; errors: number; networks: number; network: string | null }[]
+  crawlPages: { path: string; requests: number; search: number; ai: number; assistant: number; bots: number; status: number }[]
+  crawlRecent: { ts: number; bot: string; category: CrawlCategory; path: string; status: number; country: string | null; network: string | null }[]
+}
+type Stats = Crawls & {
   days: number
   generatedAt: number
   totals: { pageviews: number; visitors: number; avgDurationMs: number | null; avgScrollPct: number | null; bounceRate: number | null; downloads: number; downloaders: number; contactClicks: number }
@@ -152,6 +160,65 @@ function WebVitals({ vitals }: { vitals: Stats['vitals'] }) {
               </table>
             </div>
           )}
+        </>
+      )}
+    </section>
+  )
+}
+
+const crawlCategories: Record<CrawlCategory, string> = {
+  search: 'Search engine',
+  'ai-search': 'AI search',
+  'ai-training': 'AI training',
+  'ai-assistant': 'AI assistant',
+  social: 'Link preview',
+  seo: 'SEO tool',
+  other: 'Other bot',
+}
+
+function CrawlerTraffic({ stats, dayLabel }: { stats: Stats; dayLabel: (day: string) => string }) {
+  const totals = stats.crawlTotals
+  const daily = fillDays(stats.crawlDaily, stats.days, new Date(), (day) => ({ day, requests: 0, search: 0, ai: 0 }))
+  return (
+    <section className="panel wide">
+      <h2>Crawlers: search engines and AI</h2>
+      <p className="note">Requests from bots, recorded on the server because crawlers rarely run the page tracker. They are not counted as visitors. <b>AI assistant</b> means a person asked ChatGPT, Claude, Perplexity or similar something that made it read the page right then. <b>AI search</b> indexes pages for AI answers, and <b>AI training</b> collects text to train models. Anyone can pretend to be a crawler, so check that the network matches the operator (Googlebot from Google, GPTBot from Microsoft, and so on).</p>
+      <div className="tiles">
+        <div><span>Crawler requests</span><strong>{formatNumber(totals.requests)}</strong><small>from {formatNumber(totals.bots)} crawlers</small></div>
+        <div><span>Search engines</span><strong>{formatNumber(totals.search)}</strong><small>Google, Bing, Apple…</small></div>
+        <div><span>AI crawlers</span><strong>{formatNumber(totals.ai)}</strong><small>AI search and training</small></div>
+        <div className="highlight"><span>AI assistants</span><strong>{formatNumber(totals.assistant)}</strong><small>read when someone asked an AI</small></div>
+        <div><span>Other bots</span><strong>{formatNumber(totals.other)}</strong><small>link previews, SEO tools, scripts</small></div>
+        <div><span>Errors</span><strong>{formatNumber(totals.errors)}</strong><small>answered 4xx or 5xx</small></div>
+      </div>
+      {totals.requests === 0 ? <p className="empty">No crawler requests in this range yet</p> : (
+        <>
+          <BarChart
+            title="Crawler requests per day"
+            bars={daily.map((row) => ({ key: row.day, label: dayLabel(row.day), value: row.requests, detail: `${formatNumber(row.requests)} requests · ${formatNumber(row.search)} search · ${formatNumber(row.ai)} AI` }))}
+            axisLabels={daily.length > 1 ? [dayLabel(daily[0].day), dayLabel(daily[Math.floor(daily.length / 2)].day), dayLabel(daily[daily.length - 1].day)] : daily.map((row) => dayLabel(row.day))}
+          />
+          <h3>Crawlers</h3>
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Crawler</th><th>Purpose</th><th>Operator</th><th>Network</th><th className="num">Requests</th><th className="num">Pages</th><th className="num">Errors</th><th>Last seen</th></tr></thead>
+              <tbody>{stats.crawlBots.map((row) => <tr key={`${row.bot}|${row.category}`}><td className="strong">{row.bot}</td><td><span className={`badge ${row.category}`}>{crawlCategories[row.category]}</span></td><td>{row.operator ?? '—'}</td><td>{row.network ?? 'Unknown'}{row.networks > 1 && <small className="muted"> +{row.networks - 1} more</small>}</td><td className="num">{formatNumber(row.requests)}</td><td className="num">{formatNumber(row.pages)}</td><td className="num">{row.errors ? formatNumber(row.errors) : ''}</td><td>{formatTime(row.lastSeen)}</td></tr>)}</tbody>
+            </table>
+          </div>
+          <h3>Most crawled</h3>
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Address</th><th className="num">Requests</th><th className="num">Search</th><th className="num">AI crawlers</th><th className="num">AI assistants</th><th className="num">Crawlers</th></tr></thead>
+              <tbody>{stats.crawlPages.map((row) => <tr key={row.path}><td className="strong">{row.path}{row.status >= 400 && <small className="muted"> · {row.status}</small>}</td><td className="num">{formatNumber(row.requests)}</td><td className="num">{formatNumber(row.search)}</td><td className="num">{formatNumber(row.ai)}</td><td className="num">{formatNumber(row.assistant)}</td><td className="num">{formatNumber(row.bots)}</td></tr>)}</tbody>
+            </table>
+          </div>
+          <h3>Latest crawls</h3>
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Time</th><th>Crawler</th><th>Purpose</th><th>Address</th><th className="num">Status</th><th>Network</th><th>Country</th></tr></thead>
+              <tbody>{stats.crawlRecent.map((row, index) => <tr key={index}><td>{formatTime(row.ts)}</td><td className="strong">{row.bot}</td><td><span className={`badge ${row.category}`}>{crawlCategories[row.category]}</span></td><td>{row.path}</td><td className="num">{row.status}</td><td>{row.network}</td><td>{row.country}</td></tr>)}</tbody>
+            </table>
+          </div>
         </>
       )}
     </section>
@@ -339,6 +406,8 @@ export default function Admin() {
               </div>
             )}
           </section>
+
+          <CrawlerTraffic stats={stats} dayLabel={dayLabel} />
 
           <div className="grid">
             <RankedList title="Organizations" rows={stats.organizations} />

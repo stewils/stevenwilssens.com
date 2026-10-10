@@ -35,12 +35,15 @@ export const formatPercent = (value: number | null | undefined, isFraction = fal
 export const formatTime = (ts: number) => new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 
 // Fill the gaps so days with no traffic still show as zero-height bars.
-export const fillDays = (rows: { day: string; pageviews: number; visitors: number }[], days: number, now = new Date()) => {
+type DayRow = { day: string; pageviews: number; visitors: number }
+export function fillDays(rows: DayRow[], days: number, now?: Date): DayRow[]
+export function fillDays<T extends { day: string }>(rows: T[], days: number, now: Date, blank: (day: string) => T): T[]
+export function fillDays(rows: { day: string }[], days: number, now = new Date(), blank: (day: string) => { day: string } = (day): DayRow => ({ day, pageviews: 0, visitors: 0 })) {
   const byDay = new Map(rows.map((row) => [row.day, row]))
   return Array.from({ length: days }, (_, index) => {
     const date = new Date(now)
     date.setDate(date.getDate() - (days - 1 - index))
     const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-    return byDay.get(day) ?? { day, pageviews: 0, visitors: 0 }
+    return byDay.get(day) ?? blank(day)
   })
 }

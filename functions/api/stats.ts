@@ -72,6 +72,21 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
       FROM (SELECT *, MIN(ts) FROM events WHERE type = 'pageview' AND ts >= ?1 GROUP BY visitor) GROUP BY source, medium, referrer`,
     vitals: `SELECT metric, metric_value AS value, metric_rating AS rating, COALESCE(path, '/') AS path, device, target FROM events
       WHERE type = 'vital' AND ts >= ?1 AND metric IS NOT NULL AND metric_value IS NOT NULL ORDER BY ts DESC LIMIT 20000`,
+    // Crawlers, recorded by functions/_middleware.ts.
+    crawlTotals: `SELECT COUNT(*) AS requests, COUNT(DISTINCT bot) AS bots,
+      COALESCE(SUM(category = 'search'), 0) AS search, COALESCE(SUM(category IN ('ai-search', 'ai-training')), 0) AS ai,
+      COALESCE(SUM(category = 'ai-assistant'), 0) AS assistant, COALESCE(SUM(category IN ('social', 'seo', 'other')), 0) AS other,
+      COALESCE(SUM(status >= 400), 0) AS errors FROM crawls WHERE ts >= ?1`,
+    crawlDaily: `SELECT date(${local}) AS day, COUNT(*) AS requests, SUM(category = 'search') AS search,
+      SUM(category IN ('ai-search', 'ai-training', 'ai-assistant')) AS ai FROM crawls WHERE ts >= ?1 GROUP BY day ORDER BY day`,
+    crawlBots: `SELECT bot, MAX(operator) AS operator, category, COUNT(*) AS requests, COUNT(DISTINCT path) AS pages, MAX(ts) AS lastSeen,
+      SUM(status >= 400) AS errors, COUNT(DISTINCT as_org) AS networks,
+      (SELECT as_org FROM crawls AS n WHERE n.bot = c.bot AND n.ts >= ?1 GROUP BY as_org ORDER BY COUNT(*) DESC LIMIT 1) AS network
+      FROM crawls AS c WHERE ts >= ?1 GROUP BY bot, category ORDER BY requests DESC LIMIT 100`,
+    crawlPages: `SELECT path, COUNT(*) AS requests, SUM(category = 'search') AS search, SUM(category IN ('ai-search', 'ai-training')) AS ai,
+      SUM(category = 'ai-assistant') AS assistant, COUNT(DISTINCT bot) AS bots, MAX(status) AS status
+      FROM crawls WHERE ts >= ?1 GROUP BY path ORDER BY requests DESC LIMIT 100`,
+    crawlRecent: `SELECT ts, bot, category, path, status, country, as_org AS network FROM crawls WHERE ts >= ?1 ORDER BY ts DESC LIMIT 100`,
     recent: `SELECT ts, type, path, category, label, duration_ms AS durationMs, scroll_pct AS scrollPct, referrer_host AS referrer,
       city, country, as_org AS organization, browser, os, device FROM events WHERE ts >= ?1 AND type != 'vital' ORDER BY ts DESC LIMIT 200`,
   }
@@ -87,7 +102,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const keys = Object.keys(queries)
   const results = await env.DB.batch(keys.map((key) => env.DB.prepare(queries[key]).bind(since)))
   const data: Record<string, unknown> = { days, generatedAt: Date.now() }
-  keys.forEach((key, index) => { data[key] = key === 'totals' ? results[index].results[0] : results[index].results })
+  keys.forEach((key, index) => { data[key] = key === 'totals' || key === 'crawlTotals' ? results[index].results[0] : results[index].results })
   data.vitals = summarizeVitals(data.vitals as VitalRow[])
 
   // Channels need pattern matching, so they are grouped here rather than in SQL.
