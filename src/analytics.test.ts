@@ -3,6 +3,7 @@ import { parseUserAgent, isBot } from '../functions/_lib/useragent'
 import { summarizeVitals } from '../functions/_lib/vitals'
 import { fillDays, formatDuration, formatVital, rateVital } from './admin/format'
 import { classifyChannel } from '../functions/_lib/channel'
+import { identifyCrawler, isCrawlTarget } from '../functions/_lib/crawlers'
 import { classifyLink, describeClick, removeTrackingParams } from './analytics'
 
 describe('click tracking', () => {
@@ -110,5 +111,28 @@ describe('traffic channels', () => {
     window.history.replaceState({}, '', '/experience?ref=resume&utm_campaign=x&tab=2#top')
     removeTrackingParams()
     expect(window.location.pathname + window.location.search + window.location.hash).toBe('/experience?tab=2#top')
+  })
+})
+
+describe('crawler detection', () => {
+  it('names search engines and AI crawlers and what they crawl for', () => {
+    expect(identifyCrawler('Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)')).toEqual({ name: 'Googlebot', operator: 'Google', category: 'search' })
+    expect(identifyCrawler('Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2; +https://openai.com/gptbot)')).toMatchObject({ name: 'GPTBot', category: 'ai-training' })
+    expect(identifyCrawler('Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot')).toMatchObject({ name: 'ChatGPT-User', category: 'ai-assistant' })
+    expect(identifyCrawler('Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Claude-SearchBot/1.0; +Claude-SearchBot@anthropic.com)')).toMatchObject({ name: 'Claude-SearchBot', category: 'ai-search' })
+    expect(identifyCrawler('Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)')).toMatchObject({ name: 'ClaudeBot', category: 'ai-training' })
+    expect(identifyCrawler('LinkedInBot/1.0 (compatible; Mozilla/5.0; Apache-HttpClient +http://www.linkedin.com)')).toMatchObject({ name: 'LinkedInBot', category: 'social' })
+  })
+
+  it('names unknown bots and ignores browsers', () => {
+    expect(identifyCrawler('python-requests/2.32.3')).toEqual({ name: 'python-requests', operator: null, category: 'other' })
+    expect(identifyCrawler('Mozilla/5.0 (compatible; FooCrawler/2.0)')).toMatchObject({ name: 'FooCrawler', category: 'other' })
+    expect(identifyCrawler('')).toMatchObject({ name: 'No user agent', category: 'other' })
+    expect(identifyCrawler('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36')).toBeNull()
+  })
+
+  it('records pages and text files but not built assets or the API', () => {
+    expect(['/', '/about', '/llms.txt', '/about.md', '/robots.txt', '/sitemap.xml', '/steven-wilssens-resume-2026.pdf'].every(isCrawlTarget)).toBe(true)
+    expect(['/assets/main-abc.js', '/api/collect', '/favicon.ico', '/og-image.png'].some(isCrawlTarget)).toBe(false)
   })
 })

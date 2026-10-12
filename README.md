@@ -57,7 +57,7 @@ Pushing to `main` runs lint, tests, and the build in GitHub Actions (`.github/wo
 
 ## Analytics
 
-Events are stored in the `stevenwilssens-analytics` D1 database (binding `DB`, see `wrangler.jsonc`). No cookies are used; a visitor is a SHA-256 hash of IP + user agent + `HASH_SALT` + the date, so visitors cannot be followed across days. Obvious bots are dropped. Signing in to `/admin` marks that browser to be excluded from tracking.
+Events are stored in the `stevenwilssens-analytics` D1 database (binding `DB`, see `wrangler.jsonc`). No cookies are used; a visitor is a SHA-256 hash of IP + user agent + `HASH_SALT` + the date, so visitors cannot be followed across days. Obvious bots are dropped from visitor stats; instead, `functions/_middleware.ts` records requests from search engines, AI crawlers and other bots in the `crawls` table (bot name, path, status, country, network; no IP), shown in the dashboard's Crawlers section. Signing in to `/admin` marks that browser to be excluded from tracking.
 
 Pages Function secrets (set with `npx wrangler pages secret put <NAME> --project-name stevenwilssens`, then redeploy):
 
