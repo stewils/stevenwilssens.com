@@ -26,7 +26,7 @@ export const htmlToMarkdown = (html, siteUrl) => {
     // Controls, icons, images, and decorative numbers and initials.
     .replace(/<(button|svg)\b[\s\S]*?<\/\1>/g, '')
     .replace(/<(span|div) class="(?:section-number|archive-index|avatar)"[^>]*>[\s\S]*?<\/\1>/g, '')
-    .replace(/<a class="back-link"[^>]*>[\s\S]*?<\/a>/g, '')
+    .replace(/<a class="(?:back-link|project-frame)"[^>]*>[\s\S]*?<\/a>/g, '')
     .replace(/<img[^>]*>/g, '')
     // Experience: put each role's heading before its company and dates.
     .replace(/<div class="timeline-date">([^<]*)<\/div><div class="timeline-body"><span class="company-label">([^<]*)<\/span>(<h2>[\s\S]*?<\/h2>)/g, '$3<p>$2 · $1</p>')
