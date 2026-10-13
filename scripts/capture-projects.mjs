@@ -8,6 +8,7 @@ const sites = [
   ['https://www.wilssens.com/', 'wilssens'],
   ['https://juniortrackcycling.com/', 'juniortrackcycling'],
   ['https://leo.wilssens.com/', 'leo'],
+  ['https://steven.wilssens.com/', 'steven'],
 ];
 const b = await chromium.launch({ channel: 'msedge' });
 const optOut = () => {

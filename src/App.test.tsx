@@ -182,4 +182,12 @@ describe('resume site', () => {
     const links = screen.getAllByRole('link', { name: 'Visit project ↗' })
     expect(links.map((link) => link.getAttribute('href'))).toEqual(['https://wilssens.com', 'https://juniortrackcycling.com', 'https://leo.wilssens.com'])
   })
+
+  it('lists this site as a project without linking away to it', () => {
+    setPath('/projects')
+    render(<App />)
+
+    expect(screen.getByRole('heading', { name: 'steven.wilssens.com' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Visit steven\.wilssens\.com/ })).not.toBeInTheDocument()
+  })
 })
