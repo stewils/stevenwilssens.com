@@ -37,7 +37,10 @@ main { padding: 74px 0 110px; }.profile-hero { display: grid; grid-template-colu
 .project-info p:not(.project-tag) { max-width: 440px; margin: 0 0 18px; color: var(--muted); font-size: 15px; line-height: 1.65; }
 .project-info p a { color: var(--ink); }
 .project-tag { margin: 0; color: var(--green); font: 11px 'DM Mono', monospace; letter-spacing: .5px; text-transform: uppercase; }
-.project-info > a { color: var(--green); font-size: 13px; font-weight: 700; text-decoration: none; }
+.project-info > a, .project-links a { color: var(--green); font-size: 13px; font-weight: 700; text-decoration: none; }
+.project-links { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; }
+.project-links .project-article { padding: 8px 14px; border: 1px solid var(--green); border-radius: 999px; transition: background 200ms ease, color 200ms ease; }
+.project-links .project-article:hover, .project-links .project-article:focus-visible { background: var(--green); color: var(--on-green); }
 @media (max-width: 860px) { .project-card { grid-template-columns: minmax(0, 1fr); gap: 24px; padding: 40px 0; } }
 @media (prefers-reduced-motion: reduce) { .project-frame:hover .project-viewport img, .project-frame:focus-visible .project-viewport img, .project-frame:hover .project-browser, .project-frame:focus-visible .project-browser, .project-frame:hover .project-phone, .project-frame:focus-visible .project-phone { transform: none; } }
 .impact-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin: 42px 0 0; padding: 28px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
