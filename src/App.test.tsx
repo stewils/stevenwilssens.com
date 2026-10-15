@@ -17,13 +17,20 @@ describe('resume site', () => {
     render(<App />)
 
     expect(screen.getByRole('heading', { level: 1, name: 'Steven Wilssens' })).toBeInTheDocument()
-    expect(screen.getByText('Product leadership for the next chapter.')).toBeInTheDocument()
+    expect(screen.getByText('Principal product leader for data and AI.')).toBeInTheDocument()
     expect(screen.getByText('250%+')).toBeInTheDocument()
     expect(screen.getByText('1B+')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Leadership that turns ambiguity into momentum.' })).toBeInTheDocument()
-    expect(screen.getByText('Executive communication')).toBeInTheDocument()
+    expect(screen.getByText('Data and experimentation products')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Email Steven/ })).toHaveAttribute('href', 'mailto:steven@wilssens.com')
     expect(screen.getByRole('link', { name: /Connect on LinkedIn/ })).toHaveAttribute('href', 'https://www.linkedin.com/in/steven-wilssens-59495889/')
+  })
+
+  it('features the wilssens.com write-up on the home page', () => {
+    render(<App />)
+
+    const featured = screen.getByRole('region', { name: 'Building wilssens.com' })
+    expect(within(featured).getByRole('link', { name: /Read the write-up/ })).toHaveAttribute('href', '/building-wilssens')
   })
 
   it('offers the resume PDF as a download from the home page', () => {
