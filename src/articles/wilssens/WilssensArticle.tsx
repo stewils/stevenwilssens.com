@@ -31,7 +31,8 @@ const sections = [
 const articleUrl = 'https://steven.wilssens.com/building-wilssens'
 const linkedInShare = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(articleUrl)}`
 
-const stats: [number, string, string][] = [[16, '', 'days from first commit'], [179, '', 'commits'], [47, '', 'database migrations'], [48, 'k', 'lines of code']]
+// Outcomes, not effort, as of 15 October 2026. [value, prefix, decimals, label]
+const stats: [number, string, number, string][] = [[3, '', 0, 'family mailboxes moved off Microsoft 365'], [5, '', 0, 'websites live on the family domain'], [16, '', 0, 'questions to the help assistant this month'], [1.26, '$', 2, 'AI help cost this month, of a $25 cap']]
 
 const Figure = ({ children, caption }: { children: ReactNode; caption: string }) => <figure className="wx-figure wx-diagram"><div className="wx-diagram-scroll">{children}</div><figcaption>{caption}</figcaption></figure>
 
@@ -60,7 +61,7 @@ export default function WilssensArticle() {
       <p className="wx-dek">A family name, turned into a platform: how a search box became mailboxes, websites, AI apps and a command line, and the rules that kept it safe.</p>
       <p className="wx-ticker" aria-label="name@wilssens.com"><span className="wx-ticker-names" aria-hidden="true">{['jan', 'emma', 'lotte', 'marc', 'an'].map((name) => <span key={name}>{name}</span>)}</span><span className="wx-ticker-domain" aria-hidden="true">@wilssens.com</span></p>
       <p className="wx-meta">Steven Wilssens · October 2026 · <span data-read-time>15 min read</span></p>
-      <dl className="wx-stats">{stats.map(([value, suffix, label]) => <div key={label}><dt><span data-count={value}>{value}</span>{suffix}</dt><dd>{label}</dd></div>)}</dl>
+      <dl className="wx-stats">{stats.map(([value, prefix, decimals, label]) => <div key={label}><dt>{prefix}<span data-count={value} data-decimals={decimals}>{value.toFixed(decimals)}</span></dt><dd>{label}</dd></div>)}</dl>
       <div className="wx-actions">
         <a className="primary-button" href="https://www.wilssens.com" target="_blank" rel="noreferrer">Visit wilssens.com ↗</a>
         <a className="text-link" href={linkedInShare} target="_blank" rel="noreferrer">Share on LinkedIn ↗</a>
@@ -77,7 +78,18 @@ export default function WilssensArticle() {
       </div>
 
       <div className="wx-body">
-        <p className="wx-lede">In 16 days, a surname became a small cloud platform: 179 commits, 47 database migrations and about 48,000 lines of code, live at <a href="https://www.wilssens.com" target="_blank" rel="noreferrer">www.wilssens.com</a>.</p>
+        <aside className="wx-brief" aria-labelledby="brief">
+          <h2 id="brief">What this shows about how I lead products</h2>
+          <p>The scale is my immediate family, on purpose. The point is the rigor, applied at small scale, that I’d expect from a platform team at any size.</p>
+          <ul>
+            <li><strong>Rules first, enforced by the system.</strong> The few rules that matter (who owns a name, what stays private) are enforced by the database, not by code review, so no later feature can break them. <a href="#rules">Rules before features</a></li>
+            <li><strong>Experimentation from day one.</strong> It started as a demand test, and every feature ships switched off, with named events and a funnel, the same loop I ran for Windows. <a href="#experiments">Experiments</a></li>
+            <li><strong>AI restricted by architecture, not by prompt.</strong> The assistant can only offer actions the server has vetted, and its answers are signed. Trust, safety and impersonation were designed in. <a href="#assistant">The AI helper</a> · <a href="#safety">Keeping people safe</a></li>
+          </ul>
+          <p><strong>Why a product leader still builds:</strong> I build to stay sharp on what my teams ship, not to replace them. I built this with Claude Code, Anthropic’s AI coding tool, in 16 days. That pace came from a written decision log the AI read at the start of every session, which is how I’d run AI-assisted work on a team too. See <a href="#practices">Best practices</a>.</p>
+        </aside>
+
+        <p className="wx-lede">Today <a href="https://www.wilssens.com" target="_blank" rel="noreferrer">www.wilssens.com</a> runs my family’s email and websites: mailboxes moved off Microsoft 365 to one automated Zoho organization, five websites live, and a help assistant that answers relatives’ questions before they reach me.</p>
 
         <section aria-labelledby="domain">
           <H2 id="domain" kicker="01">A domain with a family attached</H2>

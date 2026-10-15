@@ -98,6 +98,14 @@
 .wx-practices li::before { content: counter(practice, decimal-leading-zero); position: absolute; top: 18px; left: 22px; color: var(--green); font: 600 22px 'DM Mono', monospace; }
 .wx-practices li:hover { border-color: var(--green); transform: translateY(-3px); }
 .wx-practices strong { display: block; margin-bottom: 6px; font-size: 16.5px; line-height: 1.35; }
+/* The short version for hiring managers, at the top of the article. */
+.wx-brief { margin: 0 0 40px; padding: 26px 28px 6px; border: 1px solid var(--line); border-left: 3px solid var(--green); border-radius: 16px; background: var(--card); font-size: 15.5px; line-height: 1.65; }
+.wx-brief h2 { margin: 0 0 10px; font-size: 21px; letter-spacing: -.5px; }
+.wx-brief > p { color: var(--quote); }
+.wx-brief ul { margin: 0 0 20px; padding-left: 18px; color: var(--quote); }
+.wx-brief li { margin-bottom: 10px; }
+.wx-brief li::marker { color: var(--green); }
+.wx-brief li a { white-space: nowrap; font-size: 13.5px; }
 .wx-end { margin-top: 40px; padding: 30px; border: 1px solid var(--line); border-radius: 20px; background: radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--green) 16%, transparent), transparent 60%), var(--card); }
 .wx-end > p { margin-bottom: 18px !important; font-size: 24px; font-weight: 700; letter-spacing: -.6px; }
 
@@ -175,6 +183,7 @@
   .wx-table td + td { margin-top: 4px; }
   .wx-cards, .wx-practices { grid-template-columns: minmax(0, 1fr); }
   .wx-shot-url { font-size: 11px; transform: none; }
+  .wx-brief { padding: 20px 18px 4px; }
   .wx-end { padding: 22px; }
   .wx-end > p { font-size: 20px; }
   .wx-zoom-hint { opacity: 1; transform: none; }

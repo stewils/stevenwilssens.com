@@ -72,10 +72,11 @@ export function enhanceArticle(root: HTMLElement): () => void {
         const element = entry.target as HTMLElement
         counters.unobserve(element)
         const target = Number(element.dataset.count)
+        const decimals = Number(element.dataset.decimals ?? 0)
         const start = performance.now(), duration = 1100
         const tick = (now: number) => {
           const t = Math.min(1, (now - start) / duration)
-          element.textContent = String(Math.round(target * (1 - Math.pow(1 - t, 3))))
+          element.textContent = (target * (1 - Math.pow(1 - t, 3))).toFixed(decimals)
           if (t < 1) requestAnimationFrame(tick)
         }
         requestAnimationFrame(tick)

@@ -80,6 +80,9 @@ const staticPages = (): Plugin => {
 export default defineConfig({
   plugins: [react(), staticPages()],
   build: {
+    // Photos stay real files: small ones inlined as data: URIs show up as empty
+    // images to scrapers, link previews and AI readers.
+    assetsInlineLimit: (file) => /\.(jpe?g|png|webp)$/.test(file) ? false : undefined,
     rollupOptions: {
       input: { main: 'index.html', admin: 'admin.html' },
     },
