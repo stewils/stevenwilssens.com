@@ -27,7 +27,7 @@ const articleUrl = 'https://steven.wilssens.com/building-this-site'
 const linkedInShare = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(articleUrl)}`
 
 // Outcomes, not effort, as of 17 October 2026. [value, prefix, decimals, label]
-const stats: [number, string, number, string][] = [[10, '', 0, 'countries visitors came from in the first three weeks'], [100, '', 0, 'percent of loading, response and stability measurements rated good'], [18, '', 0, 'résumé changes approved through the interview loop'], [4, '', 0, 'pull requests opened by Claude Code from a conversation']]
+const stats: [number, string, number, string][] = [[10, '', 0, 'countries visitors came from in the first three weeks'], [100, '', 0, 'percent of loading, response and stability measurements rated good'], [18, '', 0, 'résumé changes approved through the interview loop'], [5, '', 0, 'pull requests opened by Claude Code from a conversation, all merged']]
 
 const Figure = ({ children, caption }: { children: ReactNode; caption: string }) => <figure className="wx-figure wx-diagram"><div className="wx-diagram-scroll">{children}</div><figcaption>{caption}</figcaption></figure>
 
@@ -81,7 +81,7 @@ export default function SiteArticle() {
             <li><strong>Measure the readers before deciding.</strong> People, search engines and AI crawlers are counted apart, without cookies, and the AI readers get their own format. <a href="#readers">Three kinds of readers</a></li>
             <li><strong>AI with guardrails, and a person deciding.</strong> The assistant knows only what I published. The agent that edits the site works on a branch, under the same checks as me, and I merge. <a href="#loop">The loop</a></li>
           </ul>
-          <p><strong>Why a product leader still builds:</strong> this is the second project I built with Claude Code, Anthropic’s AI coding tool, after <a href="/building-wilssens">wilssens.com</a>. That write-up is about rules and safety for a family platform. This one is about feedback loops: how a site about a career learns what its readers need and fixes itself.</p>
+          <p><strong>Why a product leader still builds:</strong> I built this with Claude Code, Anthropic’s AI coding tool, alongside <a href="/building-wilssens">wilssens.com</a> and <a href="/building-aibreaker">AI Breaker</a>. Those write-ups are about rules, safety and trust. This one is about feedback loops: how a site about a career learns what its readers need and fixes itself.</p>
         </aside>
 
         <p className="wx-lede">This site went live on 26 September 2026, two weeks after my last day at Microsoft. It is a React site prerendered to static HTML on Cloudflare, with its own analytics, a generated résumé, a private MCP server and an AI assistant, and the whole thing is run from one data file and one Claude conversation.</p>
@@ -104,9 +104,9 @@ export default function SiteArticle() {
           <p>A résumé is judged by three readers with different eyes: a recruiter skimming for level and scope, an applicant tracking system extracting text and keywords, and an editor who notices a present-tense verb in a role that ended. The build has a checker that reads the PDF as all three.</p>
           <Figure caption="The résumé build scores the new PDF and the current one, and only replaces the file when the score does not drop."><ResumeGateDiagram /></Figure>
           <p>It checks that the text is extractable without icon-font glyphs, that the file is two pages or fewer, that the contact details, headline, every role, company and date match the site, that the bullets of the two latest roles match word for word, that past roles are in the past tense, that a team size and the keywords recruiters search for appear, and that every number on the home page has a bullet behind it. Errors cost 25 points and warnings 5. A new PDF only replaces the current one when its score does not drop, and overriding that needs a reason in the commit message.</p>
-          <p>The gate is doing its job as I write this. The first batch of résumé changes from the loop described below added scope and outcomes to my latest role, and pushed the PDF onto a third page. The checker scored it 65 out of 100 and the test went red:</p>
+          <p>The gate earned its keep on its first day. The first batch of résumé changes from the loop described below added scope and outcomes to my latest role, and the PDF ran one line onto a third page. The checker scored it 65 out of 100, the test went red, and main stopped deploying:</p>
           <pre className="wx-pre" aria-label="Output of the résumé checker"><span className="is-quiet">$ npm run resume:check</span>{'\n'}public/steven-wilssens-resume-2026.pdf: score 65/100, 3 pages, 346 KB, 1 error, 2 warnings{'\n'}  <span className="is-bad">[error]</span> 3 pages; a resume for a principal role is two at most.{'\n'}  <span className="is-warn">[warn]</span> "15% increase in Windows adoption" has no role bullet behind it in src/resume.ts; a hiring manager will ask what it measures.{'\n'}  <span className="is-warn">[warn]</span> "30% reduction in customer issues" has no role bullet behind it in src/resume.ts; a hiring manager will ask what it measures.</pre>
-          <p>The fix is a data decision, mine to make: cut older roles down, or drop a bullet. The checker is never the thing that gets changed. The two warnings are fair too: those numbers have been on my résumé for years, and I owe them a bullet or a deletion.</p>
+          <p>The fix was a layout one, an hour later: a compact honors line, a shorter patents note and a smaller bottom margin brought the PDF back to two pages at a score of 90. The checker was not touched. The two warnings are fair too: those numbers have been on my résumé for years, and I owe them a bullet or a deletion.</p>
         </section>
 
         <section aria-labelledby="readers">
@@ -158,8 +158,8 @@ export default function SiteArticle() {
             <li><strong>Change the site, through a pull request.</strong> An approved batch goes to GitHub Actions, where Claude Code edits the data file on a branch, rebuilds the résumé through the gate, runs the lint, tests and build, opens a pull request, starts the preview and emails me. I read the preview and merge, from the same conversation if I like.</li>
           </ul>
           <Figure caption="A question the assistant could not answer becomes an interview question, a dossier entry, a proposal, a pull request and a change on the site. I decide twice."><LoopDiagram /></Figure>
-          <Shot src={pullRequest} width={1440} height={900} host="github.com" alt="A merged pull request on GitHub titled Résumé batch 1, opened by the github-actions bot, with the instruction listing the approved changes" caption="The first batch, as the workflow opened it: the instruction, the approved wording, the checks, and a preview link. Five files changed, seven lines each way." />
-          <p>The agent never pushes to production. It has a short list of allowed tools, a turn limit, and the instructions I follow myself: never invent a number, leave a question in a comment when a fact is missing. Of five runs so far, two failed and made nothing; the failures cost minutes and showed me where the instructions were vague.</p>
+          <Shot src={pullRequest} width={1440} height={900} host="github.com" alt="A merged pull request on GitHub titled Résumé batch 1, opened by the github-actions bot, with the instruction listing the approved changes" caption="The first batch of résumé changes, as the workflow opened it: the instruction, the approved wording, the checks, and a preview link. Five files changed, seven lines each way." />
+          <p>The agent never pushes to production. It has a short list of allowed tools, a turn limit, and the instructions I follow myself: never invent a number, leave a question in a comment when a fact is missing. Six runs so far: two failed and made nothing, four opened pull requests, and with an earlier one, five are merged. The failures cost minutes and showed me where the instructions were vague.</p>
           <p className="wx-callout">The site is edited by an AI, reviewed by an AI playing a recruiter, and answered for by an AI. Every one of them is confined to what I wrote down, and a person decides before anything ships.</p>
         </section>
 
@@ -177,7 +177,7 @@ export default function SiteArticle() {
 
         <section aria-labelledby="next">
           <H2 id="next" kicker="08">What’s next</H2>
-          <p>The résumé goes back to two pages, with the next batches of approved changes landing through the same loop. LinkedIn gets compared against the site after every batch, so the three tell one story. And the assistant’s unanswered questions, once there are some, set the agenda for the next interview.</p>
+          <p>Three batches of approved résumé changes have landed through the loop, including a role that closes a gap recruiters used to ask about. Next, LinkedIn gets compared against the site after every batch, so the three tell one story, and the assistant’s unanswered questions, once there are some, set the agenda for the next interview.</p>
           <p>The numbers in this write-up are from 17 October 2026. The dashboard will tell me when they are worth updating.</p>
           <div className="wx-end">
             <p>Ask the assistant something a recruiter would ask.</p>

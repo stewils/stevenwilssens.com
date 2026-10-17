@@ -101,7 +101,7 @@ describe('LinkedIn import', () => {
     expect(headline.paste).toContain(profile.resumeHeadline)
     expect(headline.why).toMatch(/recruiters search/i)
     for (const fix of fixes) { expect(fix.why.length).toBeGreaterThan(20); expect(fix.siteSays.length).toBeGreaterThan(0) }
-    expect(linkedInTexts().position('windows-devices-data')).toContain(experiences[0].points[0])
+    expect(linkedInTexts().position('windows-devices-data')).toContain(experiences.find((e) => e.key === 'windows-devices-data')!.points[0])
   })
 
   it('has nothing to say when LinkedIn already matches', () => {
@@ -127,7 +127,7 @@ describe('the recruiter review', () => {
     expect(areas).toContain('resume')
     expect(areas).toContain('linkedin')
     expect(areas).not.toContain('scope:windows-devices-data')
-    expect(review.questions.some((q) => /months in between|What were the/.test(q.question))).toBe(true)
+    expect(review.questions.some((q) => /months in between|What were the|overlaps/.test(q.question))).toBe(true)
     expect(review.score).toBeLessThan(100)
     expect(review.headline).toMatch(/recruiter's seat/)
     for (const finding of review.findings) { expect(finding.why.length).toBeGreaterThan(20); expect(finding.fix.length).toBeGreaterThan(10) }

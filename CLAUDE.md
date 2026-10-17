@@ -11,7 +11,7 @@ Steven Wilssens's resume site, read mostly by recruiters and hiring managers. Re
 ## When content changes
 
 1. Edit `src/resume.ts` (and `src/pageMeta.ts` for a new page).
-2. Run `npm run resume:build`. It renders the PDF, runs `scripts/resume-check.mjs` on the new and the current file (recruiter, ATS and editor checks: pages, extractable text, contact, headline, every role and date, bullets of the two latest roles, tense, scope, keywords, unexplained numbers) and only replaces the PDF when the score does not drop. Read its findings; fix the data, not the checker. `--force` exists for a deliberate trade-off and needs a reason in the commit message.
+2. Run `npm run resume:build`. It renders the PDF, runs `scripts/resume-check.mjs` on the new and the current file (recruiter, ATS and editor checks: pages, extractable text, contact, headline, every role and date, bullets of the two latest roles, tense, scope, keywords, unexplained numbers) and only replaces the PDF when the score does not drop. Read its findings; fix the data, not the checker. `--force` exists for a deliberate trade-off and needs a reason in the commit message. The workflows compare the score with main (Site update) and with the live site (Deploy) and warn Steven in the pull request, the run and the emails when a change would lower it; `node scripts/resume-check.mjs --baseline https://steven.wilssens.com/resume-report.json` shows the same comparison locally.
 3. `npm test` includes `src/resume.test.ts`, which fails when the PDF no longer matches `src/resume.ts`.
 4. If the headline or photo changed, regenerate the share image.
 5. `npm run lint`, `npm test`, `npm run build`.

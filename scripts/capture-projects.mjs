@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-// Refresh the screenshots on /projects: node scripts/capture-projects.mjs
+// Refresh the screenshots on /projects: node scripts/capture-projects.mjs [name]
+// (one name, such as aibreaker, captures only that site).
 // Uses the installed Microsoft Edge (no browser download). Visits send Do Not
 // Track and set the sites' opt-out keys, so they stay out of their analytics.
 const OUT = fileURLToPath(new URL('../src/assets/projects', import.meta.url));
@@ -9,10 +10,11 @@ const sites = [
   ['https://juniortrackcycling.com/', 'juniortrackcycling'],
   ['https://leo.wilssens.com/', 'leo'],
   ['https://steven.wilssens.com/', 'steven'],
-];
+  ['https://aibreaker.org/', 'aibreaker'],
+].filter(([, name]) => !process.argv[2] || name === process.argv[2]);
 const b = await chromium.launch({ channel: 'msedge' });
 const optOut = () => {
-  try { for (const k of ['sw-analytics-ignore', 'leo-analytics-ignore', 'wilssens-analytics-ignore', 'jtc-analytics-ignore']) localStorage.setItem(k, '1'); } catch {}
+  try { for (const k of ['sw-analytics-ignore', 'leo-analytics-ignore', 'wilssens-analytics-ignore', 'jtc-analytics-ignore', 'aib-analytics-ignore']) localStorage.setItem(k, '1'); } catch {}
   Object.defineProperty(navigator, 'doNotTrack', { get: () => '1' });
 };
 for (const [site, name] of sites) {

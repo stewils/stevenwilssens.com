@@ -5,7 +5,11 @@
 // read and Pull requests: write on the repository.
 
 export type WorkflowRun = { id: number; status: string; conclusion: string | null; createdAt: string; url: string; branch: string; title: string }
-export type PullRequest = { number: number; title: string; url: string; branch: string; draft: boolean; createdAt: string; previewUrl: string; mergeable: boolean | null }
+// The Site update workflow writes the resume score before and after its change into the
+// pull request body (a hidden `<!-- resume-score before=90 after=85 -->` marker), so the
+// MCP server can warn Steven before he merges something that lowers it.
+export type ResumeScore = { before: number | null; after: number; lower: boolean }
+export type PullRequest = { number: number; title: string; url: string; branch: string; draft: boolean; createdAt: string; previewUrl: string; mergeable: boolean | null; resumeScore: ResumeScore | null }
 
 export type GitHub = {
   repo: string
@@ -20,9 +24,17 @@ export type GitHub = {
 // but letters, digits and dashes becomes a dash, cut to 28 characters.
 export const previewUrl = (branch: string, project = 'stevenwilssens') => `https://${branch.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 28)}.${project}.pages.dev`
 
+export const resumeScoreFromBody = (body: string | null | undefined): ResumeScore | null => {
+  const match = /<!--\s*resume-score\s+before=(\d+|unknown)\s+after=(\d+)\s*-->/.exec(body ?? '')
+  if (!match) return null
+  const before = match[1] === 'unknown' ? null : Number(match[1])
+  const after = Number(match[2])
+  return { before, after, lower: before !== null && after < before }
+}
+
 const shapePull = (pull: Record<string, unknown>): PullRequest => {
   const head = pull.head as { ref: string }
-  return { number: pull.number as number, title: pull.title as string, url: pull.html_url as string, branch: head.ref, draft: Boolean(pull.draft), createdAt: pull.created_at as string, previewUrl: previewUrl(head.ref), mergeable: typeof pull.mergeable === 'boolean' ? pull.mergeable : null }
+  return { number: pull.number as number, title: pull.title as string, url: pull.html_url as string, branch: head.ref, draft: Boolean(pull.draft), createdAt: pull.created_at as string, previewUrl: previewUrl(head.ref), mergeable: typeof pull.mergeable === 'boolean' ? pull.mergeable : null, resumeScore: resumeScoreFromBody(pull.body as string | null) }
 }
 
 export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetch = fetch): GitHub => {

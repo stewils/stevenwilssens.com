@@ -112,6 +112,7 @@ describe('what is already there', () => {
   it('reads the published pages as Markdown', async () => {
     const store = new MemoryStore()
     expect(sitePages).toContain('building-wilssens')
+    expect(sitePages).toContain('building-aibreaker')
     expect(sitePages).not.toContain('privacy')
     expect((await call(store, 'read_site_page', { page: 'about' })).text).toContain('# About')
     expect((await call(store, 'read_site_page', { page: 'llms-full' })).text).toContain('Everything')
@@ -162,15 +163,15 @@ describe('the dossier', () => {
 
   it('tells the interviewer what is missing and what to ask next', async () => {
     const store = new MemoryStore()
-    await call(store, 'save_entry', { role: 'windows-devices-data', topic: 'scope', title: 't', body: 'b' })
+    await call(store, 'save_entry', { role: 'independent-ai-builder', topic: 'scope', title: 't', body: 'b' })
     const status = parse((await call(store, 'interview_status')).text)
     const roles = status.roles as { key: string; missingTopics: string[]; entries: number }[]
-    const latest = roles.find((role) => role.key === 'windows-devices-data')!
+    const latest = roles.find((role) => role.key === 'independent-ai-builder')!
     expect(latest.entries).toBe(1)
     expect(latest.missingTopics).not.toContain('scope')
     expect(latest.missingTopics).toContain('outcomes')
     const next = status.suggestedNext as { role: string; topic: string; question: string }[]
-    expect(next[0]).toMatchObject({ role: 'windows-devices-data', topic: 'outcomes' })
+    expect(next[0]).toMatchObject({ role: 'independent-ai-builder', topic: 'outcomes' })
     expect(next[0].question).toContain('résumé')
     expect(next.some((item) => item.role === 'general')).toBe(true)
   })
@@ -183,7 +184,7 @@ describe('the dossier', () => {
     expect(roles.find((role) => role.key === 'azure-devops')!.recruiterFlags).toEqual(['Short stint: 6 months.'])
     expect(roles.find((role) => role.key === 'spatial-audio-senior')!.recruiterFlags).toContain('9 years in one role without a visible promotion.')
     expect(roles.find((role) => role.key === 'cosmos')!.recruiterFlags.some((flag) => flag.startsWith('Overlaps with'))).toBe(true)
-    expect(roles.find((role) => role.key === 'spatial-audio-senior')!.recruiterFlags.some((flag) => flag.startsWith('Company change'))).toBe(true)
+    expect(roles.find((role) => role.key === 'devdiv')!.recruiterFlags.some((flag) => flag.startsWith('Company change'))).toBe(true)
     expect(roles.find((role) => role.key === 'windows-devices-data')!.recruiterAngles.length).toBeGreaterThan(2)
     expect(roles.find((role) => role.key === 'general')!.recruiterAngles.some((angle) => angle.includes('Why leave Microsoft'))).toBe(true)
     expect(status.askedOnTheSite).toEqual([{ question: 'How many people did he hire?', when: '2026-10-16', reason: 'gap' }])
@@ -223,13 +224,13 @@ describe('the résumé', () => {
     const store = new MemoryStore()
     const wrong = await call(store, 'propose_resume_change', { role: 'compuware', field: 'dates', kind: 'replace', current_text: 'Jan 2005 - Dec 2007', proposed_text: 'Jan 2005 - Jun 2007', rationale: 'Left mid-2007.' })
     expect(wrong.text).toContain('does not match the résumé')
-    const badFormat = await call(store, 'propose_resume_change', { role: 'compuware', field: 'dates', kind: 'replace', current_text: 'Jan 2005 - Dec 2006', proposed_text: 'January 2005 to June 2007', rationale: 'x' })
+    const badFormat = await call(store, 'propose_resume_change', { role: 'compuware', field: 'dates', kind: 'replace', current_text: 'Jan 2006 - Sep 2006', proposed_text: 'January 2005 to June 2007', rationale: 'x' })
     expect(badFormat.text).toContain('written like')
     const notAdd = await call(store, 'propose_resume_change', { role: 'compuware', field: 'dates', kind: 'add', proposed_text: 'Jan 2005 - Jun 2007', rationale: 'x' })
     expect(notAdd.text).toContain('can only be replaced')
-    const dates = await call(store, 'propose_resume_change', { role: 'compuware', field: 'dates', kind: 'replace', current_text: 'Jan 2005 - Dec 2006', proposed_text: 'Jan 2005 - Jun 2007', rationale: 'Steven left Compuware in June 2007 (entry 12).', based_on: '12' })
+    const dates = await call(store, 'propose_resume_change', { role: 'compuware', field: 'dates', kind: 'replace', current_text: 'Jan 2006 - Sep 2006', proposed_text: 'Jan 2005 - Jun 2007', rationale: 'Steven left Compuware in June 2007 (entry 12).', based_on: '12' })
     expect((parse(dates.text).proposed as { field: string; proposedText: string }).field).toBe('dates')
-    const title = await call(store, 'propose_resume_change', { role: 'csx-data', field: 'title', kind: 'replace', current_text: 'Principal Product Manager Lead - CSX Data', proposed_text: 'Principal Product Manager Lead - Windows Customer Experience Data', rationale: 'Spell out CSX.' })
+    const title = await call(store, 'propose_resume_change', { role: 'csx-data', field: 'title', kind: 'replace', current_text: 'Principal Product Manager Lead - Windows Data', proposed_text: 'Principal Product Manager Lead - Windows Customer Experience Data', rationale: 'Spell out CSX.' })
     expect((parse(title.text).proposed as { field: string }).field).toBe('title')
     const section = await call(store, 'propose_resume_change', { role: 'headline', kind: 'replace', current_text: 'x', proposed_text: 'y', rationale: 'z' })
     expect((parse(section.text).proposed as { field: string | null }).field).toBeNull()
@@ -258,7 +259,7 @@ describe('the résumé', () => {
 
     const replaced = parse((await call(store, 'propose_resume_change', { role: 'compuware', field: 'role', kind: 'replace', proposed_text: JSON.stringify({ ...entry, role: 'Lead Developer and Team Lead', company: 'Compuware', dates: 'Jan 2005 - Jun 2007' }), rationale: 'New dates and a sharper summary.' })).text)
     const replacedProposal = replaced.proposed as { currentText: string; proposedText: string }
-    expect(JSON.parse(replacedProposal.currentText).dates).toBe('Jan 2005 - Dec 2006')
+    expect(JSON.parse(replacedProposal.currentText).dates).toBe('Jan 2006 - Sep 2006')
     expect(JSON.parse(replacedProposal.proposedText).dates).toBe('Jan 2005 - Jun 2007')
     expect(parse((await call(store, 'list_resume_proposals')).text).count).toBe(3)
   })
