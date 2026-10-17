@@ -20,7 +20,7 @@ const span = (dates: string) => {
 }
 const monthName = (serial: number) => `${Object.keys(months)[serial % 12].replace(/^./, (c) => c.toUpperCase())} ${Math.floor(serial / 12)}`
 const presentTense = /^(Lead|Own|Partner|Drive|Build|Manage|Define|Deliver|Grow|Oversee|Create|Develop|Ship|Work)\b/
-const scopeWords = /\b\d+ to \d+ (product managers|pms|engineers)|team of (about )?\d+|\d+ (product managers|pms|engineers|data scientists)\b/i
+const scopeWords = /\b\d+ to \d+ (product managers|pms|engineers)|team of (about )?\d+|(pm|product management) organization of (about )?\d+|\d+ (product managers|pms|engineers|data scientists)\b/i
 
 export const reviewForRecruiters = ({ pages, resumeReport, linkedin, now }: ReviewInput): Review => {
   const findings: Finding[] = []

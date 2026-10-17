@@ -78,7 +78,7 @@ h3 { margin: 0; font-size: 10.8pt; font-weight: 700; letter-spacing: -0.2pt; lin
 .where { margin: 1px 0 4px; font-size: 8.8pt; color: var(--muted); }
 .summary { font-size: 9.4pt; }
 .role ul { margin: 3px 0 0; padding-left: 13px; }
-.role li { margin: 1.5px 0; padding-left: 2px; font-size: 9.2pt; line-height: 1.36; }
+.role li { margin: 1px 0; padding-left: 2px; font-size: 9pt; line-height: 1.3; }
 .early { display: grid; gap: 5px; }
 .early div { display: grid; grid-template-columns: 1.3in 1fr; gap: 12px; font-size: 9.3pt; line-height: 1.35; break-inside: avoid; }
 .early strong { font-weight: 700; }
@@ -103,7 +103,7 @@ h3 { margin: 0; font-size: 10.8pt; font-weight: 700; letter-spacing: -0.2pt; lin
 </header>
 <div class="facts">
   <div><span class="mono">Looking for</span>${esc(profile.lookingFor)} · ${esc(profile.availability.toLowerCase())}</div>
-  <div><span class="mono">Scope</span>Led teams of ${esc(profile.teamSize)}; telemetry from 1B+ Windows devices</div>
+  <div><span class="mono">Scope</span>Led teams of ${esc(profile.teamSize)}; telemetry from 1.6B+ Windows devices</div>
   <div><span class="mono">Background</span>Product leader since 2008, software engineer and team lead before that</div>
 </div>
 
