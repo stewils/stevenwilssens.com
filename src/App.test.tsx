@@ -230,4 +230,25 @@ describe('resume site', () => {
     expect(screen.getByRole('heading', { name: 'steven.wilssens.com' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Visit steven\.wilssens\.com/ })).not.toBeInTheDocument()
   })
+
+  it('links the two write-ups from the projects page', () => {
+    setPath('/projects')
+    render(<App />)
+
+    expect(screen.getAllByRole('link', { name: /Read how it was built/ }).map((link) => link.getAttribute('href'))).toEqual(['/building-wilssens', '/building-this-site'])
+  })
+
+  it('renders the write-up about this site with its sections, numbers and links', () => {
+    setPath('/building-this-site')
+    render(<App />)
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Building steven.wilssens.com' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /One file, five outputs/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /The loop: interview, review, edit, merge/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'privacy page' })).toHaveAttribute('href', '/privacy')
+    expect(screen.getByRole('link', { name: 'wilssens.com' })).toHaveAttribute('href', '/building-wilssens')
+    expect(screen.getByRole('link', { name: /Download the résumé/ })).toHaveAttribute('href', '/steven-wilssens-resume-2026.pdf')
+    expect(screen.getByRole('navigation', { name: 'On this page' })).toBeInTheDocument()
+    expect(document.title).toBe('Building steven.wilssens.com | Steven Wilssens')
+  })
 })

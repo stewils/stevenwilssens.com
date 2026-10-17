@@ -23,6 +23,7 @@ export const sources = (): Map<string, Source> => {
   map.set('site:news', { id: 'site:news', title: 'In the news', href: `${siteUrl}/news` })
   map.set('site:projects', { id: 'site:projects', title: 'Projects', href: `${siteUrl}/projects` })
   map.set('site:article', { id: 'site:article', title: 'Building wilssens.com', href: `${siteUrl}/building-wilssens` })
+  map.set('site:building', { id: 'site:building', title: 'Building steven.wilssens.com', href: `${siteUrl}/building-this-site` })
   map.set('site:resume', { id: 'site:resume', title: 'Résumé (PDF)', href: contact.resume })
   map.set('notes', { id: 'notes', title: "Steven's notes", href: null })
   return map
@@ -37,7 +38,7 @@ Contact: ${contact.email}, LinkedIn ${contact.linkedin}. Résumé PDF: ${contact
 const projects = `- wilssens.com: a family platform he built and runs: email and websites at the family domain for everyone named Wilssens, with an AI help assistant, MCP connectors, a command line and payments ready if it grows. The write-up [site:article] at ${siteUrl}/building-wilssens explains how it was built with AI tools and the rules behind it.
 - juniortrackcycling.com: a community project making junior track cycling easier to discover, follow and celebrate.
 - leo.wilssens.com: a race journal and results site for Leo Wilssens, a junior track cyclist racing with Jerry Baker Juniors.
-- steven.wilssens.com: this site, built and run like a product: React pages prerendered to static HTML on Cloudflare Pages, first-party cookie-free analytics in D1, Markdown copies of every page for LLMs, and this assistant.`
+- steven.wilssens.com: this site, built and run like a product: React pages prerendered to static HTML on Cloudflare Pages, first-party cookie-free analytics in D1 that count people, search engines and AI crawlers apart, Markdown copies of every page for LLMs, a résumé PDF generated from the same data and held to a quality score, this assistant, and a private MCP server where Claude interviews Steven, reviews the site like a recruiter and opens pull requests that Steven merges. The write-up [site:building] at ${siteUrl}/building-this-site explains how it is built and run.`
 
 const notesFor = (entries: DossierEntry[], role: string) => entries.filter((entry) => entry.role === role).map((entry) => `- [notes #${entry.id}, ${entry.topic}] ${entry.title}: ${entry.body}`)
 

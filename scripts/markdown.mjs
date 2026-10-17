@@ -15,6 +15,10 @@ const convert = (html, siteUrl) => html
   .replace(/<h([1-6])[^>]*>/g, (_, level) => `\n\n${'#'.repeat(Number(level))} `)
   .replace(/<\/h[1-6]>/g, '\n\n')
   .replace(/<li[^>]*>/g, '\n- ')
+  // Tables: the header row in bold, then one list item per row, cells separated by a dot.
+  .replace(/<thead>([\s\S]*?)<\/thead>/g, (_, head) => `\n\n**${head.replace(/<\/th>\s*<th[^>]*>/g, ' · ').replace(/<[^>]+>/g, '').trim()}**\n`)
+  .replace(/<tr[^>]*>/g, '\n- ')
+  .replace(/<\/t[hd]>(?=\s*<t[hd]\b)/g, ' · ')
   .replace(/<\/?(?:p|div|section|article|aside|figure|figcaption|ul|ol|main|footer)\b[^>]*>/g, '\n\n')
   .replace(/<[^>]+>/g, ' ')
 
