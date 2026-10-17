@@ -229,7 +229,7 @@ describe('the résumé', () => {
     expect(notAdd.text).toContain('can only be replaced')
     const dates = await call(store, 'propose_resume_change', { role: 'compuware', field: 'dates', kind: 'replace', current_text: 'Jan 2005 - Dec 2006', proposed_text: 'Jan 2005 - Jun 2007', rationale: 'Steven left Compuware in June 2007 (entry 12).', based_on: '12' })
     expect((parse(dates.text).proposed as { field: string; proposedText: string }).field).toBe('dates')
-    const title = await call(store, 'propose_resume_change', { role: 'csx-data', field: 'title', kind: 'replace', current_text: 'Principal Product Manager Lead - CSX Data', proposed_text: 'Principal Product Manager Lead - Windows Customer Experience Data', rationale: 'Spell out CSX.' })
+    const title = await call(store, 'propose_resume_change', { role: 'csx-data', field: 'title', kind: 'replace', current_text: 'Principal Product Manager Lead - Windows Data', proposed_text: 'Principal Product Manager Lead - Windows Customer Experience Data', rationale: 'Spell out CSX.' })
     expect((parse(title.text).proposed as { field: string }).field).toBe('title')
     const section = await call(store, 'propose_resume_change', { role: 'headline', kind: 'replace', current_text: 'x', proposed_text: 'y', rationale: 'z' })
     expect((parse(section.text).proposed as { field: string | null }).field).toBeNull()
