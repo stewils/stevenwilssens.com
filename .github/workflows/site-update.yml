@@ -3,9 +3,10 @@
 # from the Actions tab. The deploy workflow then builds a preview for the branch.
 #
 # Secrets: ANTHROPIC_API_KEY (or CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`)
-# for Claude Code, and optionally GH_PAT, a fine-grained token with Contents and Pull
-# requests: write; pushes made with the default GITHUB_TOKEN do not start the deploy
-# workflow, so without GH_PAT the pull request gets no preview until someone pushes.
+# for Claude Code. Everything else uses the built-in GITHUB_TOKEN: pushes made with
+# it do not start other workflows, so this one dispatches the Deploy workflow for the
+# branch itself to get the preview. The repository must allow Actions to create pull
+# requests (Settings → Actions → General → Workflow permissions).
 name: Site update
 
 on:
@@ -27,6 +28,7 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
   id-token: write
 
 jobs:
@@ -38,7 +40,6 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.GH_PAT || github.token }}
 
       - uses: actions/setup-node@v7
         with:
@@ -66,7 +67,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.GH_PAT || github.token }}
+          github_token: ${{ github.token }}
           prompt: |
             You are updating steven.wilssens.com, Steven Wilssens's resume site. Read CLAUDE.md first and follow it.
 
@@ -106,7 +107,7 @@ jobs:
       - name: Open the pull request
         if: steps.commit.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+          GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ steps.branch.outputs.branch }}
           TITLE: ${{ inputs.title }}
           INSTRUCTION: ${{ inputs.instruction }}
@@ -115,9 +116,11 @@ jobs:
           alias=$(printf '%s' "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | cut -c1-28)
           body=$(printf '%s\n\n%s\n\n%s\n\n%s\n\n%s' \
             "**Instruction**" "$INSTRUCTION" \
-            "**Checks in this run:** $CHECKS (lint, tests, build). The Deploy workflow builds a preview at https://$alias.stevenwilssens.pages.dev once it runs for this branch." \
+            "**Checks in this run:** $CHECKS (lint, tests, build). Preview, once the Deploy workflow for this branch finishes: https://$alias.stevenwilssens.pages.dev" \
             "Merging deploys to production. Review the resume PDF in the branch before merging." \
             "🤖 Generated with [Claude Code](https://claude.com/claude-code) from a request made through the MCP server.")
           url=$(gh pr create --base main --head "$BRANCH" --title "$TITLE" --body "$body")
+          # A push made with the built-in token starts no workflow, so start the preview build explicitly.
+          gh workflow run deploy.yml --ref "$BRANCH"
           echo "### Pull request: $url" >> "$GITHUB_STEP_SUMMARY"
-          echo "Preview (after the Deploy workflow runs): https://$alias.stevenwilssens.pages.dev" >> "$GITHUB_STEP_SUMMARY"
+          echo "Preview (a few minutes after the Deploy workflow for the branch finishes): https://$alias.stevenwilssens.pages.dev" >> "$GITHUB_STEP_SUMMARY"
