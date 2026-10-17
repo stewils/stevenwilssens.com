@@ -1,7 +1,7 @@
 // The recruiter's-seat tools and the site-update tools, through the MCP transport.
 import { describe, expect, it } from 'vitest'
 import type { GitHub } from '../github'
-import { previewUrl } from '../github'
+import { previewUrl, resumeScoreFromBody } from '../github'
 import { profile } from '../../../src/resume'
 import { handleMcp } from './server'
 import { MemoryStore } from './store'
@@ -10,14 +10,18 @@ const url = 'https://steven.wilssens.com/mcp/owner-key-123'
 const report = { exists: true, score: 85, pages: 2, errors: 0, warnings: 3, matchesSite: true, findings: [{ severity: 'warn', id: 'keyword-a/b', message: 'Keyword missing: "a/b".' }], questions: [{ about: 'impact', question: 'Which role?' }] }
 const pages: Record<string, string> = { '/index.md': '# Steven Wilssens\n\nPrincipal product leader for data and AI.', '/about.md': '# About', '/experience.md': '# Experience', '/work.md': '# Selected work', '/recommendations.md': '# Recommendations', '/resume-report.json': JSON.stringify(report) }
 
+const pullSeven = { number: 7, title: 'Team size', url: 'https://github.com/x/pull/7', branch: 'update/team-size-1', draft: false, createdAt: '2026-10-17T00:00:00Z', previewUrl: previewUrl('update/team-size-1'), mergeable: true, resumeScore: { before: 90, after: 90, lower: false } }
+// Pull request 9 was opened by a run whose resume scores worse than the one on main.
+const pullNine = { number: 9, title: 'Shorter bullets', url: 'https://github.com/x/pull/9', branch: 'update/shorter-bullets-2', draft: false, createdAt: '2026-10-17T01:00:00Z', previewUrl: previewUrl('update/shorter-bullets-2'), mergeable: true, resumeScore: resumeScoreFromBody('**Instruction**\n\nShorten.\n\n**Resume score:** 90 → 80, lower than on main\n<!-- resume-score before=90 after=80 -->') }
+
 const fakeGitHub = () => {
   const calls: { dispatched: Record<string, unknown>[]; merged: number[] } = { dispatched: [], merged: [] }
   const github: GitHub = {
     repo: 'stewils/stevenwilssens.com',
     dispatch: async (workflow, ref, inputs) => { calls.dispatched.push({ workflow, ref, inputs }) },
     runs: async () => [{ id: 1, status: 'completed', conclusion: 'success', createdAt: '2026-10-17T00:00:00Z', url: 'https://github.com/x/runs/1', branch: 'update/team-size-1', title: 'Team size' }],
-    pulls: async () => [{ number: 7, title: 'Team size', url: 'https://github.com/x/pull/7', branch: 'update/team-size-1', draft: false, createdAt: '2026-10-17T00:00:00Z', previewUrl: previewUrl('update/team-size-1'), mergeable: true }],
-    pull: async (number) => number === 7 ? { number: 7, title: 'Team size', url: 'https://github.com/x/pull/7', branch: 'update/team-size-1', draft: false, createdAt: '2026-10-17T00:00:00Z', previewUrl: previewUrl('update/team-size-1'), mergeable: true } : null,
+    pulls: async () => [pullSeven, pullNine],
+    pull: async (number) => number === 7 ? pullSeven : number === 9 ? pullNine : null,
     merge: async (number) => { calls.merged.push(number); return { merged: true, message: 'Pull Request successfully merged', sha: 'abc' } },
   }
   return { github, calls }
@@ -96,6 +100,7 @@ describe('site updates', () => {
 
     const status = await call(store, 'site_update_status', {}, github)
     expect((status.json!.pullRequests as { previewUrl: string }[])[0].previewUrl).toBe('https://update-team-size-1.stevenwilssens.pages.dev')
+    expect(status.json!.warning).toMatch(/#9 lowers the resume score from 90 to 80/)
 
     const refused = await call(store, 'merge_site_update', { number: 7, confirm: false }, github)
     expect(refused.isError).toBe(true)
@@ -106,6 +111,26 @@ describe('site updates', () => {
     expect(merged.isError).toBe(false)
     expect(calls.merged).toEqual([7])
     expect(merged.json!.merged).toBe(true)
+  })
+
+  it('warns before merging a pull request that lowers the resume score, and merges once Steven accepts', async () => {
+    const store = new MemoryStore()
+    const { github, calls } = fakeGitHub()
+    const warned = await call(store, 'merge_site_update', { number: 9, confirm: true }, github)
+    expect(warned.isError).toBe(true)
+    expect(warned.text).toMatch(/lowers the resume score from 90 to 80/)
+    expect(warned.text).toMatch(/acceptLowerScore/)
+    expect(calls.merged).toEqual([])
+    const accepted = await call(store, 'merge_site_update', { number: 9, confirm: true, acceptLowerScore: true }, github)
+    expect(accepted.isError).toBe(false)
+    expect(calls.merged).toEqual([9])
+  })
+
+  it('reads the resume score the Site update workflow leaves in a pull request body', () => {
+    expect(resumeScoreFromBody('<!-- resume-score before=90 after=85 -->')).toEqual({ before: 90, after: 85, lower: true })
+    expect(resumeScoreFromBody('text\n<!-- resume-score before=unknown after=85 -->')).toEqual({ before: null, after: 85, lower: false })
+    expect(resumeScoreFromBody('no marker')).toBeNull()
+    expect(resumeScoreFromBody(null)).toBeNull()
   })
 
   it('names Pages previews the way Cloudflare does', () => {

@@ -62,6 +62,17 @@ jobs:
           git config user.email "steven@wilssens.com"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
+      # The score the change is measured against: main's resume, scored against main's data,
+      # before anything is touched. The pull request and the email say whether the update
+      # keeps it, raises it or lowers it.
+      - name: Score the resume on main
+        id: baseline
+        run: |
+          node scripts/resume-check.mjs --json /tmp/resume-before.json || true
+          score=$(jq -r '.score // "unknown"' /tmp/resume-before.json 2>/dev/null || echo unknown)
+          echo "score=$score" >> "$GITHUB_OUTPUT"
+          echo "Resume on main: $score/100"
+
       - name: Let Claude make the change
         uses: anthropics/claude-code-action@v1
         with:
@@ -77,6 +88,7 @@ jobs:
             Rules for this change:
             - Facts about Steven (roles, bullets, headline, summary, skills, impact numbers, selected work, location, authorization) live in src/resume.ts. Change them there, not in App.tsx.
             - After any change to src/resume.ts, run `npm run resume:build`. It regenerates public/steven-wilssens-resume-2026.pdf and refuses a resume that scores worse than the current one; read its findings and fix the data until it passes. Never commit a resume with errors.
+            - The resume on main scores ${{ steps.baseline.outputs.score }}/100 for recruiters (`node scripts/resume-check.mjs` shows the findings). Keep it there or raise it. Never pass `--force` to resume:build. If Steven's instruction cannot be carried out without lowering the score (a bullet he wants removed carried a keyword or a number, say), make the change he asked for, keep the data honest, and say plainly in your summary which check got worse and why: the workflow warns him and he decides.
             - If the headline or the photo changed, run `node scripts/og-image.mjs`.
             - Run `npm run lint`, `npm test` and `npm run build` and make them pass.
             - Do not invent numbers or facts. If the instruction needs a fact you do not have, leave a `TODO(steven): question` comment in src/resume.ts and list the question in your final message.
@@ -104,6 +116,36 @@ jobs:
           echo "changed=true" >> "$GITHUB_OUTPUT"
           echo "checks=$status" >> "$GITHUB_OUTPUT"
 
+      # The new resume against the one main had: the score line goes into the pull request,
+      # the step summary and the email, and a drop is a warning on the run.
+      - name: Compare the resume score with main
+        id: score
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          BEFORE: ${{ steps.baseline.outputs.score }}
+        run: |
+          node scripts/resume-check.mjs --json /tmp/resume-after.json --baseline /tmp/resume-before.json > /tmp/resume-after.txt || true
+          cat /tmp/resume-after.txt
+          after=$(jq -r '.score // "unknown"' /tmp/resume-after.json 2>/dev/null || echo unknown)
+          lower=$(jq -r '.baseline.lower // false' /tmp/resume-after.json 2>/dev/null || echo false)
+          if [ "$after" = unknown ]; then line="unknown (the resume could not be checked; see the run log)"
+          elif [ "$BEFORE" = unknown ]; then line="$after/100 (main's score was not available)"
+          elif [ "$lower" = true ]; then line="$BEFORE → $after, lower than on main"
+          elif [ "$after" -gt "$BEFORE" ]; then line="$BEFORE → $after, higher than on main"
+          else line="$BEFORE → $after, unchanged"; fi
+          echo "line=$line" >> "$GITHUB_OUTPUT"
+          echo "lower=$lower" >> "$GITHUB_OUTPUT"
+          echo "before=$BEFORE" >> "$GITHUB_OUTPUT"
+          echo "after=$after" >> "$GITHUB_OUTPUT"
+          # The findings that are new in this resume, for the pull request and the email.
+          if [ -f /tmp/resume-before.json ] && [ -f /tmp/resume-after.json ]; then
+            jq -r --slurpfile before /tmp/resume-before.json '[.findings[] | select(.severity != "info")] | map(select(. as $f | ($before[0].findings // []) | map(.id) | index($f.id) | not)) | .[] | "- [\(.severity)] \(.message)"' /tmp/resume-after.json > /tmp/resume-new-findings.txt || true
+          fi
+          {
+            echo "### Resume score: $line"
+            if [ "$lower" = true ]; then echo; echo "⚠️ This update lowers the resume score. New findings:"; cat /tmp/resume-new-findings.txt 2>/dev/null; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Open the pull request
         id: pr
         if: steps.commit.outputs.changed == 'true'
@@ -113,13 +155,27 @@ jobs:
           TITLE: ${{ inputs.title }}
           INSTRUCTION: ${{ inputs.instruction }}
           CHECKS: ${{ steps.commit.outputs.checks }}
+          SCORE_LINE: ${{ steps.score.outputs.line }}
+          SCORE_LOWER: ${{ steps.score.outputs.lower }}
+          SCORE_BEFORE: ${{ steps.score.outputs.before }}
+          SCORE_AFTER: ${{ steps.score.outputs.after }}
         run: |
           alias=$(printf '%s' "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | cut -c1-28)
-          body=$(printf '%s\n\n%s\n\n%s\n\n%s\n\n%s' \
+          warning=""
+          if [ "$SCORE_LOWER" = true ]; then
+            warning=$(printf '> ⚠️ **This update lowers the resume score from %s to %s.** The resume would read worse to recruiters than the one live today. New findings:\n%s\n\nFix the data on this branch (or ask Claude to) before merging, or merge knowing the trade-off.\n\n' "$SCORE_BEFORE" "$SCORE_AFTER" "$(cat /tmp/resume-new-findings.txt 2>/dev/null || true)")
+          fi
+          # The hidden marker is read by the MCP server (site_update_status, merge_site_update) so Claude can warn Steven.
+          marker=""
+          if [ "$SCORE_AFTER" != unknown ] && [ -n "$SCORE_AFTER" ]; then marker="<!-- resume-score before=${SCORE_BEFORE:-unknown} after=$SCORE_AFTER -->"; fi
+          body=$(printf '%s%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s' \
+            "$warning" \
             "**Instruction**" "$INSTRUCTION" \
+            "**Resume score:** ${SCORE_LINE:-unknown} (100 is the best a recruiter, an ATS and an editor would score it; see scripts/resume-check.mjs)" \
             "**Checks in this run:** $CHECKS (lint, tests, build). Preview, once the Deploy workflow for this branch finishes: https://$alias.stevenwilssens.pages.dev" \
             "Merging deploys to production. Review the resume PDF in the branch before merging." \
-            "🤖 Generated with [Claude Code](https://claude.com/claude-code) from a request made through the MCP server.")
+            "🤖 Generated with [Claude Code](https://claude.com/claude-code) from a request made through the MCP server." \
+            "$marker")
           url=$(gh pr create --base main --head "$BRANCH" --title "$TITLE" --body "$body")
           # A push made with the built-in token starts no workflow, so start the preview build explicitly.
           gh workflow run deploy.yml --ref "$BRANCH"
@@ -141,13 +197,25 @@ jobs:
           TITLE: ${{ inputs.title }}
           INSTRUCTION: ${{ inputs.instruction }}
           CHECKS: ${{ steps.commit.outputs.checks }}
+          SCORE_LINE: ${{ steps.score.outputs.line }}
+          SCORE_LOWER: ${{ steps.score.outputs.lower }}
+          SCORE_BEFORE: ${{ steps.score.outputs.before }}
+          SCORE_AFTER: ${{ steps.score.outputs.after }}
         run: |
-          score=$(node scripts/resume-check.mjs 2>/dev/null | head -1 | sed -E 's/.*score ([0-9]+\/100).*/\1/')
+          subject="Resume updated: ready to review ($TITLE)"
+          if [ "$SCORE_LOWER" = true ]; then subject="Resume updated, but it scores lower: $SCORE_BEFORE → $SCORE_AFTER ($TITLE)"; fi
           {
             echo "Your resume has been updated on a branch and is ready to review."
             echo
+            if [ "$SCORE_LOWER" = true ]; then
+              echo "WARNING: this update lowers the resume score from $SCORE_BEFORE to $SCORE_AFTER out of 100. The resume would read worse to recruiters than the one live today. What got worse:"
+              cat /tmp/resume-new-findings.txt 2>/dev/null || true
+              echo
+              echo "Fix the data on the branch (or tell Claude to) before merging, or merge knowing the trade-off."
+              echo
+            fi
             echo "Change: $TITLE"
-            echo "Resume score: ${score:-unknown} (lint, tests, build: $CHECKS)"
+            echo "Resume score: ${SCORE_LINE:-unknown} (lint, tests, build: $CHECKS)"
             echo
             echo "Pull request: $PR_URL"
             echo "Preview of the site: $PREVIEW"
@@ -158,4 +226,4 @@ jobs:
             echo "What was asked:"
             echo "$INSTRUCTION"
           } > /tmp/mail.txt
-          python3 scripts/send-mail.py --subject "Resume updated: ready to review ($TITLE)" --body-file /tmp/mail.txt
+          python3 scripts/send-mail.py --subject "$subject" --body-file /tmp/mail.txt

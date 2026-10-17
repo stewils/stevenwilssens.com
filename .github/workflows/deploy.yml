@@ -29,7 +29,19 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
+      # The build scores the resume and compares it with the one recruiters download today
+      # (the live site's /resume-report.json); dist/resume-report.json carries both scores.
       - run: npm run build
+        env:
+          RESUME_BASELINE: https://steven.wilssens.com/resume-report.json
+      - name: Warn when the resume would score lower than the live one
+        run: |
+          line=$(jq -r 'if .baseline == null then "\(.score)/100 (the live score could not be read)" elif .baseline.lower then "\(.baseline.score) → \(.score), lower than the live site" elif .baseline.change > 0 then "\(.baseline.score) → \(.score), higher than the live site" else "\(.baseline.score) → \(.score), unchanged" end' dist/resume-report.json 2>/dev/null || echo unknown)
+          echo "### Resume score: $line" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$(jq -r '.baseline.lower // false' dist/resume-report.json 2>/dev/null)" = true ]; then
+            echo "::warning title=Resume score dropped::Resume score $line. Fix the data before merging, or merge knowing the trade-off."
+            { echo; echo "⚠️ This resume scores lower than the live one. Findings:"; jq -r '.findings[] | select(.severity != "info") | "- [\(.severity)] \(.message)"' dist/resume-report.json; } >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Deploy to Cloudflare
         if: github.event_name != 'pull_request'
         run: |
@@ -62,11 +74,21 @@ jobs:
             exit 0
           fi
           score=$(jq -r '"\(.score)/100, \(.pages) pages, \(.warnings) warnings"' dist/resume-report.json 2>/dev/null || echo unknown)
+          # The baseline was the live site before this deploy: what recruiters downloaded until now.
+          compared=$(jq -r 'if .baseline == null then "" elif .baseline.lower then "LOWER than before this deploy (\(.baseline.score) → \(.score))" elif .baseline.change > 0 then "higher than before this deploy (\(.baseline.score) → \(.score))" else "unchanged from before this deploy" end' dist/resume-report.json 2>/dev/null || true)
+          lower=$(jq -r '.baseline.lower // false' dist/resume-report.json 2>/dev/null || echo false)
+          subject="Resume live on steven.wilssens.com"
+          if [ "$lower" = true ]; then subject="Resume live on steven.wilssens.com, scoring lower than before"; fi
           {
             echo "Your updated resume is live."
             echo
+            if [ "$lower" = true ]; then
+              echo "WARNING: the resume now live scores $compared. It reads worse to recruiters than the one it replaced. Findings:"
+              jq -r '.findings[] | select(.severity != "info") | "- [\(.severity)] \(.message)"' dist/resume-report.json 2>/dev/null || true
+              echo
+            fi
             echo "Change: $(printf '%s' "$TITLE" | head -1)"
-            echo "Resume score: $score"
+            echo "Resume score: $score${compared:+; $compared}"
             echo
             echo "Resume PDF: https://steven.wilssens.com/steven-wilssens-resume-2026.pdf"
             echo "Experience page: https://steven.wilssens.com/experience"
@@ -74,4 +96,4 @@ jobs:
             echo
             echo "Deploy: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           } > /tmp/mail.txt
-          python3 scripts/send-mail.py --subject "Resume live on steven.wilssens.com" --body-file /tmp/mail.txt
+          python3 scripts/send-mail.py --subject "$subject" --body-file /tmp/mail.txt
