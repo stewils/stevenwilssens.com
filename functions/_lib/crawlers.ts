@@ -78,4 +78,5 @@ export const identifyCrawler = (userAgent: string): Crawler | null => {
 
 // Requests worth recording: pages, robots.txt, sitemap, llms.txt, Markdown copies and the resume.
 // Built JavaScript and CSS (fetched by Googlebot to render pages) and the API are left out.
-export const isCrawlTarget = (path: string) => !path.startsWith('/assets/') && !path.startsWith('/api/') && !/\.(?:js|css|woff2?|png|jpe?g|svg|ico|webmanifest)$/i.test(path)
+// /mcp is excluded so the owner key, which travels in that path, is never stored.
+export const isCrawlTarget = (path: string) => !path.startsWith('/assets/') && !path.startsWith('/api/') && !path.startsWith('/mcp') && !/\.(?:js|css|woff2?|png|jpe?g|svg|ico|webmanifest)$/i.test(path)

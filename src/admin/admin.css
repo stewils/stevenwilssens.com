@@ -67,6 +67,8 @@ tr.detail p { margin: 0 0 4px; }
 .badge { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 700; background: var(--series-track); color: var(--green); white-space: nowrap; }
 .badge.download { background: var(--green); color: #fff; }
 .badge.ai-assistant { background: var(--series); color: #fff; }
+.badge.approved, .badge.applied { background: var(--green); color: #fff; }
+.badge.applied { opacity: 0.6; }
 
 .assessments { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 12px; }
 .assessment { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--line); border-left-width: 4px; border-radius: 6px; padding: 12px; }

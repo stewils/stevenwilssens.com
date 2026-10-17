@@ -225,6 +225,85 @@ function CrawlerTraffic({ stats, dayLabel }: { stats: Stats; dayLabel: (day: str
   )
 }
 
+type McpInfo = {
+  publicUrl: string
+  ownerUrl: string | null
+  entries: { total: number; public: number; roles: number }
+  questions: { ts: number; tool: string; query: string | null; role: string | null; hits: number | null; country: string | null; asOrg: string | null }[]
+  messages: { id: number; ts: number; name: string | null; company: string | null; contact: string | null; message: string; country: string | null; asOrg: string | null }[]
+  proposals: { id: number; updatedAt: number; role: string; kind: 'replace' | 'add' | 'remove'; currentText: string | null; proposedText: string | null; rationale: string; status: 'proposed' | 'approved' | 'rejected' | 'applied'; decisionNote: string | null }[]
+}
+
+// The MCP server at /mcp: the public link for recruiters, the owner link that
+// unlocks the interview tools, and what assistants asked through it.
+function McpServer({ token }: { token: string }) {
+  const [info, setInfo] = useState<McpInfo | null>(null)
+  const [error, setError] = useState('')
+  const [copied, setCopied] = useState('')
+  const [revealed, setRevealed] = useState(false)
+  useEffect(() => {
+    fetch('/api/mcp', { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (response) => { if (!response.ok) throw new Error(`HTTP ${response.status}`); setInfo(await response.json()) })
+      .catch((err: Error) => setError(`Could not load the MCP details (${err.message}).`))
+  }, [token])
+  const copy = (url: string) => { void navigator.clipboard?.writeText(url).then(() => setCopied(url)) }
+  const masked = (url: string) => url.replace(/\/mcp\/.+$/, '/mcp/' + '•'.repeat(12))
+  const links: [string, string | null, string][] = [
+    ['Public link', info?.publicUrl ?? null, 'For recruiters: read-only, answers from the public dossier. Share it anywhere.'],
+    ['Owner link', info?.ownerUrl ?? null, 'Unlocks the interview tools. The key in the path is the MCP_OWNER_KEY secret: keep it private.'],
+  ]
+  return (
+    <section className="panel wide">
+      <h2>MCP server</h2>
+      <p className="note">Claude: Settings → Connectors → Add custom connector, paste a link below, no sign-in. Claude Code: <code>claude mcp add --transport http steven-wilssens &lt;link&gt;</code>. Use the owner link yourself and ask Claude to interview you; the public link is what recruiters add.</p>
+      {error && <p className="error">{error}</p>}
+      {info && (
+        <>
+          <ul className="links">
+            {links.map(([name, url, where]) => (
+              <li key={name}>
+                <div><strong>{name}</strong><small>{where}</small><code>{url ? (name === 'Owner link' && !revealed ? masked(url) : url) : 'Not configured: set the MCP_OWNER_KEY secret and redeploy.'}</code></div>
+                {url && name === 'Owner link' && <button type="button" className="ghost" onClick={() => setRevealed((value) => !value)}>{revealed ? 'Hide' : 'Reveal'}</button>}
+                {url && <button type="button" className="ghost" onClick={() => copy(url)}>{copied === url ? 'Copied' : 'Copy'}</button>}
+              </li>
+            ))}
+          </ul>
+          <p className="note" style={{ margin: '12px 0 0' }}>Dossier: {formatNumber(info.entries.total)} entries across {info.entries.roles} roles, {formatNumber(info.entries.public)} public. Below: the last 30 days of calls through the public link and messages left for you.</p>
+          {info.messages.length > 0 && (
+            <>
+              <h3>Messages</h3>
+              <div className="table-scroll">
+                <table>
+                  <thead><tr><th>When</th><th>From</th><th>Message</th><th>Network</th></tr></thead>
+                  <tbody>{info.messages.map((row) => <tr key={row.id}><td>{formatTime(row.ts)}</td><td className="strong">{[row.name, row.company].filter(Boolean).join(', ') || '—'}{row.contact && <small className="muted"><br />{row.contact}</small>}</td><td>{row.message}</td><td>{[row.asOrg, row.country].filter(Boolean).join(', ') || '—'}</td></tr>)}</tbody>
+                </table>
+              </div>
+            </>
+          )}
+          <h3>Résumé proposals</h3>
+          {info.proposals.length === 0 ? <p className="note">None yet. At the end of an interview session Claude proposes résumé edits; approve or reject them in that conversation and they show up here.</p> : (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>Status</th><th>Where</th><th>Change</th><th>Why</th><th>Updated</th></tr></thead>
+                <tbody>{info.proposals.map((row) => <tr key={row.id}><td><span className={`badge ${row.status}`}>{row.status}</span></td><td className="strong">{row.role}<small className="muted"><br />{row.kind}</small></td><td>{row.currentText && <s className="muted">{row.currentText}</s>}{row.currentText && row.proposedText && <br />}{row.proposedText}{row.decisionNote && <small className="muted"><br />Note: {row.decisionNote}</small>}</td><td>{row.rationale}</td><td>{formatTime(row.updatedAt)}</td></tr>)}</tbody>
+              </table>
+            </div>
+          )}
+          <h3>Questions asked</h3>
+          {info.questions.length === 0 ? <p className="note">Nobody has used the public link yet.</p> : (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>When</th><th>Tool</th><th>Question</th><th className="num">Hits</th><th>Network</th></tr></thead>
+                <tbody>{info.questions.map((row, index) => <tr key={index}><td>{formatTime(row.ts)}</td><td className="strong">{row.tool}</td><td>{row.query ?? row.role ?? '—'}</td><td className="num">{row.hits ?? ''}</td><td>{[row.asOrg, row.country].filter(Boolean).join(', ') || '—'}</td></tr>)}</tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
 function TrackingLinks() {
   const [copied, setCopied] = useState('')
   const copy = (url: string) => { void navigator.clipboard?.writeText(url).then(() => setCopied(url)) }
@@ -357,6 +436,8 @@ export default function Admin() {
             <RankedList title="Channels" rows={stats.channels} />
             <TrackingLinks />
           </div>
+
+          <McpServer token={token} />
 
           <section className="panel wide">
             <h2>Visitors</h2>

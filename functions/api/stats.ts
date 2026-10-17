@@ -1,4 +1,5 @@
 import type { Env } from '../_lib/env'
+import { isAdmin } from '../_lib/auth'
 import { summarizeVitals, type VitalRow } from '../_lib/vitals'
 import { classifyChannel } from '../_lib/channel'
 
@@ -22,18 +23,10 @@ const dimensions: Record<string, string> = {
   screens: "COALESCE(screen, 'Unknown')",
 }
 
-const sameLength = (a: string, b: string) => {
-  if (a.length !== b.length) return false
-  let diff = 0
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  return diff === 0
-}
-
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
-  const token = request.headers.get('Authorization')?.replace(/^Bearer\s+/i, '') ?? ''
-  if (!env.ADMIN_TOKEN || !sameLength(token, env.ADMIN_TOKEN)) return json({ error: 'unauthorized' }, 401)
+  if (!isAdmin(request, env)) return json({ error: 'unauthorized' }, 401)
 
   const url = new URL(request.url)
   const days = Math.min(Math.max(Number(url.searchParams.get('days')) || 30, 1), 365)
