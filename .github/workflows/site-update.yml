@@ -81,7 +81,7 @@ jobs:
             - Run `npm run lint`, `npm test` and `npm run build` and make them pass.
             - Do not invent numbers or facts. If the instruction needs a fact you do not have, leave a `TODO(steven): question` comment in src/resume.ts and list the question in your final message.
             - Commit nothing yourself; the workflow commits and opens the pull request. End with a short summary of what changed and any open questions, written for Steven.
-          claude_args: '--max-turns 80 --allowedTools "Read,Edit,Write,MultiEdit,Glob,Grep,Bash(npm run *),Bash(npm test*),Bash(node scripts/*),Bash(npx vitest*),Bash(git diff*),Bash(git status*),Bash(ls*)"'
+          claude_args: '--max-turns 250 --allowedTools "Read,Edit,Write,MultiEdit,Glob,Grep,Bash(npm run *),Bash(npm test*),Bash(node scripts/*),Bash(npx vitest*),Bash(git diff*),Bash(git status*),Bash(ls*)"'
 
       - name: Check, commit and push
         id: commit
