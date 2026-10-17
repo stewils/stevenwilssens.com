@@ -3,9 +3,11 @@ name: Deploy
 on:
   push:
     # main deploys to production; other branches get a preview at
-    # https://<branch>.stevenwilssens.pages.dev
+    # https://<branch>.stevenwilssens.pages.dev. Every branch lives in this
+    # repository, so the push already covers each pull request; a pull_request
+    # trigger would only add a second run, and one that needs manual approval
+    # when the Site update workflow's bot opened the pull request.
     branches: ['**', '!dependabot/**']
-  pull_request:
   workflow_dispatch:
 
 concurrency:
