@@ -34,8 +34,8 @@ npm run build && npx wrangler pages dev
 | `src/admin/` | The `/admin` analytics dashboard (separate Vite entry, `admin.html`) |
 | `functions/api/collect.ts` | `POST /api/collect`: validates events, adds location/network/device, writes to D1 |
 | `functions/api/stats.ts` | `GET /api/stats?days=30&tz=<minutes>`: dashboard data, requires `Authorization: Bearer <ADMIN_TOKEN>` |
-| `functions/api/mcp.ts` | `GET /api/mcp`: the MCP links, dossier counts, recent questions, messages and résumé proposals for the dashboard (admin token) |
-| `functions/mcp.ts`, `functions/mcp/[[path]].ts` | `/mcp` and `/mcp/<owner key>`: the MCP server, implemented in `functions/_lib/mcp/` |
+| `functions/api/mcp.ts` | `GET /api/mcp`: the owner link, dossier counts and résumé proposals for the dashboard (admin token) |
+| `functions/mcp.ts`, `functions/mcp/[[path]].ts` | `/mcp/<owner key>`: the private MCP server, implemented in `functions/_lib/mcp/` |
 | `migrations/` | D1 schema migrations |
 | `public/` | Static files, including the resume PDF and the 1200×630 `og-image.png` |
 | `vite.config.ts` | Also generates one HTML file per route with its own metadata, plus `404.html`, `sitemap.xml`, and `robots.txt` |
@@ -51,14 +51,13 @@ The resume is exported from a resume builder. Replace `public/steven-wilssens-re
 
 ## MCP server
 
-`https://steven.wilssens.com/mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server (Streamable HTTP, stateless, JSON responses, no sign-in). A recruiter adds it to Claude (Settings → Connectors → Add custom connector) or Claude Code (`claude mcp add --transport http steven-wilssens https://steven.wilssens.com/mcp`) and asks anything about Steven's work. The answers come from two places:
+`/mcp/<MCP_OWNER_KEY>` is a private [Model Context Protocol](https://modelcontextprotocol.io) server (Streamable HTTP, stateless, JSON responses) for one person: Steven. The link is shown on `/admin`; without the key, `/mcp` is a 404. Added to Claude (Settings → Connectors → Add custom connector) or Claude Code (`claude mcp add --transport http my-career <link>`), it is a workspace for talking through his career that builds on what is already there:
 
-- `src/resume.ts` and `src/patents.ts`: the roles, honors, recommendations, patents and press, exactly as on the site.
-- The **dossier**: facts and stories Steven records in interview sessions, stored in the `dossier` table. Only entries marked `public` are served to recruiters.
+- **What is published**: `about_steven`, `read_site_page` (the Markdown copies of the site's pages that the build writes, including the Building wilssens.com write-up, read through the `ASSETS` binding), `get_role`, `get_recommendations`, `get_patents_and_press`, `get_resume` (the entries in `src/resume.ts`).
+- **The dossier** (`dossier` table): facts and stories Steven records, one per entry, with a role key, topic, visibility and tags. `interview_status` shows which roles and topics are still empty and suggests questions; `save_entry`, `update_entry`, `delete_entry`, `list_entries`, `search_dossier`, `export_dossier` manage it. Entries are private by default; `public` means a recruiter-facing assistant on the site may use them later (that assistant is not built yet; it will work like the help assistant on wilssens.com: a server-side Claude call with the public dossier as a cached system prompt, never this MCP).
+- **The résumé** (`resume_proposals` table): at the end of a session Claude compares the dossier with `get_resume` and calls `propose_resume_change` for each concrete edit (exact current text, proposed text, why). Steven approves or rejects in the conversation (`review_resume_proposal`); `/admin` and `list_resume_proposals` show what is approved or waiting. Approved changes are applied by hand to `src/resume.ts` and the PDF, then marked `applied`.
 
-The same URL with the owner key in the path, `/mcp/<MCP_OWNER_KEY>` (shown on `/admin`), unlocks the owner tools. Adding that link to Claude and asking it to interview you runs the interview: `interview_status` shows which roles and topics are still empty, `save_entry` stores each answer (private by default), and at the end of a session `get_resume` plus `propose_resume_change` turn the new material into concrete résumé edits that you approve or reject in the conversation (`review_resume_proposal`). Approved proposals are listed on `/admin` and by `list_resume_proposals`; apply them by hand to `src/resume.ts` and the PDF, then mark them `applied`.
-
-Every public tool call is logged in `dossier_questions` (tool, query, hit count, country, network; no IP), and `leave_message` stores notes from recruiters in `dossier_messages`. Both show on `/admin` and through the owner tool `recent_activity`. Public connections are limited to 120 calls and 5 messages an hour. A `GET /mcp` in a browser shows a short explanation page.
+The server's `instructions` (in `functions/_lib/mcp/tools.ts`) tell Claude how to run a session: read what exists before asking, one question at a time, save as it goes, third-person entries, visibility rules, then the résumé proposals.
 
 Local run: add `MCP_OWNER_KEY=<anything>` to `.dev.vars`, apply the migrations locally, then `npm run build && npx wrangler pages dev`. Tests: `functions/_lib/mcp/server.test.ts`.
 
@@ -81,7 +80,7 @@ Pages Function secrets (set with `npx wrangler pages secret put <NAME> --project
 |---|---|
 | `ADMIN_TOKEN` | Password for `/admin` and `/api/stats` |
 | `HASH_SALT` | Secret salt for the daily visitor hash |
-| `MCP_OWNER_KEY` | Unlocks the owner (interview) tools of the MCP server at `/mcp/<MCP_OWNER_KEY>`; shown on `/admin` |
+| `MCP_OWNER_KEY` | The key to the private MCP server at `/mcp/<MCP_OWNER_KEY>`; shown on `/admin` |
 
 Schema changes: add a numbered file to `migrations/`, then apply it to production **before** deploying code that uses it:
 

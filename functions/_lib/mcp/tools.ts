@@ -1,8 +1,10 @@
-// The MCP tools. Public tools answer a recruiter's assistant from the résumé data
-// and the public part of the dossier; owner tools (unlocked by MCP_OWNER_KEY) run
-// the interview that fills the dossier and read what recruiters asked.
+// The MCP tools: Steven's private workspace for talking through his career. They
+// read what is already published (the résumé data, the site's pages, patents,
+// recommendations), keep the dossier of facts and stories growing, and turn new
+// material into résumé proposals he approves or rejects.
 import { education, experiences, honors, languages, news, recommendationLinks, recommendations } from '../../../src/resume'
 import { grantedPatents, patentApplications } from '../../../src/patents'
+import { markdownPath, pageMeta, routes, type Page } from '../../../src/pageMeta'
 import type { DossierEntry, DossierStore, Proposal, ProposalStatus, Visibility } from './store'
 
 export const siteUrl = 'https://steven.wilssens.com'
@@ -14,6 +16,8 @@ export const resumeSections = ['headline', 'summary', 'skills', 'education']
 const proposalRoles = [...experiences.map((item) => item.key), ...resumeSections]
 export const roleTopics = ['scope', 'outcomes', 'decisions', 'challenges', 'lessons', 'people', 'skills', 'story', 'transition']
 export const generalTopics = ['philosophy', 'looking-for', 'strengths', 'now', 'background', 'story']
+// The site's pages as Markdown (written by scripts/prerender.mjs), plus everything in one file.
+export const sitePages: string[] = ['home', ...routes.filter((route) => route !== 'privacy'), 'llms-full']
 
 // The questions the interviewer falls back on for a topic nobody has covered yet.
 const roleQuestions: Record<string, string> = {
@@ -38,11 +42,9 @@ const generalQuestions: Record<string, string> = {
 
 export type ToolContext = {
   store: DossierStore
-  owner: boolean
   now: number
-  visitor: string
-  country: string | null
-  asOrg: string | null
+  // Reads one of the site's own static files (a Markdown page copy) by path, or null when it is not there.
+  fetchPage: (path: string) => Promise<string | null>
 }
 
 type Args = Record<string, unknown>
@@ -52,9 +54,7 @@ export type Tool = {
   name: string
   description: string
   inputSchema: JsonSchema
-  owner: boolean          // only listed and callable in owner mode
   readOnly: boolean
-  logQuery?: (args: Args) => string | null   // what to record about a public call
   run: (args: Args, ctx: ToolContext) => Promise<unknown>
 }
 
@@ -94,7 +94,7 @@ const visibilityArg = (args: Args, required: boolean): Visibility | null => {
   return value as Visibility | null
 }
 
-// "What did Steven ship for Xbox?" -> ['steven', 'ship', 'xbox']
+// "What did Steven ship for Xbox?" -> ['ship', 'xbox']
 const stopWords = new Set(['the', 'and', 'for', 'with', 'what', 'did', 'does', 'how', 'was', 'were', 'his', 'her', 'has', 'have', 'had', 'about', 'that', 'this', 'from', 'into', 'you', 'your', 'are', 'can', 'tell', 'steven', 'wilssens', 'microsoft', 'role', 'work', 'worked', 'experience', 'any', 'all', 'who', 'when', 'where', 'why', 'which'])
 export const searchTerms = (query: string) => {
   const words = query.toLowerCase().split(/[^\p{L}\p{N}+#.]+/u).map((word) => word.replace(/^[.]+|[.]+$/g, ''))
@@ -102,11 +102,8 @@ export const searchTerms = (query: string) => {
   return [...new Set(terms)].slice(0, 8)
 }
 
-const publicEntry = (entry: DossierEntry) => ({ id: entry.id, role: entry.role, topic: entry.topic, title: entry.title, body: entry.body, tags: entry.tags })
-const ownerEntry = (entry: DossierEntry) => ({ ...publicEntry(entry), visibility: entry.visibility, updated: new Date(entry.updatedAt).toISOString().slice(0, 10) })
-const shape = (entry: DossierEntry, owner: boolean) => owner ? ownerEntry(entry) : publicEntry(entry)
+const shapeEntry = (entry: DossierEntry) => ({ id: entry.id, role: entry.role, topic: entry.topic, title: entry.title, body: entry.body, visibility: entry.visibility, tags: entry.tags, updated: new Date(entry.updatedAt).toISOString().slice(0, 10) })
 const shapeProposal = (p: Proposal) => ({ id: p.id, status: p.status, role: p.role, kind: p.kind, currentText: p.currentText, proposedText: p.proposedText, rationale: p.rationale, basedOn: p.basedOn, decisionNote: p.decisionNote, updated: new Date(p.updatedAt).toISOString().slice(0, 10) })
-const visibleTo = (ctx: ToolContext) => ctx.owner ? {} : { visibility: 'public' as Visibility }
 
 const roleSummary = (key: string) => {
   if (key === generalRole) return { key, role: 'Across roles', company: null, dates: null, summary: 'Leadership philosophy, what Steven is looking for, strengths, current AI work, background.' }
@@ -114,18 +111,16 @@ const roleSummary = (key: string) => {
   return { key, role: item.role, company: item.company, dates: item.dates, location: item.location, summary: item.summary, highlights: item.points }
 }
 
-const notCovered = `Steven has not covered this in his dossier yet. Say so rather than guessing, and suggest contacting him at ${contact.email} or ${contact.linkedin}.`
-
 export const tools: Tool[] = [
+  // What is already there.
   {
     name: 'about_steven',
-    description: 'Start here. Who Steven Wilssens is, what he is looking for, how to contact him, and his career timeline with the role keys the other tools take.',
+    description: 'Start here: the headline, contact details, timeline with the role keys the other tools take, and how much of the dossier each role has.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    owner: false, readOnly: true,
+    readOnly: true,
     run: async (_args, ctx) => {
-      const counts = new Map<string, number>()
-      for (const entry of await ctx.store.list(visibleTo(ctx))) counts.set(entry.role, (counts.get(entry.role) ?? 0) + 1)
-      const general = await ctx.store.list({ role: generalRole, ...visibleTo(ctx) })
+      const entries = await ctx.store.list({})
+      const count = (key: string) => entries.filter((entry) => entry.role === key).length
       return {
         name: 'Steven Wilssens',
         headline: 'Principal product leader for data and AI. Most recently Principal Group Product Manager, Windows & Devices Data, at Microsoft: the data, experimentation and ML products behind decisions across a billion+ Windows devices.',
@@ -135,76 +130,75 @@ export const tools: Tool[] = [
         education: `${education.degree}, ${education.school} (${education.dates})`,
         languages,
         honors: honors.map(([title, issued]) => `${title} (${issued})`),
-        roles: roleKeys.map((key) => ({ ...roleSummary(key), dossierEntries: counts.get(key) ?? 0 })),
-        general: general.map((entry) => shape(entry, ctx.owner)),
-        howToUse: 'get_role for everything on one role, search_experience for a specific question, get_recommendations for what colleagues say, get_patents_and_press for public proof of work, leave_message to reach Steven.',
+        roles: roleKeys.map((key) => ({ ...roleSummary(key), dossierEntries: count(key) })),
+        sitePages,
+        dossier: { entries: entries.length, public: entries.filter((entry) => entry.visibility === 'public').length },
       }
     },
   },
   {
-    name: 'get_role',
-    description: 'Everything about one role: the résumé entry plus every dossier entry Steven has recorded for it (scope, outcomes, decisions, lessons, stories).',
-    inputSchema: { type: 'object', properties: { role: { type: 'string', description: `Role key. One of: ${roleKeys.join(', ')}`, enum: roleKeys } }, required: ['role'], additionalProperties: false },
-    owner: false, readOnly: true,
-    logQuery: (args) => str(args, 'role', 60),
+    name: 'read_site_page',
+    description: 'Read one of the published pages of steven.wilssens.com as Markdown: home, about, experience, recommendations, patents, honors, news, projects, building-wilssens (the write-up on building wilssens.com), or llms-full for every page in one go. What is here, Steven has already said publicly; build on it rather than asking again.',
+    inputSchema: { type: 'object', properties: { page: { type: 'string', enum: sitePages } }, required: ['page'], additionalProperties: false },
+    readOnly: true,
     run: async (args, ctx) => {
-      const role = roleArg(args, true)!
-      const entries = await ctx.store.list({ role, ...visibleTo(ctx) })
-      return { ...roleSummary(role), entries: entries.map((entry) => shape(entry, ctx.owner)), note: entries.length ? undefined : notCovered }
+      const page = str(args, 'page', 40, true)!
+      if (!sitePages.includes(page)) throw new ToolError(`unknown page "${page}". Use one of: ${sitePages.join(', ')}`)
+      const path = page === 'llms-full' ? '/llms-full.txt' : markdownPath(page as Page)
+      const text = await ctx.fetchPage(path)
+      if (text === null) throw new ToolError(`${path} is not available right now`)
+      return text
     },
   },
   {
-    name: 'search_experience',
-    description: 'Answer a specific question about Steven\'s work from his dossier, in his own words. Returns the best matching entries. If nothing matches, say he has not covered it and offer his email.',
-    inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'The question or keywords, e.g. "experimentation platform team size" or "why did he leave Azure DevOps"' }, role: { type: 'string', description: 'Optional role key to narrow the search', enum: roleKeys } }, required: ['query'], additionalProperties: false },
-    owner: false, readOnly: true,
-    logQuery: (args) => str(args, 'query', 300),
+    name: 'get_role',
+    description: 'Everything on one role: the résumé entry plus every dossier entry recorded for it (scope, outcomes, decisions, lessons, stories). Read it before asking about that role.',
+    inputSchema: { type: 'object', properties: { role: { type: 'string', description: `Role key. One of: ${roleKeys.join(', ')}`, enum: roleKeys } }, required: ['role'], additionalProperties: false },
+    readOnly: true,
+    run: async (args, ctx) => {
+      const role = roleArg(args, true)!
+      const entries = await ctx.store.list({ role })
+      return { ...roleSummary(role), entries: entries.map(shapeEntry) }
+    },
+  },
+  {
+    name: 'search_dossier',
+    description: 'Find dossier entries by keywords or a question, across all roles or within one. Use it to check whether something has been recorded before asking about it.',
+    inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'Keywords or a question, e.g. "experimentation team size" or "why he left Azure DevOps"' }, role: { type: 'string', description: 'Optional role key to narrow the search', enum: roleKeys } }, required: ['query'], additionalProperties: false },
+    readOnly: true,
     run: async (args, ctx) => {
       const query = str(args, 'query', 500, true)!
       const role = roleArg(args, false)
       const terms = searchTerms(query)
-      const entries = await ctx.store.search(terms, { ...(role ? { role } : {}), ...visibleTo(ctx) }, 12)
-      return { query, matchedTerms: terms, results: entries.map((entry) => shape(entry, ctx.owner)), note: entries.length ? undefined : notCovered }
+      const entries = await ctx.store.search(terms, role ? { role } : {}, 12)
+      return { query, matchedTerms: terms, results: entries.map(shapeEntry) }
     },
   },
   {
     name: 'get_recommendations',
-    description: 'What colleagues, reports and partners wrote about Steven on LinkedIn: eight full recommendations with the author\'s role.',
+    description: 'The eight LinkedIn recommendations on the site, in full, with the author\'s role: what colleagues, reports and partners say about Steven.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    owner: false, readOnly: true,
+    readOnly: true,
     run: async () => ({ recommendations: recommendations.map(([name, title, text]) => ({ name, title, linkedin: recommendationLinks[name], text })) }),
   },
   {
     name: 'get_patents_and_press',
-    description: 'Public proof of work: Steven\'s granted US patents and published applications (spatial audio, streaming, device telemetry), and press coverage of his spatial audio work.',
+    description: 'Steven\'s granted US patents and published applications (spatial audio, streaming, device telemetry), and the press coverage of his spatial audio work.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    owner: false, readOnly: true,
+    readOnly: true,
     run: async () => ({
       grantedPatents: grantedPatents.map((item) => ({ title: item.title, summary: item.summary, numbers: item.records.map((record) => `US ${record.number} (${record.date})`) })),
       publishedApplications: patentApplications.map((item) => ({ title: item.title, summary: item.summary, numbers: item.records.map((record) => `US ${record.number} (${record.date})`) })),
       press: news.map((item) => ({ title: item.title, publication: item.publication, url: item.url, summary: item.summary })),
     }),
   },
-  {
-    name: 'leave_message',
-    description: 'Leave a message for Steven: a role to discuss, a question he has not covered, or contact details. He reads these himself. Ask the person first; never invent their details.',
-    inputSchema: { type: 'object', properties: { message: { type: 'string', description: 'The message (up to 2000 characters)' }, name: { type: 'string' }, company: { type: 'string' }, contact: { type: 'string', description: 'Email, phone or LinkedIn URL to reply to' } }, required: ['message'], additionalProperties: false },
-    owner: false, readOnly: false,
-    logQuery: (args) => str(args, 'message', 300),
-    run: async (args, ctx) => {
-      const message = str(args, 'message', 2000, true)!
-      if (await ctx.store.countMessages(ctx.visitor, ctx.now - 3_600_000) >= 5) throw new ToolError('Too many messages from this connection in the last hour. Please email Steven directly instead.')
-      const id = await ctx.store.addMessage({ ts: ctx.now, name: str(args, 'name', 120), company: str(args, 'company', 120), contact: str(args, 'contact', 200), message, country: ctx.country, asOrg: ctx.asOrg })
-      return { saved: true, id, note: `Steven will see this in his dashboard. For anything urgent, email ${contact.email}.` }
-    },
-  },
 
-  // Owner tools: the interview.
+  // The dossier.
   {
     name: 'interview_status',
-    description: 'Owner only. How well each role is covered in the dossier, which topics are still empty, and the suggested next questions. Call this first in an interview session.',
+    description: 'How well each role is covered in the dossier, which topics are still empty, and suggested next questions. Call it at the start of an interview session.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    owner: true, readOnly: true,
+    readOnly: true,
     run: async (_args, ctx) => {
       const entries = await ctx.store.list({})
       const roles = roleKeys.map((key) => {
@@ -229,7 +223,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'save_entry',
-    description: 'Owner only. Save one fact or story from the interview. Body: compact third-person prose ("Steven ...") keeping his numbers and phrasing; a short first-person quote is fine. One entry per fact. Default visibility is private.',
+    description: 'Save one fact or story. Body: compact third-person prose ("Steven ...") keeping his numbers and phrasing; a short first-person quote is fine. One entry per fact. Default visibility is private; public means the recruiter-facing assistant on his site may use it later.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -237,28 +231,28 @@ export const tools: Tool[] = [
         topic: { type: 'string', description: `Slug. Roles: ${roleTopics.join(', ')}. General: ${generalTopics.join(', ')}. Others allowed.` },
         title: { type: 'string', description: 'Résumé-style headline, under 120 characters' },
         body: { type: 'string', description: 'The fact or story, usually 1 to 6 sentences' },
-        visibility: { type: 'string', enum: ['public', 'private'], description: 'public = recruiters\' assistants may read it. Default private.' },
+        visibility: { type: 'string', enum: ['public', 'private'], description: 'Default private' },
         tags: { type: 'string', description: 'Comma-separated keywords; include "resume" for résumé-grade facts' },
       },
       required: ['role', 'topic', 'title', 'body'],
       additionalProperties: false,
     },
-    owner: true, readOnly: false,
+    readOnly: false,
     run: async (args, ctx) => {
       const entry = await ctx.store.insert({ role: roleArg(args, true)!, topic: topicArg(args, true)!, title: str(args, 'title', 160, true)!, body: str(args, 'body', 6000, true)!, visibility: visibilityArg(args, false) ?? 'private', tags: str(args, 'tags', 300) }, ctx.now)
-      return { saved: ownerEntry(entry) }
+      return { saved: shapeEntry(entry) }
     },
   },
   {
     name: 'update_entry',
-    description: 'Owner only. Change an entry: fix wording, move it to another role or topic, or make it public or private. Only the fields given change.',
+    description: 'Change an entry: fix wording, move it to another role or topic, or make it public or private. Only the fields given change.',
     inputSchema: {
       type: 'object',
       properties: { id: { type: 'integer' }, role: { type: 'string', enum: roleKeys }, topic: { type: 'string' }, title: { type: 'string' }, body: { type: 'string' }, visibility: { type: 'string', enum: ['public', 'private'] }, tags: { type: 'string' } },
       required: ['id'],
       additionalProperties: false,
     },
-    owner: true, readOnly: false,
+    readOnly: false,
     run: async (args, ctx) => {
       const id = int(args, 'id', 0, 1, Number.MAX_SAFE_INTEGER)
       const patch: Record<string, unknown> = {}
@@ -271,14 +265,14 @@ export const tools: Tool[] = [
       if (!Object.keys(patch).length) throw new ToolError('nothing to change')
       const entry = await ctx.store.update(id, patch, ctx.now)
       if (!entry) throw new ToolError(`no entry with id ${id}`)
-      return { updated: ownerEntry(entry) }
+      return { updated: shapeEntry(entry) }
     },
   },
   {
     name: 'delete_entry',
-    description: 'Owner only. Delete an entry for good.',
+    description: 'Delete an entry for good.',
     inputSchema: { type: 'object', properties: { id: { type: 'integer' } }, required: ['id'], additionalProperties: false },
-    owner: true, readOnly: false,
+    readOnly: false,
     run: async (args, ctx) => {
       const id = int(args, 'id', 0, 1, Number.MAX_SAFE_INTEGER)
       if (!await ctx.store.remove(id)) throw new ToolError(`no entry with id ${id}`)
@@ -287,20 +281,20 @@ export const tools: Tool[] = [
   },
   {
     name: 'list_entries',
-    description: 'Owner only. List dossier entries, including private ones, optionally filtered by role, topic or visibility.',
+    description: 'List dossier entries, optionally filtered by role, topic or visibility.',
     inputSchema: { type: 'object', properties: { role: { type: 'string', enum: roleKeys }, topic: { type: 'string' }, visibility: { type: 'string', enum: ['public', 'private'] } }, additionalProperties: false },
-    owner: true, readOnly: true,
+    readOnly: true,
     run: async (args, ctx) => {
       const filter = { role: roleArg(args, false) ?? undefined, topic: topicArg(args, false) ?? undefined, visibility: visibilityArg(args, false) ?? undefined }
       const entries = await ctx.store.list(filter)
-      return { count: entries.length, entries: entries.map(ownerEntry) }
+      return { count: entries.length, entries: entries.map(shapeEntry) }
     },
   },
   {
     name: 'export_dossier',
-    description: 'Owner only. The whole dossier as Markdown grouped by role and topic, for résumé writing and interview prep. visibility "public" exports only what recruiters can see.',
+    description: 'The whole dossier as Markdown grouped by role and topic, for résumé writing and interview prep. visibility "public" exports only what a recruiter-facing assistant may use.',
     inputSchema: { type: 'object', properties: { visibility: { type: 'string', enum: ['public', 'private'], description: 'Omit for everything' } }, additionalProperties: false },
-    owner: true, readOnly: true,
+    readOnly: true,
     run: async (args, ctx) => {
       const visibility = visibilityArg(args, false)
       const entries = await ctx.store.list(visibility ? { visibility } : {})
@@ -318,29 +312,13 @@ export const tools: Tool[] = [
       return lines.join('\n')
     },
   },
-  {
-    name: 'recent_activity',
-    description: 'Owner only. What recruiters\' assistants asked through the public server and the messages they left, so gaps in the dossier show up.',
-    inputSchema: { type: 'object', properties: { days: { type: 'integer', description: 'Look back this many days (default 30)' } }, additionalProperties: false },
-    owner: true, readOnly: true,
-    run: async (args, ctx) => {
-      const since = ctx.now - int(args, 'days', 30, 1, 365) * 86_400_000
-      const [questions, messages] = await Promise.all([ctx.store.recentQuestions(since, 200), ctx.store.recentMessages(since, 100)])
-      const when = (ts: number) => new Date(ts).toISOString().slice(0, 16).replace('T', ' ')
-      return {
-        questions: questions.map((q) => ({ when: when(q.ts), tool: q.tool, query: q.query, role: q.role, hits: q.hits, from: [q.asOrg, q.country].filter(Boolean).join(', ') || null })),
-        unanswered: questions.filter((q) => q.tool === 'search_experience' && q.hits === 0).map((q) => q.query),
-        messages: messages.map((m) => ({ when: when(m.ts), name: m.name, company: m.company, contact: m.contact, message: m.message, from: [m.asOrg, m.country].filter(Boolean).join(', ') || null })),
-      }
-    },
-  },
 
-  // Owner tools: the résumé.
+  // The résumé.
   {
     name: 'get_resume',
-    description: 'Owner only. The résumé as it stands today: the role entries (summary and bullet points), headline, education and honors, exactly as published on steven.wilssens.com/experience. Compare against the dossier before proposing changes.',
+    description: 'The résumé as it stands today: the role entries (summary and bullet points), headline, education and honors, exactly as published on steven.wilssens.com/experience. Compare against the dossier before proposing changes.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    owner: true, readOnly: true,
+    readOnly: true,
     run: async () => ({
       headline: 'Principal product leader for data and AI.',
       summary: 'Most recently I led Windows & Devices Data product management at Microsoft: the data, experimentation and ML products behind decisions across a billion+ Windows devices. Now building in AI while choosing my next leadership role.',
@@ -349,12 +327,13 @@ export const tools: Tool[] = [
       languages,
       honors: honors.map(([title, issued]) => `${title} (${issued})`),
       pdf: contact.resumePdf,
+      pages: Object.fromEntries(sitePages.filter((page) => page !== 'llms-full').map((page) => [page, pageMeta[page as Page].description])),
       note: 'The PDF is exported from a résumé builder and mirrors these entries. Propose changes with propose_resume_change; Steven applies approved ones to src/resume.ts and the PDF himself.',
     }),
   },
   {
     name: 'propose_resume_change',
-    description: 'Owner only. Propose one concrete résumé edit for Steven to approve or reject: replace a bullet or summary with stronger wording, add a bullet, or remove one. Quote the current text exactly and give the full proposed text. One proposal per change.',
+    description: 'Propose one concrete résumé edit for Steven to approve or reject: replace a bullet or summary with stronger wording, add a bullet, or remove one. Quote the current text exactly and give the full proposed text. One proposal per change.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -368,7 +347,7 @@ export const tools: Tool[] = [
       required: ['role', 'kind', 'rationale'],
       additionalProperties: false,
     },
-    owner: true, readOnly: false,
+    readOnly: false,
     run: async (args, ctx) => {
       const role = str(args, 'role', 60, true)!
       if (!proposalRoles.includes(role)) throw new ToolError(`unknown role "${role}". Use one of: ${proposalRoles.join(', ')}`)
@@ -382,9 +361,9 @@ export const tools: Tool[] = [
   },
   {
     name: 'list_resume_proposals',
-    description: 'Owner only. Résumé proposals and their status: proposed (awaiting Steven), approved (to be applied to the site and PDF), rejected, applied.',
+    description: 'Résumé proposals and their status: proposed (awaiting Steven), approved (to be applied to the site and PDF), rejected, applied.',
     inputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['proposed', 'approved', 'rejected', 'applied'], description: 'Omit for all' } }, additionalProperties: false },
-    owner: true, readOnly: true,
+    readOnly: true,
     run: async (args, ctx) => {
       const status = str(args, 'status', 10)?.toLowerCase() as ProposalStatus | undefined
       if (status && !['proposed', 'approved', 'rejected', 'applied'].includes(status)) throw new ToolError('status must be proposed, approved, rejected or applied')
@@ -394,9 +373,9 @@ export const tools: Tool[] = [
   },
   {
     name: 'review_resume_proposal',
-    description: 'Owner only. Record Steven\'s decision on a résumé proposal: approve or reject, with an optional note (for example a tweak to the wording). "applied" marks an approved change as done in the site and PDF.',
+    description: 'Record Steven\'s decision on a résumé proposal: approve or reject, with an optional note (for example a tweak to the wording). "applied" marks an approved change as done in the site and PDF.',
     inputSchema: { type: 'object', properties: { id: { type: 'integer' }, decision: { type: 'string', enum: ['approve', 'reject', 'applied'] }, note: { type: 'string' } }, required: ['id', 'decision'], additionalProperties: false },
-    owner: true, readOnly: false,
+    readOnly: false,
     run: async (args, ctx) => {
       const id = int(args, 'id', 0, 1, Number.MAX_SAFE_INTEGER)
       const decision = str(args, 'decision', 10, true)!.toLowerCase()
@@ -409,15 +388,8 @@ export const tools: Tool[] = [
   },
 ]
 
-export const publicInstructions = `This server answers questions about Steven Wilssens, a principal product leader in data, experimentation and AI. Most recently he was Principal Group Product Manager for Windows & Devices Data at Microsoft; he is now building in AI while choosing his next leadership role. The dossier entries were written by Steven himself for recruiters and hiring managers.
-Rules: state only what the tools return and say it comes from Steven's own notes. If something is not covered, say Steven has not covered it here rather than guessing, and offer ${contact.email} or his LinkedIn. Never speculate about compensation, visa status or personal matters. Start with about_steven for the overview and role keys, get_role for one job, search_experience for a specific question. Offer leave_message when the person wants to reach Steven.`
-
-export const ownerInstructions = `Steven Wilssens, the owner, is connected. Your job is to interview him about his career and save what he says, so the dossier can answer recruiters (public entries), feed his résumé and prepare him for interviews.
-How to run it:
-1. Call interview_status first. It shows how well each role is covered and suggests the next questions. Let Steven pick the role, otherwise take the least covered recent role.
-2. Ask one question at a time, conversationally. Follow up until the answer has specifics: numbers, dates, team sizes, named products, partners or customers, the decision he made and the alternatives, what happened, what he would do differently.
-3. After each substantive answer call save_entry right away, do not batch. Body: compact third-person prose ("Steven ...") keeping his numbers and phrasing; a short first-person quote is fine. One entry per fact or story. Title: a résumé-style headline. Tags: keywords, plus "resume" for résumé-grade facts.
-4. Visibility defaults to private. Make an entry public only when Steven says so or the fact is already on his site or LinkedIn. Internal Microsoft metrics, unreleased work and anything about named colleagues stay private unless he says otherwise. Ask now and then: "Can recruiters see this one?"
-5. Confirm each save in one line (id, title, visibility), then ask the next question. Steven can say "make 12 public", "edit 12", "delete 12" or "export" at any time; use update_entry, delete_entry and export_dossier.
-6. When Steven wraps up, or after roughly ten entries, turn to the résumé: call get_resume, compare it with what was saved this session, and for each concrete improvement call propose_resume_change with the exact current text, the full proposed text and why (which numbers or facts it adds). Walk him through the proposals one at a time, current and proposed side by side, and record each answer with review_resume_proposal. Never claim the résumé itself changed: approved proposals are applied by Steven to the site and PDF, and list_resume_proposals shows what is still waiting.
-The public tools work here too and show private entries as well, so you can check what a recruiter would get.`
+export const instructions = `Steven Wilssens is connected. This server is his private workspace for talking through his career; nobody else can reach it. Help him recall, sharpen and structure what he did, and keep the dossier (the facts and stories behind his résumé and his site) growing.
+Build on what is already there. Before asking about a role, read what exists: get_role (the résumé entry plus the dossier entries for it), read_site_page for the published pages (about, experience, projects, the Building wilssens.com write-up), get_recommendations and get_patents_and_press for what others have said and what is on record, search_dossier to check whether a fact was recorded before. Do not ask him what the site already answers; ask what it does not.
+A session can be: an interview (call interview_status: it shows the gaps and suggests questions; ask one question at a time and follow up for numbers, dates, team sizes, named products and partners, the decision and its alternatives, what happened, what he would do differently); thinking out loud about one role or theme; preparing for a specific interview or job description; or drafting résumé or LinkedIn wording.
+Saving: after each substantive answer call save_entry right away, do not batch. Body: compact third-person prose ("Steven ...") keeping his numbers and phrasing; a short first-person quote is fine. One entry per fact or story. Title: a résumé-style headline. Tags: keywords, plus "resume" for résumé-grade facts. Visibility defaults to private; public means a recruiter-facing assistant on his site may use the entry later. Make an entry public only when Steven says so or the fact is already on his site or LinkedIn; internal Microsoft metrics, unreleased work and anything about named colleagues stay private unless he says otherwise. Confirm each save in one line (id, title, visibility). He can say "make 12 public", "edit 12", "delete 12" or "export" at any time.
+Résumé: when he wraps up, or after roughly ten entries, call get_resume, compare it with what was saved, and for each concrete improvement call propose_resume_change with the exact current text, the full proposed text and why (which numbers or facts it adds). Walk him through the proposals one at a time, current and proposed side by side, and record each decision with review_resume_proposal. Never claim the résumé itself changed: approved proposals are applied by Steven to the site and PDF, and list_resume_proposals shows what is still waiting.`

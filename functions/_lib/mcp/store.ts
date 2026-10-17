@@ -18,12 +18,9 @@ export type DossierEntry = {
 export type EntryInput = Omit<DossierEntry, 'id' | 'createdAt' | 'updatedAt'>
 export type EntryFilter = { role?: string; topic?: string; visibility?: Visibility }
 
-export type Question = { ts: number; visitor: string | null; tool: string; query: string | null; role: string | null; hits: number | null; country: string | null; asOrg: string | null }
 export type ProposalStatus = 'proposed' | 'approved' | 'rejected' | 'applied'
 export type Proposal = { id: number; createdAt: number; updatedAt: number; role: string; kind: 'replace' | 'add' | 'remove'; currentText: string | null; proposedText: string | null; rationale: string; basedOn: string | null; status: ProposalStatus; decisionNote: string | null }
 export type ProposalInput = Omit<Proposal, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'decisionNote'>
-export type Message = { id: number; ts: number; name: string | null; company: string | null; contact: string | null; message: string; country: string | null; asOrg: string | null }
-
 export interface DossierStore {
   list(filter: EntryFilter): Promise<DossierEntry[]>
   get(id: number): Promise<DossierEntry | null>
@@ -32,12 +29,6 @@ export interface DossierStore {
   remove(id: number): Promise<boolean>
   // Ranks entries by how many of the terms appear in them (title matches count double).
   search(terms: string[], filter: EntryFilter, limit: number): Promise<DossierEntry[]>
-  logQuestion(question: Question): Promise<void>
-  countQuestions(visitor: string, since: number): Promise<number>
-  recentQuestions(since: number, limit: number): Promise<Question[]>
-  addMessage(message: Omit<Message, 'id'>): Promise<number>
-  countMessages(visitor: string, since: number): Promise<number>
-  recentMessages(since: number, limit: number): Promise<Message[]>
   listProposals(status?: ProposalStatus): Promise<Proposal[]>
   insertProposal(input: ProposalInput, now: number): Promise<Proposal>
   decideProposal(id: number, status: ProposalStatus, note: string | null, now: number): Promise<Proposal | null>
@@ -104,37 +95,6 @@ export class D1Store implements DossierStore {
     return results.map(fromRow)
   }
 
-  async logQuestion(q: Question) {
-    await this.db.prepare('INSERT INTO dossier_questions (ts, visitor, tool, query, role, hits, country, as_org) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(q.ts, q.visitor, q.tool, q.query, q.role, q.hits, q.country, q.asOrg).run()
-  }
-
-  async countQuestions(visitor: string, since: number) {
-    const row = await this.db.prepare('SELECT COUNT(*) AS n FROM dossier_questions WHERE visitor = ? AND ts >= ?').bind(visitor, since).first<{ n: number }>()
-    return row?.n ?? 0
-  }
-
-  async recentQuestions(since: number, limit: number) {
-    const { results } = await this.db.prepare('SELECT ts, visitor, tool, query, role, hits, country, as_org AS asOrg FROM dossier_questions WHERE ts >= ? ORDER BY ts DESC LIMIT ?').bind(since, limit).all<Question>()
-    return results
-  }
-
-  async addMessage(m: Omit<Message, 'id'>) {
-    const row = await this.db.prepare('INSERT INTO dossier_messages (ts, name, company, contact, message, country, as_org) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id')
-      .bind(m.ts, m.name, m.company, m.contact, m.message, m.country, m.asOrg).first<{ id: number }>()
-    return row!.id
-  }
-
-  async countMessages(visitor: string, since: number) {
-    const row = await this.db.prepare("SELECT COUNT(*) AS n FROM dossier_questions WHERE visitor = ? AND tool = 'leave_message' AND ts >= ?").bind(visitor, since).first<{ n: number }>()
-    return row?.n ?? 0
-  }
-
-  async recentMessages(since: number, limit: number) {
-    const { results } = await this.db.prepare('SELECT id, ts, name, company, contact, message, country, as_org AS asOrg FROM dossier_messages WHERE ts >= ? ORDER BY ts DESC LIMIT ?').bind(since, limit).all<Message>()
-    return results
-  }
-
   async listProposals(status?: ProposalStatus) {
     const { results } = status
       ? await this.db.prepare('SELECT * FROM resume_proposals WHERE status = ? ORDER BY id').bind(status).all<ProposalRow>()
@@ -156,8 +116,6 @@ export class D1Store implements DossierStore {
 
 export class MemoryStore implements DossierStore {
   entries: DossierEntry[] = []
-  questions: Question[] = []
-  messages: Message[] = []
   proposals: Proposal[] = []
   private nextId = 1
 
@@ -200,12 +158,6 @@ export class MemoryStore implements DossierStore {
     return scored.sort((a, b) => b.score - a.score || b.entry.updatedAt - a.entry.updatedAt).slice(0, limit).map((item) => item.entry)
   }
 
-  async logQuestion(question: Question) { this.questions.push(question) }
-  async countQuestions(visitor: string, since: number) { return this.questions.filter((q) => q.visitor === visitor && q.ts >= since).length }
-  async recentQuestions(since: number, limit: number) { return this.questions.filter((q) => q.ts >= since).sort((a, b) => b.ts - a.ts).slice(0, limit) }
-  async addMessage(message: Omit<Message, 'id'>) { const id = this.messages.length + 1; this.messages.push({ id, ...message }); return id }
-  async countMessages(visitor: string, since: number) { return this.questions.filter((q) => q.visitor === visitor && q.tool === 'leave_message' && q.ts >= since).length }
-  async recentMessages(since: number, limit: number) { return this.messages.filter((m) => m.ts >= since).sort((a, b) => b.ts - a.ts).slice(0, limit) }
   async listProposals(status?: ProposalStatus) { return this.proposals.filter((p) => !status || p.status === status) }
   async insertProposal(input: ProposalInput, now: number) { const proposal: Proposal = { id: this.proposals.length + 1, createdAt: now, updatedAt: now, status: 'proposed', decisionNote: null, ...input }; this.proposals.push(proposal); return proposal }
   async decideProposal(id: number, status: ProposalStatus, note: string | null, now: number) {
