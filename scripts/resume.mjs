@@ -57,7 +57,7 @@ export const resumeHtml = ({ olderBullets = 2, compact = false } = layouts[0]) =
 :root { --ink: #172121; --muted: #5b6765; --green: #096b50; --line: #d9e1dc; --soft: #eef4f0; }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
-body { font-family: 'Manrope', 'Segoe UI', sans-serif; color: var(--ink); font-size: 9.6pt; line-height: 1.36; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { font-family: 'Manrope', 'Segoe UI', sans-serif; color: var(--ink); font-size: 9.2pt; line-height: 1.28; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 a { color: inherit; text-decoration: none; }
 p, ul { margin: 0; }
 .mono { font-family: 'DM Mono', monospace; font-size: 7.4pt; letter-spacing: 1.1px; text-transform: uppercase; color: var(--green); }
@@ -66,9 +66,9 @@ header h1 { margin: 0 0 3px; font-size: 25pt; font-weight: 800; letter-spacing: 
 header .headline { font-size: 11.6pt; font-weight: 700; color: var(--green); letter-spacing: -0.2pt; }
 header .contact { text-align: right; font-size: 8.6pt; line-height: 1.55; color: var(--muted); }
 header .contact strong { color: var(--ink); font-weight: 600; }
-.facts { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 16px; padding: 9px 0 10px; border-bottom: 1px solid var(--line); font-size: 9.2pt; line-height: 1.35; }
+.facts { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 16px; padding: 9px 0 4px; font-size: 9.2pt; line-height: 1.35; }
 .facts .mono { display: block; margin-bottom: 2px; }
-section { margin-top: 10px; break-inside: auto; }
+section { margin-top: 8px; break-inside: auto; }
 h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; font-family: 'DM Mono', monospace; font-size: 7.6pt; font-weight: 500; letter-spacing: 1.4px; text-transform: uppercase; color: var(--green); }
 h2::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .summary-text { font-size: 9.9pt; line-height: 1.45; }
@@ -78,14 +78,14 @@ h2::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .impact span { display: block; margin-top: 2px; font-size: 8pt; line-height: 1.3; color: var(--muted); }
 .skills { display: flex; flex-wrap: wrap; gap: 4px 5px; }
 .skills span { padding: 2px 7px; border: 1px solid var(--line); border-radius: 999px; font-size: 8.3pt; font-weight: 600; }
-.role { display: grid; grid-template-columns: 1.3in 1fr; gap: 12px; padding: 6px 0 7px; border-top: 1px solid var(--line); break-inside: avoid; }
+.role { display: grid; grid-template-columns: 1.3in 1fr; gap: 12px; padding: 5px 0 5px; border-top: 1px solid var(--line); break-inside: avoid; }
 .role:first-of-type { border-top: 0; padding-top: 0; }
 .when { font-family: 'DM Mono', monospace; font-size: 7.6pt; color: var(--muted); padding-top: 2px; white-space: nowrap; }
 h3 { margin: 0; font-size: 10.8pt; font-weight: 700; letter-spacing: -0.2pt; line-height: 1.25; }
 .where { margin: 1px 0 4px; font-size: 8.8pt; color: var(--muted); }
-.summary { font-size: 9.4pt; }
+.summary { font-size: 9.1pt; }
 .role ul { margin: 3px 0 0; padding-left: 13px; }
-.role li { margin: 1px 0; padding-left: 2px; font-size: 9pt; line-height: 1.3; }
+.role li { margin: 0.5px 0; padding-left: 2px; font-size: 8.8pt; line-height: 1.27; }
 .early { display: grid; gap: 5px; }
 .early div { display: grid; grid-template-columns: 1.3in 1fr; gap: 12px; font-size: 9.3pt; line-height: 1.35; break-inside: avoid; }
 .early strong { font-weight: 700; }
