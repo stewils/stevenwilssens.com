@@ -4,7 +4,12 @@
 // PDF must match src/resume.ts, so a content change always comes with a new resume)
 // and the build (dist/resume-report.json, which the MCP server's check_resume reads).
 //
-//   node scripts/resume-check.mjs [path/to/resume.pdf] [--json path/to/report.json]
+//   node scripts/resume-check.mjs [path/to/resume.pdf] [--json path/to/report.json] [--baseline report.json|https://…/resume-report.json]
+//
+// --baseline (or the RESUME_BASELINE environment variable) compares the score with an
+// earlier report: what main scored before a change, or the live site's
+// /resume-report.json. The workflows use it to warn when an update would lower the
+// score recruiters see today; the comparison is written into the report (baseline).
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
@@ -115,6 +120,35 @@ export async function analyzeResume(path = resumePath, { now = new Date() } = {}
   return { path, exists: true, score: Math.max(0, 100 - errors * 25 - warnings * 5), errors, warnings, pages: pdf.pages.length, bytes: pdf.bytes, title: pdf.title, matchesSite: errors === 0, findings, questions: dataQuestions(now), checkedAt: now.toISOString() }
 }
 
+// The score a change is measured against: a report written earlier (a file) or the
+// live site's /resume-report.json (a URL). Returns null, never throws, when it cannot
+// be read: a missing baseline must not fail a build.
+export async function readBaseline(source) {
+  if (!source) return null
+  try {
+    const text = /^https?:\/\//.test(source) ? await (await fetch(source, { signal: AbortSignal.timeout(15_000) })).text() : readFileSync(resolve(source), 'utf8')
+    const report = JSON.parse(text)
+    return typeof report.score === 'number' ? { source, score: report.score, errors: report.errors ?? null, warnings: report.warnings ?? null, checkedAt: report.checkedAt ?? null } : null
+  } catch {
+    return null
+  }
+}
+
+// How the new score relates to the baseline; `lower` is the warning the workflows act on.
+export const compareScores = (report, baseline) => {
+  if (!baseline) return null
+  const change = report.score - baseline.score
+  return { ...baseline, change, lower: change < 0, verdict: change < 0 ? 'lower' : change > 0 ? 'higher' : 'unchanged' }
+}
+
+export const formatComparison = (report) => {
+  const b = report.baseline
+  if (!b) return `Score ${report.score}/100; no baseline to compare with.`
+  const from = /^https?:\/\//.test(b.source) ? 'the live site' : b.source
+  if (b.lower) return `Score ${b.score} → ${report.score}: LOWER than ${from}. Fix the findings above before this goes live, or accept the trade-off knowingly.`
+  return `Score ${b.score} → ${report.score}: ${b.verdict === 'higher' ? 'higher than' : 'the same as'} ${from}.`
+}
+
 export const formatReport = (report) => [
   `${report.path}: score ${report.score}/100${report.exists ? `, ${report.pages} page${report.pages === 1 ? '' : 's'}, ${(report.bytes / 1024).toFixed(0)} KB, ${report.errors} error${report.errors === 1 ? '' : 's'}, ${report.warnings} warning${report.warnings === 1 ? '' : 's'}` : ''}`,
   ...report.findings.map((f) => `  [${f.severity}] ${f.message}`),
@@ -123,10 +157,20 @@ export const formatReport = (report) => [
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const args = process.argv.slice(2)
-  const jsonIndex = args.indexOf('--json')
-  const jsonPath = jsonIndex >= 0 ? args.splice(jsonIndex, 2)[1] : null
+  const option = (flag) => { const index = args.indexOf(flag); return index >= 0 ? args.splice(index, 2)[1] : null }
+  const jsonPath = option('--json')
+  const baselineSource = option('--baseline') ?? process.env.RESUME_BASELINE ?? null
   const report = await analyzeResume(args[0] ? resolve(args[0]) : resumePath)
+  if (baselineSource) {
+    report.baseline = compareScores(report, await readBaseline(baselineSource))
+    if (!report.baseline) console.log(`No baseline could be read from ${baselineSource}; the score is not compared.`)
+  }
   console.log(formatReport(report))
+  if (report.baseline) {
+    console.log(formatComparison(report))
+    // In GitHub Actions a drop also shows as a warning on the run and on the pull request's checks.
+    if (report.baseline.lower && process.env.GITHUB_ACTIONS) console.log(`::warning title=Resume score dropped::${formatComparison(report)}`)
+  }
   if (jsonPath) { writeFileSync(resolve(jsonPath), JSON.stringify(report, null, 2)); console.log(`Wrote ${jsonPath}`) }
   process.exitCode = report.errors ? 1 : 0
 }

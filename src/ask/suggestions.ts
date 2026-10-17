@@ -14,6 +14,7 @@ export const pool: Suggestion[] = [
   { text: 'What are his patents about?', pages: ['patents'] },
   { text: 'How does he use AI in his own work?', pages: ['projects', 'building-wilssens', 'about'] },
   { text: 'What is wilssens.com and why did he build it?', pages: ['projects', 'building-wilssens'] },
+  { text: 'What is AI Breaker and why did he build it?', pages: ['projects', 'building-aibreaker'] },
   { text: 'Which awards has he received?', pages: ['honors'] },
   { text: 'What was the press coverage about?', pages: ['news'] },
   { text: 'Is he a fit for a Director of Product, Data Platform role?', pages: ['home', 'experience'] },
