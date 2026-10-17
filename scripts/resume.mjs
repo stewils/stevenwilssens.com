@@ -46,7 +46,7 @@ export const resumeHtml = () => `<!doctype html>
 @font-face { font-family: 'Manrope'; font-weight: 200 800; src: url('${font('@fontsource-variable/manrope', 'manrope-latin-wght-normal.woff2')}') format('woff2'); }
 @font-face { font-family: 'DM Mono'; font-weight: 400; src: url('${font('@fontsource/dm-mono', 'dm-mono-latin-400-normal.woff2')}') format('woff2'); }
 @font-face { font-family: 'DM Mono'; font-weight: 500; src: url('${font('@fontsource/dm-mono', 'dm-mono-latin-500-normal.woff2')}') format('woff2'); }
-@page { size: Letter; margin: 0.45in 0.55in 0.5in; }
+@page { size: Letter; margin: 0.45in 0.55in 0.42in; }
 :root { --ink: #172121; --muted: #5b6765; --green: #096b50; --line: #d9e1dc; --soft: #eef4f0; }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
@@ -83,11 +83,12 @@ h3 { margin: 0; font-size: 10.8pt; font-weight: 700; letter-spacing: -0.2pt; lin
 .early div { display: grid; grid-template-columns: 1.3in 1fr; gap: 12px; font-size: 9.3pt; line-height: 1.35; break-inside: avoid; }
 .early strong { font-weight: 700; }
 .early .where { display: inline; margin: 0; }
-.foot { display: grid; grid-template-columns: 1.15fr 1fr 1.2fr; gap: 18px; font-size: 9.2pt; line-height: 1.4; }
+.foot { display: grid; grid-template-columns: 1.15fr 1fr 1.2fr; gap: 18px; font-size: 9pt; line-height: 1.38; }
 .foot strong { display: block; font-weight: 700; }
 .foot small { color: var(--muted); }
 .foot ul { padding-left: 13px; }
 .foot li { margin: 1px 0; }
+.foot .honors { line-height: 1.45; }
 </style></head>
 <body>
 <header>
@@ -135,8 +136,8 @@ h3 { margin: 0; font-size: 10.8pt; font-weight: 700; letter-spacing: -0.2pt; lin
 
 <section class="foot">
   <div><h2>Education</h2><strong>${esc(education.degree)}</strong>${esc(education.school)} <small>· ${esc(education.dates)}</small><br><br><strong>Languages</strong>${esc(languages)}</div>
-  <div><h2>Honors</h2><ul>${honors.map(([title, issued]) => `<li>${esc(title)} <small>· ${esc(issued.replace(/^Issued by Microsoft · /, ''))}</small></li>`).join('')}</ul></div>
-  <div><h2>Patents and press</h2><strong>${granted} granted US patents, ${published} published applications</strong>Spatial audio, streaming, media and device telemetry, assigned to Microsoft. Press in Forbes and Windows Central on the spatial audio work; Build 2016 speaker. Full list: <a href="${esc(profile.site)}/patents">${esc(profile.site.replace(/^https:\/\//, ''))}/patents</a></div>
+  <div><h2>Honors</h2><p class="honors">${honors.map(([title, issued]) => `${esc(title.replace(/^Microsoft /, '').replace(/^Most Valuable Professional \(MVP\)/, 'Microsoft MVP'))} <small>(${esc(issued.replace(/^Issued by Microsoft · (\w+ )?/, ''))})</small>`).join(' · ')}</p></div>
+  <div><h2>Patents and press</h2><strong>${granted} granted US patents, ${published} published applications</strong>Spatial audio, streaming, media and device telemetry (Microsoft). Press: Forbes, Windows Central; Build 2016 speaker. <a href="${esc(profile.site)}/patents">${esc(profile.site.replace(/^https:\/\//, ''))}/patents</a></div>
 </section>
 </body></html>`
 
