@@ -1,0 +1,306 @@
+// "Ask about Steven": a floating button on every page and a panel with the
+// conversation, answered by functions/_lib/ask (Claude, over Steven's own notes).
+// The panel docks beside the page on wide screens (the page moves over), overlays
+// it on tablets and is a bottom sheet on phones. Answers stream in, show the
+// sections they rest on as links, and take a thumbs up or down. The conversation
+// follows the reader from page to page in this tab (sessionStorage) until
+// "New conversation", and an open panel opens again on the next page.
+//
+// Answers are model text: rendered with a small Markdown subset (src/ask/markdown.ts),
+// links only to the site, the résumé, LinkedIn, Justia and Steven's email.
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import profileImage from '../assets/profile.jpg'
+import { renderMarkdown } from './markdown'
+import { pickSuggestions } from './suggestions'
+import './ask.css'
+
+export type Source = { id: string; title: string; href: string | null }
+export type Turn =
+  | { role: 'user'; content: string }
+  | { role: 'assistant'; content: string; sources: Source[]; id: number | null; sig: string; scope: 'in' | 'out'; error?: boolean; vote?: 'up' | 'down' }
+
+const storeKey = 'sw-ask'
+const openKey = 'sw-ask-open'
+const maxQuestion = 1000
+const maxTurns = 24
+
+const storage = {
+  get: (key: string) => { try { return sessionStorage.getItem(key) } catch { return null } },
+  set: (key: string, value: string | null) => { try { if (value === null) sessionStorage.removeItem(key); else sessionStorage.setItem(key, value) } catch { /* storage unavailable */ } },
+}
+
+
+const Spark = () => <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3.5l1.9 4.6 4.6 1.9-4.6 1.9L12 16.5l-1.9-4.6L5.5 10l4.6-1.9z" /><path d="M18.5 15.5l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z" /></svg>
+const Close = () => <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+const Plus = () => <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+const Up = () => <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 11v9H4v-9zM7 11l4-7c1.5 0 2.5 1 2.5 2.5V10h5a2 2 0 0 1 2 2.3l-1 6A2 2 0 0 1 17.5 20H7" /></svg>
+const Down = () => <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 13V4h3v9zM17 13l-4 7c-1.5 0-2.5-1-2.5-2.5V14h-5a2 2 0 0 1-2-2.3l1-6A2 2 0 0 1 6.5 4H17" /></svg>
+const CopyIcon = () => <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></svg>
+
+const parseSse = (block: string): { event: string; data: Record<string, unknown> } | null => {
+  const event = /^event: (.+)$/m.exec(block)?.[1]
+  if (!event) return null
+  try { return { event, data: JSON.parse(/^data: (.+)$/m.exec(block)?.[1] ?? '{}') as Record<string, unknown> } } catch { return null }
+}
+
+declare global { interface Window { turnstile?: { render: (el: HTMLElement, options: Record<string, unknown>) => string; reset: (id: string) => void } } }
+
+export default function AskAssistant({ page }: { page: string }) {
+  const [ready, setReady] = useState(false)
+  const [siteKey, setSiteKey] = useState<string | null>(null)
+  const [open, setOpen] = useState(false)
+  const [turns, setTurns] = useState<Turn[]>([])
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState('')
+  const [copied, setCopied] = useState<number | null>(null)
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [docked, setDocked] = useState(false)
+  const [phone, setPhone] = useState(false)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const logRef = useRef<HTMLDivElement>(null)
+  const fabRef = useRef<HTMLButtonElement>(null)
+  const turnstileRef = useRef<HTMLDivElement>(null)
+  const turnstileToken = useRef('')
+  const turnstileId = useRef('')
+  const controller = useRef<AbortController | null>(null)
+  const pending = useRef('')
+  const paint = useRef(0)
+  const loaded = useRef(false)
+
+  // Mount: is the assistant on, what was said earlier in this tab, and the screen size.
+  useEffect(() => {
+    fetch('/api/ask').then(async (response) => (response.ok ? response.json() : null)).then((status: { ready?: boolean; siteKey?: string | null } | null) => {
+      if (status?.ready) { setReady(true); setSiteKey(status.siteKey ?? null) }
+    }).catch(() => {})
+    try { const saved = JSON.parse(storage.get(storeKey) ?? '[]') as Turn[]; if (Array.isArray(saved)) setTurns(saved.slice(-maxTurns)) } catch { /* ignore */ }
+    loaded.current = true
+    setSuggestions(pickSuggestions(page))
+    const wide = window.matchMedia?.('(min-width: 1200px)')
+    const small = window.matchMedia?.('(max-width: 759px)')
+    const layout = () => { setDocked(Boolean(wide?.matches)); setPhone(Boolean(small?.matches)) }
+    layout()
+    wide?.addEventListener('change', layout)
+    small?.addEventListener('change', layout)
+    if (storage.get(openKey) === '1' && !small?.matches) setOpen(true)
+    const onOpen = (event: Event) => {
+      const question = (event as CustomEvent<{ question?: string }>).detail?.question
+      if (question) setDraft(question)
+      setOpen(true)
+    }
+    window.addEventListener('sw-ask-open', onOpen)
+    return () => { wide?.removeEventListener('change', layout); small?.removeEventListener('change', layout); window.removeEventListener('sw-ask-open', onOpen) }
+  }, [page])
+
+  // The page moves over when the panel docks; phones lock the page behind the sheet.
+  useEffect(() => {
+    document.documentElement.classList.toggle('ask-docked', open && docked)
+    document.documentElement.classList.toggle('ask-sheet', open && phone)
+    storage.set(openKey, open ? '1' : null)
+    if (open && !phone) requestAnimationFrame(() => inputRef.current?.focus())
+    return () => { document.documentElement.classList.remove('ask-docked', 'ask-sheet') }
+  }, [open, docked, phone])
+
+  useEffect(() => { if (loaded.current) storage.set(storeKey, JSON.stringify(turns.slice(-maxTurns))) }, [turns])
+
+  // Escape closes; keep the newest words in view while an answer streams.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') { setOpen(false); fabRef.current?.focus() } }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open])
+  useEffect(() => {
+    const log = logRef.current
+    if (!log) return
+    const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 160
+    if ((nearBottom || busy) && typeof log.scrollTo === 'function') log.scrollTo({ top: log.scrollHeight, behavior: 'auto' })
+  }, [turns, busy])
+
+  // Turnstile, only when the server asks for it: an invisible widget that hands us a token.
+  useEffect(() => {
+    if (!open || !siteKey || !turnstileRef.current || turnstileId.current) return
+    const mount = () => { if (window.turnstile && turnstileRef.current && !turnstileId.current) turnstileId.current = window.turnstile.render(turnstileRef.current, { sitekey: siteKey, size: 'flexible', appearance: 'interaction-only', callback: (token: string) => { turnstileToken.current = token }, 'expired-callback': () => { turnstileToken.current = '' } }) }
+    if (window.turnstile) mount()
+    else {
+      const script = document.createElement('script')
+      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
+      script.async = true
+      script.onload = mount
+      document.head.appendChild(script)
+    }
+  }, [open, siteKey])
+
+  const close = () => { setOpen(false); fabRef.current?.focus() }
+  const reset = () => { controller.current?.abort(); setTurns([]); setNotice(''); setBusy(false); inputRef.current?.focus() }
+
+  const flush = useCallback(() => {
+    paint.current = 0
+    const text = pending.current
+    setTurns((current) => {
+      const last = current[current.length - 1]
+      if (!last || last.role !== 'assistant') return current
+      return [...current.slice(0, -1), { ...last, content: text }]
+    })
+  }, [])
+
+  const send = async (question: string) => {
+    const text = question.trim().slice(0, maxQuestion)
+    if (!text || busy) return
+    setNotice('')
+    setDraft('')
+    if (inputRef.current) inputRef.current.style.height = ''
+    const history = turns.filter((turn) => turn.role === 'user' || !turn.error)
+    const answer: Turn = { role: 'assistant', content: '', sources: [], id: null, sig: '', scope: 'in' }
+    setTurns([...history, { role: 'user', content: text }, answer])
+    setBusy(true)
+    pending.current = ''
+    const abort = new AbortController()
+    controller.current = abort
+    let failed = ''
+    const result = { ...answer }
+    try {
+      const response = await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: abort.signal,
+        body: JSON.stringify({
+          page,
+          turnstileToken: turnstileToken.current,
+          messages: ([...history, { role: 'user', content: text }] as Turn[]).map((turn) => turn.role === 'user' ? { role: 'user', content: turn.content } : { role: 'assistant', content: turn.content, sources: turn.sources.map((source) => source.id), id: turn.id, sig: turn.sig }),
+        }),
+      })
+      if (!response.ok || !response.body) {
+        const data = (await response.json().catch(() => ({}))) as { message?: string }
+        failed = data.message ?? 'Something went wrong. Please try again.'
+      } else {
+        const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+        let buffer = ''
+        let done = false
+        while (!done) {
+          const chunk = await reader.read()
+          if (chunk.done) break
+          buffer += chunk.value
+          let cut: number
+          while ((cut = buffer.indexOf('\n\n')) >= 0) {
+            const parsed = parseSse(buffer.slice(0, cut))
+            buffer = buffer.slice(cut + 2)
+            if (!parsed) continue
+            const { event, data } = parsed
+            if (event === 'meta') { result.scope = data.scope as 'in' | 'out'; result.sources = (data.sources as Source[]) ?? [] }
+            else if (event === 'delta') { pending.current += String(data.text ?? ''); if (!paint.current) paint.current = requestAnimationFrame(flush) }
+            else if (event === 'done') { result.id = (data.id as number | null) ?? null; result.sig = String(data.sig ?? ''); done = true }
+            else if (event === 'error') { failed = String(data.message ?? ''); done = true }
+          }
+        }
+      }
+    } catch (error) {
+      if ((error as Error).name !== 'AbortError') failed = 'Something went wrong. Please try again.'
+    }
+    if (paint.current) cancelAnimationFrame(paint.current)
+    paint.current = 0
+    result.content = pending.current
+    if (!result.content && failed) { result.content = failed; result.error = true; result.sources = [] }
+    setTurns((current) => {
+      const base = current[current.length - 1]?.role === 'assistant' ? current.slice(0, -1) : current
+      return result.content ? [...base, result] : base.slice(0, -1)
+    })
+    controller.current = null
+    setBusy(false)
+    if (turnstileId.current && window.turnstile) { window.turnstile.reset(turnstileId.current); turnstileToken.current = '' }
+  }
+
+  const stop = () => { controller.current?.abort() }
+  const submit = (event: FormEvent) => { event.preventDefault(); void send(draft) }
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(draft) }
+  }
+  const grow = (element: HTMLTextAreaElement) => { element.style.height = ''; element.style.height = `${Math.min(element.scrollHeight, 160)}px` }
+
+  const vote = async (index: number, up: boolean) => {
+    const answer = turns[index]
+    const question = turns[index - 1]
+    if (!answer || answer.role !== 'assistant' || !question || answer.error || answer.vote) return
+    setTurns((current) => current.map((turn, i) => (i === index && turn.role === 'assistant' ? { ...turn, vote: up ? 'up' : 'down' } : turn)))
+    await fetch('/api/ask/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ helpful: up, question: question.content, answer: answer.content, sources: answer.sources.map((source) => source.id), id: answer.id, sig: answer.sig, page }) }).catch(() => {})
+  }
+  const copy = (index: number, text: string) => { void navigator.clipboard?.writeText(text).then(() => { setCopied(index); setTimeout(() => setCopied(null), 1600) }) }
+
+  const streaming = busy && turns[turns.length - 1]?.role === 'assistant'
+  const waiting = streaming && !turns[turns.length - 1]?.content
+  const remaining = maxQuestion - draft.length
+
+  return (
+    <>
+      {ready && (
+        <button ref={fabRef} type="button" className={`ask-fab ${open ? 'is-hidden' : ''}`} onClick={() => setOpen(true)} aria-haspopup="dialog" aria-expanded={open} aria-controls="ask-panel">
+          <Spark /><span>Ask about Steven</span>
+        </button>
+      )}
+      <div className={`ask-backdrop ${open && !docked ? 'is-open' : ''}`} onClick={close} aria-hidden="true" />
+      <section id="ask-panel" className={`ask-panel ${open ? 'is-open' : ''}`} role="dialog" aria-modal={open && !docked} aria-labelledby="ask-title" inert={!open}>
+        <header className="ask-head">
+          <img className="ask-avatar" src={profileImage} alt="" width={40} height={40} />
+          <div className="ask-head-text">
+            <h2 id="ask-title">Ask about Steven</h2>
+            <p>Answers from his own notes. AI, so check what matters.</p>
+          </div>
+          {turns.length > 0 && <button type="button" className="ask-icon-btn" onClick={reset} title="New conversation" aria-label="New conversation"><Plus /></button>}
+          <button type="button" className="ask-icon-btn" onClick={close} title="Close" aria-label="Close"><Close /></button>
+        </header>
+
+        <div className="ask-log" ref={logRef} aria-live="polite">
+          {turns.length === 0 && (
+            <div className="ask-welcome">
+              <p className="ask-greeting">Hi. I know Steven's roles, results, patents, recommendations and what he is looking for. What would you like to know?</p>
+              <div className="ask-chips">
+                {suggestions.map((text, index) => <button type="button" key={text} className="ask-chip" style={{ '--i': index } as React.CSSProperties} onClick={() => void send(text)}>{text}</button>)}
+              </div>
+            </div>
+          )}
+          {turns.map((turn, index) => turn.role === 'user'
+            ? <div className="ask-turn ask-turn-user" key={index}><div className="ask-bubble">{turn.content}</div></div>
+            : (
+              <div className={`ask-turn ask-turn-assistant ${turn.error ? 'is-error' : ''} ${turn.scope === 'out' ? 'is-out' : ''}`} key={index}>
+                <div className="ask-answer">
+                  {turn.content ? renderMarkdown(turn.content) : null}
+                  {streaming && index === turns.length - 1 && turn.content && <span className="ask-caret" aria-hidden="true" />}
+                  {waiting && index === turns.length - 1 && <span className="ask-typing" aria-label="Thinking"><i /><i /><i /></span>}
+                </div>
+                {!(streaming && index === turns.length - 1) && !turn.error && (
+                  <div className="ask-meta">
+                    {turn.sources.length > 0 && (
+                      <div className="ask-sources" aria-label="Based on">
+                        {turn.sources.map((source) => source.href ? <a key={source.id} href={source.href} target={source.href.startsWith('https://steven.wilssens.com') ? undefined : '_blank'} rel="noreferrer">{source.title}</a> : <span key={source.id}>{source.title}</span>)}
+                      </div>
+                    )}
+                    <div className="ask-actions">
+                      <button type="button" className="ask-mini" onClick={() => copy(index, turn.content)} aria-label="Copy answer" title="Copy"><CopyIcon />{copied === index && <span>Copied</span>}</button>
+                      {turn.scope === 'in' && <>
+                        <button type="button" className={`ask-mini ${turn.vote === 'up' ? 'is-on' : ''}`} onClick={() => void vote(index, true)} aria-label="Helpful" title="Helpful" aria-pressed={turn.vote === 'up'} disabled={Boolean(turn.vote)}><Up /></button>
+                        <button type="button" className={`ask-mini ${turn.vote === 'down' ? 'is-on' : ''}`} onClick={() => void vote(index, false)} aria-label="Not helpful" title="Not helpful" aria-pressed={turn.vote === 'down'} disabled={Boolean(turn.vote)}><Down /></button>
+                      </>}
+                      {turn.vote && <span className="ask-thanks">Thanks</span>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+        </div>
+
+        <form className="ask-compose" onSubmit={submit}>
+          {notice && <p className="ask-notice" role="status">{notice}</p>}
+          {siteKey && <div className="ask-turnstile" ref={turnstileRef} />}
+          <div className={`ask-compose-row ${busy ? 'is-busy' : ''}`}>
+            <label className="ask-visually-hidden" htmlFor="ask-input">Your question</label>
+            <textarea id="ask-input" ref={inputRef} rows={1} maxLength={maxQuestion} placeholder="Ask about his work, teams, results…" enterKeyHint="send" value={draft} onChange={(event) => { setDraft(event.target.value); grow(event.target) }} onKeyDown={onKeyDown} disabled={busy} />
+            {busy
+              ? <button type="button" className="ask-send is-stop" onClick={stop} aria-label="Stop" title="Stop"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="3" fill="currentColor" /></svg></button>
+              : <button type="submit" className="ask-send" aria-label="Send" title="Send" disabled={!draft.trim()}><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" /></svg></button>}
+          </div>
+          <p className="ask-foot">{remaining < 120 ? <span className="ask-count">{remaining} left</span> : <span>Enter to send, Shift+Enter for a new line.</span>} <a href="mailto:steven@wilssens.com">Prefer email?</a></p>
+        </form>
+      </section>
+    </>
+  )
+}

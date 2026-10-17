@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Env } from '../env'
 import { handleMcp, resolveOwner } from './server'
 import { MemoryStore } from './store'
-import { searchTerms, sitePages } from './tools'
+import { recruiterLens, searchTerms, sitePages } from './tools'
 
 const env = { MCP_OWNER_KEY: 'owner-key-123' } as unknown as Env
 const url = 'https://steven.wilssens.com/mcp/owner-key-123'
@@ -173,6 +173,22 @@ describe('the dossier', () => {
     expect(next[0]).toMatchObject({ role: 'windows-devices-data', topic: 'outcomes' })
     expect(next[0].question).toContain('résumé')
     expect(next.some((item) => item.role === 'general')).toBe(true)
+  })
+
+  it('looks at each role the way a recruiter would, and brings in what the site assistant could not answer', async () => {
+    const store = new MemoryStore()
+    store.gaps.push({ question: 'How many people did he hire?', when: '2026-10-16', reason: 'gap' })
+    const status = parse((await call(store, 'interview_status')).text)
+    const roles = status.roles as { key: string; recruiterFlags: string[]; recruiterAngles: string[] }[]
+    expect(roles.find((role) => role.key === 'azure-devops')!.recruiterFlags).toEqual(['Short stint: 6 months.'])
+    expect(roles.find((role) => role.key === 'spatial-audio-senior')!.recruiterFlags).toContain('9 years in one role without a visible promotion.')
+    expect(roles.find((role) => role.key === 'cosmos')!.recruiterFlags.some((flag) => flag.startsWith('Overlaps with'))).toBe(true)
+    expect(roles.find((role) => role.key === 'spatial-audio-senior')!.recruiterFlags.some((flag) => flag.startsWith('Company change'))).toBe(true)
+    expect(roles.find((role) => role.key === 'windows-devices-data')!.recruiterAngles.length).toBeGreaterThan(2)
+    expect(roles.find((role) => role.key === 'general')!.recruiterAngles.some((angle) => angle.includes('Why leave Microsoft'))).toBe(true)
+    expect(status.askedOnTheSite).toEqual([{ question: 'How many people did he hire?', when: '2026-10-16', reason: 'gap' }])
+    expect(status.howToInterview).toContain('sceptical recruiter')
+    expect(recruiterLens('general').flags).toEqual([])
   })
 })
 

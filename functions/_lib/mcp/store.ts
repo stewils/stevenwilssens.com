@@ -32,6 +32,8 @@ export interface DossierStore {
   listProposals(status?: ProposalStatus): Promise<Proposal[]>
   insertProposal(input: ProposalInput, now: number): Promise<Proposal>
   decideProposal(id: number, status: ProposalStatus, note: string | null, now: number): Promise<Proposal | null>
+  // Questions the site assistant could not answer from the public dossier (ask_questions), newest first.
+  askGaps(limit: number): Promise<{ question: string; when: string; reason: string }[]>
 }
 
 type ProposalRow = { id: number; created_at: number; updated_at: number; role: string; kind: Proposal['kind']; current_text: string | null; proposed_text: string | null; rationale: string; based_on: string | null; status: ProposalStatus; decision_note: string | null }
@@ -112,11 +114,17 @@ export class D1Store implements DossierStore {
     const row = await this.db.prepare('UPDATE resume_proposals SET status = ?, decision_note = ?, updated_at = ? WHERE id = ? RETURNING *').bind(status, note, now, id).first<ProposalRow>()
     return row ? proposalFromRow(row) : null
   }
+
+  async askGaps(limit: number) {
+    const { results } = await this.db.prepare('SELECT question, ts, reason FROM ask_questions ORDER BY ts DESC LIMIT ?').bind(limit).all<{ question: string; ts: number; reason: string }>()
+    return results.map((row) => ({ question: row.question, when: new Date(row.ts).toISOString().slice(0, 10), reason: row.reason }))
+  }
 }
 
 export class MemoryStore implements DossierStore {
   entries: DossierEntry[] = []
   proposals: Proposal[] = []
+  gaps: { question: string; when: string; reason: string }[] = []
   private nextId = 1
 
   private matches = (entry: DossierEntry, filter: EntryFilter) =>
@@ -166,4 +174,5 @@ export class MemoryStore implements DossierStore {
     Object.assign(proposal, { status, decisionNote: note, updatedAt: now })
     return proposal
   }
+  async askGaps(limit: number) { return this.gaps.slice(0, limit) }
 }

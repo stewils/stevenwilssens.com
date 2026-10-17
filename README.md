@@ -49,6 +49,16 @@ Add the route to `routes` and its title/description to `pageMeta` in `src/pageMe
 
 The resume is exported from a resume builder. Replace `public/steven-wilssens-resume-2026.pdf` with the new export (keep the filename, or update `resumeUrl` in `App.tsx`) and push.
 
+## Ask about Steven: the assistant on the site
+
+A floating "Ask about Steven" button on every page (and "Ask AI about my work" in the hero) opens a panel where recruiters and hiring managers ask anything about Steven's work. Built the way the help assistant on wilssens.com is:
+
+- **Server** (`functions/_lib/ask/`): `POST /api/ask` streams an answer from Claude (`claude-opus-5-5`, effort low, server-side fallback on a refusal) as Server-Sent Events (`meta`, `delta`…, `done`). The system prompt (`prompt.ts`) is built from `src/resume.ts`, `src/patents.ts` and the **public** dossier entries, so the assistant knows only what Steven published; it is byte-stable and cached by the API for an hour. Every reply starts with a hidden first line the server strips: `[[in: role:csx-data, site:patents]]` (the sections it rests on, shown as links), `[[in: none]]` (in scope but not covered: saved to `ask_questions` as a gap) or `[[out]]` (off topic: our own fixed answer, the model's text is never shown). Answers are signed (HMAC with `HASH_SALT`) so the browser can send the conversation back and vote without forging an earlier answer.
+- **Limits**: 30 questions an hour per IP (salted hash, `ask_hits`), 1000-character questions, 12 turns, and a monthly budget (`ASK_BUDGET_USD`, default $25) counted from the API's token usage in `ask_daily`. Optional Turnstile human check when `TURNSTILE_SECRET_KEY` and `TURNSTILE_SITE_KEY` are set. `GET /api/ask` tells the page whether the assistant is on; the button only appears when it is.
+- **Browser** (`src/ask/`): React panel docked beside the page from 1200 px (the page moves over), an overlay on tablets, a bottom sheet on phones; streaming with a caret, suggestions that fit the page, sources as links, Copy, thumbs up/down (`POST /api/ask/feedback`), conversation kept in `sessionStorage` across pages. Markdown is rendered through `markdown.ts`: bold, lists and links only, links only to the site, the résumé, LinkedIn, Justia and Steven's email.
+- **Dashboard**: `/admin` shows this month against the budget, questions per day, votes, and the questions the dossier could not answer; the same list reaches the MCP interview as `askedOnTheSite`, so the next session fills the gaps.
+- **Local**: `ASK_MOCK=1` in `.dev.vars` streams canned answers without an API call; with `ANTHROPIC_API_KEY` set it calls Claude.
+
 ## MCP server
 
 `/mcp/<MCP_OWNER_KEY>` is a private [Model Context Protocol](https://modelcontextprotocol.io) server (Streamable HTTP, stateless, JSON responses) for one person: Steven. The link is shown on `/admin`; without the key, `/mcp` is a 404. Added to Claude (Settings → Connectors → Add custom connector) or Claude Code (`claude mcp add --transport http my-career <link>`), it is a workspace for talking through his career that builds on what is already there:
