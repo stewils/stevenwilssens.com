@@ -63,6 +63,24 @@ describe('resume site', () => {
     expect(within(featured).getByRole('link', { name: /Read the write-up/ })).toHaveAttribute('href', '/building-wilssens')
   })
 
+  it('lists AI Breaker under Projects with a link to its write-up', () => {
+    setPath('/projects')
+    render(<App />)
+
+    expect(screen.getByRole('heading', { name: 'AI Breaker' })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: /Read how it was built/ }).map((link) => link.getAttribute('href'))).toEqual(['/building-wilssens', '/building-aibreaker'])
+  })
+
+  it('renders the AI Breaker write-up with its research and sections', () => {
+    setPath('/building-aibreaker')
+    render(<App />)
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Building AI Breaker' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Half the country would rather not/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Pew Research Center, August 2026' })).toHaveAttribute('href', expect.stringContaining('pewresearch.org'))
+    expect(screen.getAllByRole('link', { name: /Visit aibreaker.org/ })[0]).toHaveAttribute('href', 'https://aibreaker.org')
+  })
+
   it('offers the resume PDF as a download from the home page', () => {
     render(<App />)
 
@@ -220,7 +238,7 @@ describe('resume site', () => {
     render(<App />)
 
     const links = screen.getAllByRole('link', { name: 'Visit project ↗' })
-    expect(links.map((link) => link.getAttribute('href'))).toEqual(['https://wilssens.com', 'https://juniortrackcycling.com', 'https://leo.wilssens.com'])
+    expect(links.map((link) => link.getAttribute('href'))).toEqual(['https://wilssens.com', 'https://aibreaker.org', 'https://juniortrackcycling.com', 'https://leo.wilssens.com'])
   })
 
   it('lists this site as a project without linking away to it', () => {

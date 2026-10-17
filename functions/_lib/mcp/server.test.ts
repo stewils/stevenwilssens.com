@@ -112,6 +112,7 @@ describe('what is already there', () => {
   it('reads the published pages as Markdown', async () => {
     const store = new MemoryStore()
     expect(sitePages).toContain('building-wilssens')
+    expect(sitePages).toContain('building-aibreaker')
     expect(sitePages).not.toContain('privacy')
     expect((await call(store, 'read_site_page', { page: 'about' })).text).toContain('# About')
     expect((await call(store, 'read_site_page', { page: 'llms-full' })).text).toContain('Everything')

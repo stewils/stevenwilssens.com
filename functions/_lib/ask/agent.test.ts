@@ -50,6 +50,7 @@ describe('the prompt', () => {
     const map = sources()
     expect(map.get('role:spatial-audio-lead')?.href).toBe('https://steven.wilssens.com/experience')
     expect(map.get('site:article')?.href).toBe('https://steven.wilssens.com/building-wilssens')
+    expect(map.get('site:aibreaker')?.href).toBe('https://steven.wilssens.com/building-aibreaker')
     expect(map.get('notes')?.href).toBeNull()
   })
 })

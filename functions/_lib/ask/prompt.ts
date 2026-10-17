@@ -23,6 +23,7 @@ export const sources = (): Map<string, Source> => {
   map.set('site:news', { id: 'site:news', title: 'In the news', href: `${siteUrl}/news` })
   map.set('site:projects', { id: 'site:projects', title: 'Projects', href: `${siteUrl}/projects` })
   map.set('site:article', { id: 'site:article', title: 'Building wilssens.com', href: `${siteUrl}/building-wilssens` })
+  map.set('site:aibreaker', { id: 'site:aibreaker', title: 'Building AI Breaker', href: `${siteUrl}/building-aibreaker` })
   map.set('site:resume', { id: 'site:resume', title: 'Résumé (PDF)', href: contact.resume })
   map.set('notes', { id: 'notes', title: "Steven's notes", href: null })
   return map
@@ -35,6 +36,7 @@ Education: ${education.degree}, ${education.school} (${education.dates}). Langua
 Contact: ${contact.email}, LinkedIn ${contact.linkedin}. Résumé PDF: ${contact.resume}. Site: ${siteUrl}.`
 
 const projects = `- wilssens.com: a family platform he built and runs: email and websites at the family domain for everyone named Wilssens, with an AI help assistant, MCP connectors, a command line and payments ready if it grows. The write-up [site:article] at ${siteUrl}/building-wilssens explains how it was built with AI tools and the rules behind it.
+- AI Breaker (aibreaker.org): "the off switch for AI on Windows", a paid Windows 11 app he is building ($19 once, in testing with a waitlist, nothing sold yet). It turns off the AI in Windows, Office and the browsers from one window in four levels (nothing blocked, AI features off, no AI apps or sites, full lockdown), previews what each level will stop, proves from Windows' own event logs that it worked, and undoes everything in one click; it uses only the controls Microsoft documents and never touches Defender. The idea: about half of adults are more concerned than excited about AI (Pew Research, 2026) and about six in ten want more control over how it is used in their lives; people feel safer when they hold the switch. Built with Claude Code from 10 October 2026, run like a team (specs with acceptance criteria, agents as product manager, designer, tester and reviewer, a dated decision log, tests only in virtual machines). The write-up [site:aibreaker] at ${siteUrl}/building-aibreaker has the research, the architecture and the practices.
 - juniortrackcycling.com: a community project making junior track cycling easier to discover, follow and celebrate.
 - leo.wilssens.com: a race journal and results site for Leo Wilssens, a junior track cyclist racing with Jerry Baker Juniors.
 - steven.wilssens.com: this site, built and run like a product: React pages prerendered to static HTML on Cloudflare Pages, first-party cookie-free analytics in D1, Markdown copies of every page for LLMs, and this assistant.`
