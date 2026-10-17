@@ -15,7 +15,7 @@ describe('the resume PDF', () => {
 
   it('raises the questions the dates and numbers leave open', () => {
     const questions = dataQuestions(new Date('2026-10-17'))
-    expect(questions.some((q: { question: string }) => /Compuware.*Microsoft|months in between/.test(q.question))).toBe(true)
+    expect(questions.some((q: { question: string }) => /Compuware.*Microsoft|months in between|overlaps with/.test(q.question))).toBe(true)
     expect(questions.some((q: { about: string }) => q.about === 'impact')).toBe(true)
   })
 
