@@ -200,7 +200,24 @@ export const searchTerms = (query: string) => {
 }
 
 const shapeEntry = (entry: DossierEntry) => ({ id: entry.id, role: entry.role, topic: entry.topic, title: entry.title, body: entry.body, visibility: entry.visibility, tags: entry.tags, updated: new Date(entry.updatedAt).toISOString().slice(0, 10) })
-export const roleFields = ['title', 'company', 'dates', 'location', 'summary', 'point']
+// What a proposal can change on a role: one field, one bullet point, or the whole role.
+export const roleFields = ['title', 'company', 'dates', 'location', 'summary', 'point', 'role']
+// The role key used to propose a new role.
+export const newRoleKey = 'new-role'
+const datesPattern = /^[A-Z][a-z]{2} \d{4} - ([A-Z][a-z]{2} \d{4}|Present)$/
+type RoleEntry = { role: string; company: string; dates: string; location: string; summary: string; points: string[] }
+const roleEntry = (item: typeof experiences[number]): RoleEntry => ({ role: item.role, company: item.company, dates: item.dates, location: item.location, summary: item.summary, points: item.points })
+// A whole role as proposed: JSON with the same shape as an entry in src/resume.ts.
+const parseRoleEntry = (text: string): RoleEntry => {
+  let parsed: unknown
+  try { parsed = JSON.parse(text) } catch { throw new ToolError('for field "role", proposed_text must be JSON: {"role": "...", "company": "...", "dates": "Mon YYYY - Mon YYYY", "location": "...", "summary": "...", "points": ["...", "..."]}') }
+  const value = parsed as Record<string, unknown>
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ToolError('for field "role", proposed_text must be a JSON object')
+  for (const key of ['role', 'company', 'dates', 'location', 'summary'] as const) if (typeof value[key] !== 'string' || !(value[key] as string).trim()) throw new ToolError(`the role needs a non-empty "${key}"`)
+  if (!datesPattern.test((value.dates as string).trim())) throw new ToolError('dates must be written like "Dec 2024 - Sep 2026" (or "... - Present")')
+  if (!Array.isArray(value.points) || !value.points.length || value.points.some((point) => typeof point !== 'string' || !point.trim())) throw new ToolError('the role needs "points": a non-empty array of bullet strings')
+  return { role: (value.role as string).trim(), company: (value.company as string).trim(), dates: (value.dates as string).trim(), location: (value.location as string).trim(), summary: (value.summary as string).trim(), points: (value.points as string[]).map((point) => point.trim()) }
+}
 const shapeProposal = (p: Proposal) => ({ id: p.id, status: p.status, role: p.role, field: p.field, kind: p.kind, currentText: p.currentText, proposedText: p.proposedText, rationale: p.rationale, basedOn: p.basedOn, decisionNote: p.decisionNote, updated: new Date(p.updatedAt).toISOString().slice(0, 10) })
 
 const roleSummary = (key: string) => {
@@ -446,15 +463,15 @@ export const tools: Tool[] = [
   },
   {
     name: 'propose_resume_change',
-    description: 'Propose one concrete résumé edit for Steven to approve or reject. Any part of a role can change: its title, company, dates ("Dec 2024 - Sep 2026"), location, summary, or a bullet point (replace, add or remove), and so can the headline, summary, skills and education sections. Quote the current text exactly and give the full proposed text. One proposal per change.',
+    description: `Propose one concrete résumé edit for Steven to approve or reject. Any part of a role can change: its title, company, dates ("Dec 2024 - Sep 2026"), location, summary, or a bullet point (replace, add or remove). A whole role can be added (role "${newRoleKey}", field "role", kind "add", the entry as JSON), replaced or removed (field "role" on an existing role key). The headline, summary, skills and education sections can change too. Quote the current text exactly and give the full proposed text. One proposal per change.`,
     inputSchema: {
       type: 'object',
       properties: {
-        role: { type: 'string', enum: proposalRoles, description: 'The role key the change belongs to, or headline | summary | skills | education' },
-        field: { type: 'string', enum: roleFields, description: 'For a role: which part changes. title, company, dates, location, summary, or point (a bullet; the default). Dates are written like "Dec 2024 - Sep 2026".' },
-        kind: { type: 'string', enum: ['replace', 'add', 'remove'], description: 'title, company, dates, location and summary can only be replaced; a point can be replaced, added or removed' },
-        current_text: { type: 'string', description: 'The exact current wording (required for replace and remove)' },
-        proposed_text: { type: 'string', description: 'The new wording (required for replace and add)' },
+        role: { type: 'string', enum: [...proposalRoles, newRoleKey], description: `The role key the change belongs to; "${newRoleKey}" to add a role; or headline | summary | skills | education` },
+        field: { type: 'string', enum: roleFields, description: 'For a role: which part changes. title, company, dates, location, summary, point (a bullet; the default), or role (the whole entry, as JSON {"role", "company", "dates", "location", "summary", "points"}). Dates are written like "Dec 2024 - Sep 2026".' },
+        kind: { type: 'string', enum: ['replace', 'add', 'remove'], description: 'title, company, dates, location and summary can only be replaced; a point or a whole role can be replaced, added or removed' },
+        current_text: { type: 'string', description: 'The exact current wording (required for replace and remove, except for a whole role, where it is filled in from the résumé)' },
+        proposed_text: { type: 'string', description: 'The new wording (required for replace and add). For field "role": the whole entry as JSON' },
         rationale: { type: 'string', description: 'Why this is better: the fact or number from the dossier it adds, what it sharpens' },
         based_on: { type: 'string', description: 'Dossier entry ids this draws on, comma-separated' },
       },
@@ -464,23 +481,30 @@ export const tools: Tool[] = [
     readOnly: false,
     run: async (args, ctx) => {
       const role = str(args, 'role', 60, true)!
-      if (!proposalRoles.includes(role)) throw new ToolError(`unknown role "${role}". Use one of: ${proposalRoles.join(', ')}`)
+      if (![...proposalRoles, newRoleKey].includes(role)) throw new ToolError(`unknown role "${role}". Use one of: ${proposalRoles.join(', ')}, or "${newRoleKey}" to add a role`)
       const kind = str(args, 'kind', 10, true)!.toLowerCase() as Proposal['kind']
       if (!['replace', 'add', 'remove'].includes(kind)) throw new ToolError('kind must be replace, add or remove')
-      const isRole = roleKeys.includes(role) && role !== generalRole
-      const field = isRole ? (str(args, 'field', 20)?.toLowerCase() ?? 'point') : null
+      const item = experiences.find((entry) => entry.key === role) ?? null
+      const isRole = item !== null || role === newRoleKey
+      const field = isRole ? (str(args, 'field', 20)?.toLowerCase() ?? (role === newRoleKey ? 'role' : 'point')) : null
       if (field && !roleFields.includes(field)) throw new ToolError(`field must be one of: ${roleFields.join(', ')}`)
-      if (field && field !== 'point' && kind !== 'replace') throw new ToolError(`${field} can only be replaced; add and remove are for bullet points`)
-      const currentText = str(args, 'current_text', 2000, kind !== 'add')
-      const proposedText = str(args, 'proposed_text', 2000, kind !== 'remove')
-      if (field === 'dates' && proposedText && !/^[A-Z][a-z]{2} \d{4} - ([A-Z][a-z]{2} \d{4}|Present)$/.test(proposedText)) throw new ToolError('dates must be written like "Dec 2024 - Sep 2026" (or "... - Present")')
-      if (field && field !== 'point' && currentText) {
-        const item = experiences.find((entry) => entry.key === role)!
+      if (role === newRoleKey && (field !== 'role' || kind !== 'add')) throw new ToolError(`to add a role: role "${newRoleKey}", field "role", kind "add", and the whole entry as JSON in proposed_text`)
+      if (field === 'role' && kind === 'add' && role !== newRoleKey) throw new ToolError(`to add a role, set role to "${newRoleKey}"; to change ${item!.role}, use kind "replace"`)
+      if (field && !['point', 'role'].includes(field) && kind !== 'replace') throw new ToolError(`${field} can only be replaced; add and remove are for bullet points and whole roles`)
+      let currentText = str(args, 'current_text', 4000, kind !== 'add' && field !== 'role')
+      let proposedText = str(args, 'proposed_text', 4000, kind !== 'remove')
+      if (field === 'role') {
+        // The whole role: the current entry is filled in from the résumé, the proposed one is validated.
+        if (item) currentText = JSON.stringify(roleEntry(item))
+        if (kind !== 'remove') proposedText = JSON.stringify(parseRoleEntry(proposedText!))
+      }
+      if (field === 'dates' && proposedText && !datesPattern.test(proposedText)) throw new ToolError('dates must be written like "Dec 2024 - Sep 2026" (or "... - Present")')
+      if (item && field && !['point', 'role'].includes(field) && currentText) {
         const actual = field === 'title' ? item.role : field === 'company' ? item.company : field === 'dates' ? item.dates : field === 'location' ? item.location : item.summary
         if (actual !== currentText) throw new ToolError(`current_text does not match the résumé: the ${field} of ${item.role} is "${actual}"`)
       }
       const proposal = await ctx.store.insertProposal({ role, field, kind, currentText, proposedText, rationale: str(args, 'rationale', 2000, true)!, basedOn: str(args, 'based_on', 200) }, ctx.now)
-      return { proposed: shapeProposal(proposal), next: 'Show Steven the current and proposed text side by side and ask: approve or reject? Then call review_resume_proposal.' }
+      return { proposed: shapeProposal(proposal), next: field === 'role' ? `Show Steven the ${kind === 'add' ? 'new role' : kind === 'remove' ? 'role to remove' : 'current and proposed role'} in full and ask: approve or reject? Then call review_resume_proposal.` : 'Show Steven the current and proposed text side by side and ask: approve or reject? Then call review_resume_proposal.' }
     },
   },
   {
@@ -624,6 +648,6 @@ Build on what is already there. Before asking about a role, read what exists: ge
 A session can be: an interview (call interview_status: it shows the gaps, what the site's visitors asked that the dossier could not answer, and per role what a recruiter would push on); thinking out loud about one role or theme; preparing for a specific interview or job description; or drafting résumé or LinkedIn wording.
 Interview like a sceptical recruiter and hiring manager, not a fan. For each role: scope versus influence (what he owned, decided and was measured on, versus what the team or the platform did anyway); evidence behind every claim (numbers with a baseline, how they were measured, who else would confirm them); what the dates raise (short stints, long plateaus without promotion, overlaps, the time since September 2026); why he moved in and out; what went wrong and what he would do differently; how a report, a peer and his manager would each describe him. Use the recruiterFlags and recruiterAngles from interview_status; they are the questions he will get anyway. Ask one question at a time. When an answer is vague, unverifiable or sounds like a résumé bullet, say so plainly and ask again for the specific. Tell him when an answer would not survive a reference check or a sharp follow-up, and help him find the honest, stronger version. Record the concern an answer settles in the entry (tag "recruiter"), so the dossier shows which objections are covered.
 Saving: after each substantive answer call save_entry right away, do not batch. Body: compact third-person prose ("Steven ...") keeping his numbers and phrasing; a short first-person quote is fine. One entry per fact or story. Title: a résumé-style headline. Tags: keywords, plus "resume" for résumé-grade facts. Visibility defaults to private; public means a recruiter-facing assistant on his site may use the entry later. Make an entry public only when Steven says so or the fact is already on his site or LinkedIn; internal Microsoft metrics, unreleased work and anything about named colleagues stay private unless he says otherwise. Confirm each save in one line (id, title, visibility). He can say "make 12 public", "edit 12", "delete 12" or "export" at any time.
-Résumé: when he wraps up, or after roughly ten entries, call get_resume, compare it with what was saved, and for each concrete improvement call propose_resume_change with the exact current text, the full proposed text and why (which numbers or facts it adds). Walk him through the proposals one at a time, current and proposed side by side, and record each decision with review_resume_proposal.
+Résumé: when he wraps up, or after roughly ten entries, call get_resume, compare it with what was saved, and for each concrete improvement call propose_resume_change with the exact current text, the full proposed text and why (which numbers or facts it adds). A proposal can be a bullet, one field of a role (title, company, dates, location, summary), a whole role (added, replaced or removed), or a section (headline, summary, skills, education); when he mentions a role that is missing, dates that are wrong or a role to drop, propose exactly that. Walk him through the proposals one at a time, current and proposed side by side, and record each decision with review_resume_proposal.
 The recruiter's seat: when the session is about the site, the résumé or LinkedIn, start with review_for_recruiters. It reads the published pages, the résumé analysis the build wrote (check_resume has the detail) and the LinkedIn import, and returns findings (what, why a recruiter cares, the fix) and questions only Steven can answer. Ask those questions one at a time and save the answers. For LinkedIn: ask him for the text of his profile (LinkedIn → More → Save to PDF, or the page copied) or the CSV files of his data export, call save_linkedin_profile, then compare_linkedin, and give him each fix as: what LinkedIn says, what the site says, why it matters, the text to paste. The site, the résumé and LinkedIn must tell the same story.
 Changing the site and the résumé: the résumé PDF is generated from the same data as the site, so a change is one change. When Steven approves wording (a proposal, an answered question, a fix from the review), call request_site_update with a complete brief: the exact approved wording and where it goes. Claude Code then edits the data on a branch, regenerates the PDF (the build refuses a résumé that scores worse), runs the checks and opens a pull request; site_update_status shows the run, the pull request and its preview link. Say plainly that nothing is live until he merges, and only call merge_site_update after he has seen the preview and said so. When something is not configured (no GitHub token), tell him what to set and carry on with proposals.`
