@@ -19,7 +19,8 @@ export type EntryInput = Omit<DossierEntry, 'id' | 'createdAt' | 'updatedAt'>
 export type EntryFilter = { role?: string; topic?: string; visibility?: Visibility }
 
 export type ProposalStatus = 'proposed' | 'approved' | 'rejected' | 'applied'
-export type Proposal = { id: number; createdAt: number; updatedAt: number; role: string; kind: 'replace' | 'add' | 'remove'; currentText: string | null; proposedText: string | null; rationale: string; basedOn: string | null; status: ProposalStatus; decisionNote: string | null }
+// field: for a role, which part changes (title | company | dates | location | summary | point); null for the headline, summary, skills and education sections.
+export type Proposal = { id: number; createdAt: number; updatedAt: number; role: string; field: string | null; kind: 'replace' | 'add' | 'remove'; currentText: string | null; proposedText: string | null; rationale: string; basedOn: string | null; status: ProposalStatus; decisionNote: string | null }
 export type ProposalInput = Omit<Proposal, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'decisionNote'>
 export interface DossierStore {
   list(filter: EntryFilter): Promise<DossierEntry[]>
@@ -40,8 +41,8 @@ export interface DossierStore {
 }
 export type LinkedInRecord = { json: string; source: string; importedAt: number }
 
-type ProposalRow = { id: number; created_at: number; updated_at: number; role: string; kind: Proposal['kind']; current_text: string | null; proposed_text: string | null; rationale: string; based_on: string | null; status: ProposalStatus; decision_note: string | null }
-const proposalFromRow = (row: ProposalRow): Proposal => ({ id: row.id, createdAt: row.created_at, updatedAt: row.updated_at, role: row.role, kind: row.kind, currentText: row.current_text, proposedText: row.proposed_text, rationale: row.rationale, basedOn: row.based_on, status: row.status, decisionNote: row.decision_note })
+type ProposalRow = { id: number; created_at: number; updated_at: number; role: string; field: string | null; kind: Proposal['kind']; current_text: string | null; proposed_text: string | null; rationale: string; based_on: string | null; status: ProposalStatus; decision_note: string | null }
+const proposalFromRow = (row: ProposalRow): Proposal => ({ id: row.id, createdAt: row.created_at, updatedAt: row.updated_at, role: row.role, field: row.field ?? null, kind: row.kind, currentText: row.current_text, proposedText: row.proposed_text, rationale: row.rationale, basedOn: row.based_on, status: row.status, decisionNote: row.decision_note })
 
 type Row = { id: number; created_at: number; updated_at: number; role: string; topic: string; title: string; body: string; visibility: Visibility; tags: string | null }
 const fromRow = (row: Row): DossierEntry => ({ id: row.id, createdAt: row.created_at, updatedAt: row.updated_at, role: row.role, topic: row.topic, title: row.title, body: row.body, visibility: row.visibility, tags: row.tags })
@@ -109,8 +110,8 @@ export class D1Store implements DossierStore {
   }
 
   async insertProposal(input: ProposalInput, now: number) {
-    const row = await this.db.prepare('INSERT INTO resume_proposals (created_at, updated_at, role, kind, current_text, proposed_text, rationale, based_on) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *')
-      .bind(now, now, input.role, input.kind, input.currentText, input.proposedText, input.rationale, input.basedOn).first<ProposalRow>()
+    const row = await this.db.prepare('INSERT INTO resume_proposals (created_at, updated_at, role, field, kind, current_text, proposed_text, rationale, based_on) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *')
+      .bind(now, now, input.role, input.field, input.kind, input.currentText, input.proposedText, input.rationale, input.basedOn).first<ProposalRow>()
     return proposalFromRow(row!)
   }
 

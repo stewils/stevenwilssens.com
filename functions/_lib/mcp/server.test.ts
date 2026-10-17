@@ -218,6 +218,23 @@ describe('the résumé', () => {
     expect((await call(store, 'review_resume_proposal', { id: 42, decision: 'reject' })).text).toContain('no proposal')
     expect((await call(store, 'review_resume_proposal', { id: proposal.id, decision: 'maybe' })).text).toContain('decision must be')
   })
+
+  it('proposes changes to the dates, title and other fields of a role, checking the current value', async () => {
+    const store = new MemoryStore()
+    const wrong = await call(store, 'propose_resume_change', { role: 'compuware', field: 'dates', kind: 'replace', current_text: 'Jan 2005 - Dec 2007', proposed_text: 'Jan 2005 - Jun 2007', rationale: 'Left mid-2007.' })
+    expect(wrong.text).toContain('does not match the résumé')
+    const badFormat = await call(store, 'propose_resume_change', { role: 'compuware', field: 'dates', kind: 'replace', current_text: 'Jan 2005 - Dec 2006', proposed_text: 'January 2005 to June 2007', rationale: 'x' })
+    expect(badFormat.text).toContain('written like')
+    const notAdd = await call(store, 'propose_resume_change', { role: 'compuware', field: 'dates', kind: 'add', proposed_text: 'Jan 2005 - Jun 2007', rationale: 'x' })
+    expect(notAdd.text).toContain('can only be replaced')
+    const dates = await call(store, 'propose_resume_change', { role: 'compuware', field: 'dates', kind: 'replace', current_text: 'Jan 2005 - Dec 2006', proposed_text: 'Jan 2005 - Jun 2007', rationale: 'Steven left Compuware in June 2007 (entry 12).', based_on: '12' })
+    expect((parse(dates.text).proposed as { field: string; proposedText: string }).field).toBe('dates')
+    const title = await call(store, 'propose_resume_change', { role: 'csx-data', field: 'title', kind: 'replace', current_text: 'Principal Product Manager Lead - CSX Data', proposed_text: 'Principal Product Manager Lead - Windows Customer Experience Data', rationale: 'Spell out CSX.' })
+    expect((parse(title.text).proposed as { field: string }).field).toBe('title')
+    const section = await call(store, 'propose_resume_change', { role: 'headline', kind: 'replace', current_text: 'x', proposed_text: 'y', rationale: 'z' })
+    expect((parse(section.text).proposed as { field: string | null }).field).toBeNull()
+    expect(parse((await call(store, 'list_resume_proposals')).text).count).toBe(3)
+  })
 })
 
 describe('searchTerms', () => {

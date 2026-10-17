@@ -200,7 +200,8 @@ export const searchTerms = (query: string) => {
 }
 
 const shapeEntry = (entry: DossierEntry) => ({ id: entry.id, role: entry.role, topic: entry.topic, title: entry.title, body: entry.body, visibility: entry.visibility, tags: entry.tags, updated: new Date(entry.updatedAt).toISOString().slice(0, 10) })
-const shapeProposal = (p: Proposal) => ({ id: p.id, status: p.status, role: p.role, kind: p.kind, currentText: p.currentText, proposedText: p.proposedText, rationale: p.rationale, basedOn: p.basedOn, decisionNote: p.decisionNote, updated: new Date(p.updatedAt).toISOString().slice(0, 10) })
+export const roleFields = ['title', 'company', 'dates', 'location', 'summary', 'point']
+const shapeProposal = (p: Proposal) => ({ id: p.id, status: p.status, role: p.role, field: p.field, kind: p.kind, currentText: p.currentText, proposedText: p.proposedText, rationale: p.rationale, basedOn: p.basedOn, decisionNote: p.decisionNote, updated: new Date(p.updatedAt).toISOString().slice(0, 10) })
 
 const roleSummary = (key: string) => {
   if (key === generalRole) return { key, role: 'Across roles', company: null, dates: null, summary: 'Leadership philosophy, what Steven is looking for, strengths, current AI work, background.' }
@@ -445,12 +446,13 @@ export const tools: Tool[] = [
   },
   {
     name: 'propose_resume_change',
-    description: 'Propose one concrete résumé edit for Steven to approve or reject: replace a bullet or summary with stronger wording, add a bullet, or remove one. Quote the current text exactly and give the full proposed text. One proposal per change.',
+    description: 'Propose one concrete résumé edit for Steven to approve or reject. Any part of a role can change: its title, company, dates ("Dec 2024 - Sep 2026"), location, summary, or a bullet point (replace, add or remove), and so can the headline, summary, skills and education sections. Quote the current text exactly and give the full proposed text. One proposal per change.',
     inputSchema: {
       type: 'object',
       properties: {
         role: { type: 'string', enum: proposalRoles, description: 'The role key the change belongs to, or headline | summary | skills | education' },
-        kind: { type: 'string', enum: ['replace', 'add', 'remove'] },
+        field: { type: 'string', enum: roleFields, description: 'For a role: which part changes. title, company, dates, location, summary, or point (a bullet; the default). Dates are written like "Dec 2024 - Sep 2026".' },
+        kind: { type: 'string', enum: ['replace', 'add', 'remove'], description: 'title, company, dates, location and summary can only be replaced; a point can be replaced, added or removed' },
         current_text: { type: 'string', description: 'The exact current wording (required for replace and remove)' },
         proposed_text: { type: 'string', description: 'The new wording (required for replace and add)' },
         rationale: { type: 'string', description: 'Why this is better: the fact or number from the dossier it adds, what it sharpens' },
@@ -465,9 +467,19 @@ export const tools: Tool[] = [
       if (!proposalRoles.includes(role)) throw new ToolError(`unknown role "${role}". Use one of: ${proposalRoles.join(', ')}`)
       const kind = str(args, 'kind', 10, true)!.toLowerCase() as Proposal['kind']
       if (!['replace', 'add', 'remove'].includes(kind)) throw new ToolError('kind must be replace, add or remove')
+      const isRole = roleKeys.includes(role) && role !== generalRole
+      const field = isRole ? (str(args, 'field', 20)?.toLowerCase() ?? 'point') : null
+      if (field && !roleFields.includes(field)) throw new ToolError(`field must be one of: ${roleFields.join(', ')}`)
+      if (field && field !== 'point' && kind !== 'replace') throw new ToolError(`${field} can only be replaced; add and remove are for bullet points`)
       const currentText = str(args, 'current_text', 2000, kind !== 'add')
       const proposedText = str(args, 'proposed_text', 2000, kind !== 'remove')
-      const proposal = await ctx.store.insertProposal({ role, kind, currentText, proposedText, rationale: str(args, 'rationale', 2000, true)!, basedOn: str(args, 'based_on', 200) }, ctx.now)
+      if (field === 'dates' && proposedText && !/^[A-Z][a-z]{2} \d{4} - ([A-Z][a-z]{2} \d{4}|Present)$/.test(proposedText)) throw new ToolError('dates must be written like "Dec 2024 - Sep 2026" (or "... - Present")')
+      if (field && field !== 'point' && currentText) {
+        const item = experiences.find((entry) => entry.key === role)!
+        const actual = field === 'title' ? item.role : field === 'company' ? item.company : field === 'dates' ? item.dates : field === 'location' ? item.location : item.summary
+        if (actual !== currentText) throw new ToolError(`current_text does not match the résumé: the ${field} of ${item.role} is "${actual}"`)
+      }
+      const proposal = await ctx.store.insertProposal({ role, field, kind, currentText, proposedText, rationale: str(args, 'rationale', 2000, true)!, basedOn: str(args, 'based_on', 200) }, ctx.now)
       return { proposed: shapeProposal(proposal), next: 'Show Steven the current and proposed text side by side and ask: approve or reject? Then call review_resume_proposal.' }
     },
   },
@@ -568,7 +580,7 @@ export const tools: Tool[] = [
   // Changing the site and the resume.
   {
     name: 'request_site_update',
-    description: 'Ask GitHub to change the site and the resume: starts the "Site update" workflow, where Claude Code applies the instruction on a branch (facts in src/resume.ts, then npm run resume:build regenerates the PDF and refuses a worse resume), runs the checks and opens a pull request with a preview link. Nothing goes live until Steven merges. Use it for approved resume proposals, answered questions and anything else he wants changed: rewording, but also adding or removing a role, a bullet, a key achievement, a skill, a selected-work case, a recommendation or a page. Write the instruction as a complete brief with the exact wording to use.',
+    description: 'Ask GitHub to change the site and the resume: starts the "Site update" workflow, where Claude Code applies the instruction on a branch (facts in src/resume.ts, then npm run resume:build regenerates the PDF and refuses a worse resume), runs the checks and opens a pull request with a preview link. Nothing goes live until Steven merges. Use it for approved resume proposals, answered questions and anything else he wants changed: rewording, but also correcting a role\'s dates, title, company or location, the period of a selected-work case, the profile (headline, summary, location, authorization, availability, team size, contact), and adding or removing a role, a bullet, a key achievement, a skill, a selected-work case, a recommendation or a page. Write the instruction as a complete brief with the exact wording to use.',
     inputSchema: { type: 'object', properties: { title: { type: 'string', description: 'Short title for the branch and pull request, e.g. "Team size on the Group PM role"' }, instruction: { type: 'string', description: 'Everything Claude Code needs: which facts change, the exact new wording Steven approved, which pages or resume sections it touches, and anything to leave alone' } }, required: ['title', 'instruction'], additionalProperties: false },
     readOnly: false,
     run: async (args, ctx) => {
