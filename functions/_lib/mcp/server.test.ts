@@ -86,7 +86,7 @@ describe('what is already there', () => {
   it('lists every tool with annotations', async () => {
     const response = await send(rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' }), new MemoryStore())
     const tools = ((await response.json()) as { result: { tools: { name: string; annotations: { readOnlyHint: boolean } }[] } }).result.tools
-    expect(tools.map((tool) => tool.name)).toEqual(['about_steven', 'read_site_page', 'get_role', 'search_dossier', 'get_recommendations', 'get_patents_and_press', 'interview_status', 'save_entry', 'update_entry', 'delete_entry', 'list_entries', 'export_dossier', 'get_resume', 'propose_resume_change', 'list_resume_proposals', 'review_resume_proposal'])
+    expect(tools.map((tool) => tool.name)).toEqual(['about_steven', 'read_site_page', 'get_role', 'search_dossier', 'get_recommendations', 'get_patents_and_press', 'interview_status', 'save_entry', 'update_entry', 'delete_entry', 'list_entries', 'export_dossier', 'get_resume', 'propose_resume_change', 'list_resume_proposals', 'review_resume_proposal', 'review_for_recruiters', 'check_resume', 'save_linkedin_profile', 'compare_linkedin', 'request_site_update', 'site_update_status', 'merge_site_update'])
     expect(tools.find((tool) => tool.name === 'save_entry')!.annotations.readOnlyHint).toBe(false)
     expect(tools.find((tool) => tool.name === 'get_role')!.annotations.readOnlyHint).toBe(true)
   })

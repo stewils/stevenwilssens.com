@@ -34,7 +34,11 @@ export interface DossierStore {
   decideProposal(id: number, status: ProposalStatus, note: string | null, now: number): Promise<Proposal | null>
   // Questions the site assistant could not answer from the public dossier (ask_questions), newest first.
   askGaps(limit: number): Promise<{ question: string; when: string; reason: string }[]>
+  // Steven's LinkedIn profile as last imported through save_linkedin_profile (one row, parsed profile as JSON).
+  getLinkedIn(): Promise<LinkedInRecord | null>
+  saveLinkedIn(json: string, source: string, now: number): Promise<void>
 }
+export type LinkedInRecord = { json: string; source: string; importedAt: number }
 
 type ProposalRow = { id: number; created_at: number; updated_at: number; role: string; kind: Proposal['kind']; current_text: string | null; proposed_text: string | null; rationale: string; based_on: string | null; status: ProposalStatus; decision_note: string | null }
 const proposalFromRow = (row: ProposalRow): Proposal => ({ id: row.id, createdAt: row.created_at, updatedAt: row.updated_at, role: row.role, kind: row.kind, currentText: row.current_text, proposedText: row.proposed_text, rationale: row.rationale, basedOn: row.based_on, status: row.status, decisionNote: row.decision_note })
@@ -119,6 +123,15 @@ export class D1Store implements DossierStore {
     const { results } = await this.db.prepare('SELECT question, ts, reason FROM ask_questions ORDER BY ts DESC LIMIT ?').bind(limit).all<{ question: string; ts: number; reason: string }>()
     return results.map((row) => ({ question: row.question, when: new Date(row.ts).toISOString().slice(0, 10), reason: row.reason }))
   }
+
+  async getLinkedIn() {
+    const row = await this.db.prepare('SELECT json, source, imported_at FROM linkedin_profile WHERE id = 1').first<{ json: string; source: string; imported_at: number }>()
+    return row ? { json: row.json, source: row.source, importedAt: row.imported_at } : null
+  }
+
+  async saveLinkedIn(json: string, source: string, now: number) {
+    await this.db.prepare('INSERT INTO linkedin_profile (id, imported_at, source, json) VALUES (1, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET imported_at = excluded.imported_at, source = excluded.source, json = excluded.json').bind(now, source, json).run()
+  }
 }
 
 export class MemoryStore implements DossierStore {
@@ -175,4 +188,7 @@ export class MemoryStore implements DossierStore {
     return proposal
   }
   async askGaps(limit: number) { return this.gaps.slice(0, limit) }
+  linkedin: LinkedInRecord | null = null
+  async getLinkedIn() { return this.linkedin }
+  async saveLinkedIn(json: string, source: string, now: number) { this.linkedin = { json, source, importedAt: now } }
 }

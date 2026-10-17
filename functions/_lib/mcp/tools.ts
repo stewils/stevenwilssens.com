@@ -2,10 +2,15 @@
 // read what is already published (the résumé data, the site's pages, patents,
 // recommendations), keep the dossier of facts and stories growing, and turn new
 // material into résumé proposals he approves or rejects.
-import { education, experiences, honors, languages, news, recommendationLinks, recommendations } from '../../../src/resume'
+import { education, experiences, honors, impact, languages, news, profile, recommendationLinks, recommendations, selectedWork, skills } from '../../../src/resume'
 import { grantedPatents, patentApplications } from '../../../src/patents'
 import { markdownPath, pageMeta, routes, type Page } from '../../../src/pageMeta'
 import type { DossierEntry, DossierStore, Proposal, ProposalStatus, Visibility } from './store'
+import type { GitHub } from '../github'
+import { compareLinkedIn, linkedInTexts, parseLinkedInCsv, parseLinkedInText, type LinkedInProfile } from '../review/linkedin'
+import { reviewForRecruiters, type ResumeReport } from '../review/recruiter'
+
+export const updateWorkflow = 'site-update.yml'
 
 export const siteUrl = 'https://steven.wilssens.com'
 const contact = { email: 'steven@wilssens.com', linkedin: 'https://www.linkedin.com/in/steven-wilssens-59495889/', site: siteUrl, resumePdf: `${siteUrl}/steven-wilssens-resume-2026.pdf` }
@@ -117,8 +122,26 @@ export const recruiterLens = (key: string) => {
 export type ToolContext = {
   store: DossierStore
   now: number
-  // Reads one of the site's own static files (a Markdown page copy) by path, or null when it is not there.
+  // Reads one of the site's own static files (a Markdown page copy, the resume report) by path, or null when it is not there.
   fetchPage: (path: string) => Promise<string | null>
+  // The repository, for site updates; null when no GITHUB_TOKEN is configured.
+  github: GitHub | null
+}
+
+// The resume analysis the build writes next to the site (scripts/resume-check.mjs).
+const resumeReportFor = async (ctx: ToolContext): Promise<ResumeReport | null> => {
+  const text = await ctx.fetchPage('/resume-report.json')
+  if (!text) return null
+  try { return JSON.parse(text) as ResumeReport } catch { return null }
+}
+const savedLinkedIn = async (ctx: ToolContext) => {
+  const saved = await ctx.store.getLinkedIn()
+  return saved ? { ...saved, profile: JSON.parse(saved.json) as LinkedInProfile } : null
+}
+const bool = (args: Args, key: string) => args[key] === true || args[key] === 'true'
+const needGitHub = (ctx: ToolContext) => {
+  if (!ctx.github) throw new ToolError('Site updates are not configured: set the GITHUB_TOKEN secret (a fine-grained GitHub token with Actions: write, Contents: read and Pull requests: write on the repository) on the Pages project, then redeploy.')
+  return ctx.github
 }
 
 type Args = Record<string, unknown>
@@ -197,9 +220,10 @@ export const tools: Tool[] = [
       const count = (key: string) => entries.filter((entry) => entry.role === key).length
       return {
         name: 'Steven Wilssens',
-        headline: 'Principal product leader for data and AI. Most recently Principal Group Product Manager, Windows & Devices Data, at Microsoft: the data, experimentation and ML products behind decisions across a billion+ Windows devices.',
-        status: 'Building in AI while choosing his next product leadership role in data, experimentation and AI.',
-        location: 'Seattle area (Redmond, Washington)',
+        headline: `${profile.headline}. Most recently Principal Group Product Manager, Windows & Devices Data, at Microsoft: the data, experimentation and ML products behind decisions across a billion+ Windows devices.`,
+        status: `Building in AI while choosing his next role. Looking for: ${profile.lookingFor.toLowerCase()}. ${profile.availability}.`,
+        location: `${profile.location} · ${profile.workAuthorization}`,
+        teamSize: `Led teams of ${profile.teamSize}`,
         contact,
         education: `${education.degree}, ${education.school} (${education.dates})`,
         languages,
@@ -404,15 +428,19 @@ export const tools: Tool[] = [
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     readOnly: true,
     run: async () => ({
-      headline: 'Principal product leader for data and AI.',
-      summary: 'Most recently I led Windows & Devices Data product management at Microsoft: the data, experimentation and ML products behind decisions across a billion+ Windows devices. Now building in AI while choosing my next leadership role.',
+      headline: profile.resumeHeadline,
+      summary: profile.summary,
+      profile: { lookingFor: profile.lookingFor, location: profile.location, workAuthorization: profile.workAuthorization, availability: profile.availability, teamSize: profile.teamSize },
+      keyAchievements: impact.map(({ value, label, backing }) => ({ value, label, backedByRole: backing ?? null })),
+      skills,
       roles: experiences.map((item) => ({ key: item.key, role: item.role, company: item.company, dates: item.dates, location: item.location, summary: item.summary, points: item.points })),
+      selectedWork: selectedWork.map((item) => ({ key: item.key, title: item.title, period: item.period, role: item.role, outcome: item.outcome, source: item.source ?? null })),
       education: `${education.degree}, ${education.school} (${education.dates})`,
       languages,
       honors: honors.map(([title, issued]) => `${title} (${issued})`),
       pdf: contact.resumePdf,
       pages: Object.fromEntries(sitePages.filter((page) => page !== 'llms-full').map((page) => [page, pageMeta[page as Page].description])),
-      note: 'The PDF is exported from a résumé builder and mirrors these entries. Propose changes with propose_resume_change; Steven applies approved ones to src/resume.ts and the PDF himself.',
+      note: 'The PDF is generated from these same entries (src/resume.ts) by npm run resume:build, which only accepts a resume that scores at least as well as the current one. Propose wording with propose_resume_change; once Steven approves, request_site_update makes the change on a branch, regenerates the PDF and opens a pull request.',
     }),
   },
   {
@@ -470,6 +498,113 @@ export const tools: Tool[] = [
       return { reviewed: shapeProposal(proposal) }
     },
   },
+
+  // From a recruiter's seat: the site, the resume PDF and LinkedIn.
+  {
+    name: 'review_for_recruiters',
+    description: 'What a recruiter or hiring manager trips over on steven.wilssens.com, in the resume PDF and on LinkedIn: findings with why it matters and what fixes it, and the questions only Steven can answer. Call it at the start of any session about the site or the resume, and again after changes.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    readOnly: true,
+    run: async (_args, ctx) => {
+      const pages = Object.fromEntries(await Promise.all((['home', 'about', 'experience', 'work', 'recommendations'] as Page[]).map(async (page) => [page, await ctx.fetchPage(markdownPath(page))])))
+      const [resumeReport, saved] = await Promise.all([resumeReportFor(ctx), savedLinkedIn(ctx)])
+      const linkedin = saved ? compareLinkedIn(saved.profile, ctx.now) : null
+      const review = reviewForRecruiters({ pages, resumeReport, linkedin, now: ctx.now })
+      return { ...review, howToUse: 'Take the high findings first and say for each what a recruiter would conclude. Ask the questions one at a time; save every answer with save_entry. When an answer changes a fact on the site or in the resume, propose the wording with propose_resume_change and, once Steven approves, call request_site_update. LinkedIn findings are for Steven to fix on LinkedIn; compare_linkedin has the text to paste.' }
+    },
+  },
+  {
+    name: 'check_resume',
+    description: 'The resume PDF analysed the way an applicant tracking system, a recruiter and an editor read it (pages, extractable text, contact, headline, every role and date, the bullets of the latest roles, tense, scope, keywords, unexplained numbers), with a score out of 100 and the questions the data leaves open. The report comes from the build of the deployed site.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    readOnly: true,
+    run: async (_args, ctx) => {
+      const report = await resumeReportFor(ctx)
+      if (!report) throw new ToolError('No resume report in this deployment yet; it is written at build time (dist/resume-report.json). Deploy main again.')
+      return { pdf: contact.resumePdf, ...report, howTheResumeIsBuilt: 'public/steven-wilssens-resume-2026.pdf is generated from src/resume.ts by npm run resume:build; a new PDF only replaces the current one when it scores at least as well. Fix findings by changing the data (through request_site_update), never the PDF by hand.' }
+    },
+  },
+  {
+    name: 'save_linkedin_profile',
+    description: 'Import Steven\'s LinkedIn profile so it can be compared with the site and the resume. LinkedIn has no API for this: pass `text` (his profile page copied, or the text of LinkedIn\'s "Save to PDF" export) or the CSV files of LinkedIn\'s data export (Settings → Data privacy → Get a copy of your data: Profile.csv, Positions.csv, Skills.csv, Education.csv, Languages.csv), CSV being the more reliable of the two. Replaces the previous import.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'The profile as text (Save to PDF export or the page copied)' },
+        profile_csv: { type: 'string', description: 'Contents of Profile.csv' },
+        positions_csv: { type: 'string', description: 'Contents of Positions.csv' },
+        skills_csv: { type: 'string', description: 'Contents of Skills.csv' },
+        education_csv: { type: 'string', description: 'Contents of Education.csv' },
+        languages_csv: { type: 'string', description: 'Contents of Languages.csv' },
+      },
+      additionalProperties: false,
+    },
+    readOnly: false,
+    run: async (args, ctx) => {
+      const text = str(args, 'text', 80_000)
+      const csv = { profile: str(args, 'profile_csv', 80_000) ?? undefined, positions: str(args, 'positions_csv', 120_000) ?? undefined, skills: str(args, 'skills_csv', 40_000) ?? undefined, education: str(args, 'education_csv', 20_000) ?? undefined, languages: str(args, 'languages_csv', 10_000) ?? undefined }
+      const hasCsv = Object.values(csv).some(Boolean)
+      if (!text && !hasCsv) throw new ToolError('Pass text, or at least one of the CSV files')
+      const imported = hasCsv ? parseLinkedInCsv(csv, ctx.now) : parseLinkedInText(text!, ctx.now)
+      if (!imported.positions.length && !imported.headline) throw new ToolError('Nothing recognisable in the input: no headline and no positions. For text, include the lines from the name through Experience and Education; for CSV, pass Positions.csv at least.')
+      await ctx.store.saveLinkedIn(JSON.stringify(imported), imported.source, ctx.now)
+      return { imported: { source: imported.source, heuristic: imported.heuristic, headline: imported.headline ?? null, location: imported.location ?? null, about: imported.about ? `${imported.about.slice(0, 200)}${imported.about.length > 200 ? '…' : ''}` : null, positions: imported.positions.map((pos) => `${pos.title} · ${pos.company} · ${pos.dates}`), skills: imported.skills.length, education: imported.education }, next: imported.heuristic ? 'Parsed from text, so show Steven the positions and ask whether titles, companies and dates came through right; then call compare_linkedin.' : 'Call compare_linkedin.' }
+    },
+  },
+  {
+    name: 'compare_linkedin',
+    description: 'LinkedIn next to the site and the resume: for each difference, what LinkedIn says, what the site says, why a recruiter cares, and the exact text for Steven to paste into LinkedIn. Needs an import (save_linkedin_profile).',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    readOnly: true,
+    run: async (_args, ctx) => {
+      const saved = await savedLinkedIn(ctx)
+      if (!saved) throw new ToolError('LinkedIn has not been imported. Ask Steven for the text of his profile (LinkedIn → More → Save to PDF, or copy the page) or the CSV files of his data export, then call save_linkedin_profile.')
+      const comparison = compareLinkedIn(saved.profile, ctx.now)
+      const texts = linkedInTexts()
+      return { importedAt: new Date(saved.importedAt).toISOString().slice(0, 10), source: saved.source, heuristic: saved.profile.heuristic, linkedin: { headline: saved.profile.headline ?? null, location: saved.profile.location ?? null, positions: saved.profile.positions.map((pos) => `${pos.title} · ${pos.company} · ${pos.dates}`) }, ...comparison, recommendedTexts: { headline: texts.headline, about: texts.about }, howToPresent: 'Go through the fixes in order. For each: LinkedIn says, the site says, why it matters to a recruiter, and the text to paste. Where LinkedIn is right and the site is wrong, say so and propose the site change instead.' }
+    },
+  },
+
+  // Changing the site and the resume.
+  {
+    name: 'request_site_update',
+    description: 'Ask GitHub to change the site and the resume: starts the "Site update" workflow, where Claude Code applies the instruction on a branch (facts in src/resume.ts, then npm run resume:build regenerates the PDF and refuses a worse resume), runs the checks and opens a pull request with a preview link. Nothing goes live until Steven merges. Use it for approved resume proposals, answered questions and anything else he wants changed: rewording, but also adding or removing a role, a bullet, a key achievement, a skill, a selected-work case, a recommendation or a page. Write the instruction as a complete brief with the exact wording to use.',
+    inputSchema: { type: 'object', properties: { title: { type: 'string', description: 'Short title for the branch and pull request, e.g. "Team size on the Group PM role"' }, instruction: { type: 'string', description: 'Everything Claude Code needs: which facts change, the exact new wording Steven approved, which pages or resume sections it touches, and anything to leave alone' } }, required: ['title', 'instruction'], additionalProperties: false },
+    readOnly: false,
+    run: async (args, ctx) => {
+      const github = needGitHub(ctx)
+      const title = str(args, 'title', 80, true)!
+      const instruction = str(args, 'instruction', 6000, true)!
+      await github.dispatch(updateWorkflow, 'main', { title, instruction })
+      return { started: true, repository: github.repo, workflow: `https://github.com/${github.repo}/actions/workflows/${updateWorkflow}`, next: 'Claude Code now runs in GitHub Actions; it usually takes 5 to 15 minutes and ends with a pull request. Call site_update_status to see the run and the pull request with its preview link. Tell Steven the change is on a branch and goes live only when he merges (merge_site_update, after he has seen the preview).' }
+    },
+  },
+  {
+    name: 'site_update_status',
+    description: 'Recent runs of the "Site update" workflow and the open pull requests, each with its preview link (https://<branch>.stevenwilssens.pages.dev) and whether it can be merged.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    readOnly: true,
+    run: async (_args, ctx) => {
+      const github = needGitHub(ctx)
+      const [runs, pulls] = await Promise.all([github.runs(updateWorkflow, 5), github.pulls('open')])
+      return { runs, pullRequests: pulls, note: 'A run that has completed without a pull request made no changes, or failed: open its url. Previews appear a few minutes after the branch is pushed, built by the Deploy workflow.' }
+    },
+  },
+  {
+    name: 'merge_site_update',
+    description: 'Merge a pull request into main, which deploys it to production at steven.wilssens.com. Only after Steven has looked at the preview and said in this conversation that this pull request should go live; pass confirm: true to record that. Never call it on your own initiative.',
+    inputSchema: { type: 'object', properties: { number: { type: 'integer', description: 'The pull request number' }, confirm: { type: 'boolean', description: 'true only when Steven said this pull request should go live' } }, required: ['number', 'confirm'], additionalProperties: false },
+    readOnly: false,
+    run: async (args, ctx) => {
+      const github = needGitHub(ctx)
+      const number = int(args, 'number', 0, 1, Number.MAX_SAFE_INTEGER)
+      if (!bool(args, 'confirm')) throw new ToolError('Ask Steven to confirm, in his words, that this pull request should go live, then call again with confirm: true.')
+      const pull = await github.pull(number)
+      if (!pull) throw new ToolError(`no pull request #${number}`)
+      const result = await github.merge(number)
+      return { ...result, pullRequest: pull, next: result.merged ? 'Merged. The Deploy workflow now builds main and publishes it; the site updates within a few minutes. The resume PDF and the Markdown pages update with it.' : 'Not merged; see message.' }
+    },
+  },
 ]
 
 export const instructions = `Steven Wilssens is connected. This server is his private workspace for talking through his career; nobody else can reach it. Help him recall, sharpen and structure what he did, and keep the dossier (the facts and stories behind his résumé and his site) growing.
@@ -477,4 +612,6 @@ Build on what is already there. Before asking about a role, read what exists: ge
 A session can be: an interview (call interview_status: it shows the gaps, what the site's visitors asked that the dossier could not answer, and per role what a recruiter would push on); thinking out loud about one role or theme; preparing for a specific interview or job description; or drafting résumé or LinkedIn wording.
 Interview like a sceptical recruiter and hiring manager, not a fan. For each role: scope versus influence (what he owned, decided and was measured on, versus what the team or the platform did anyway); evidence behind every claim (numbers with a baseline, how they were measured, who else would confirm them); what the dates raise (short stints, long plateaus without promotion, overlaps, the time since September 2026); why he moved in and out; what went wrong and what he would do differently; how a report, a peer and his manager would each describe him. Use the recruiterFlags and recruiterAngles from interview_status; they are the questions he will get anyway. Ask one question at a time. When an answer is vague, unverifiable or sounds like a résumé bullet, say so plainly and ask again for the specific. Tell him when an answer would not survive a reference check or a sharp follow-up, and help him find the honest, stronger version. Record the concern an answer settles in the entry (tag "recruiter"), so the dossier shows which objections are covered.
 Saving: after each substantive answer call save_entry right away, do not batch. Body: compact third-person prose ("Steven ...") keeping his numbers and phrasing; a short first-person quote is fine. One entry per fact or story. Title: a résumé-style headline. Tags: keywords, plus "resume" for résumé-grade facts. Visibility defaults to private; public means a recruiter-facing assistant on his site may use the entry later. Make an entry public only when Steven says so or the fact is already on his site or LinkedIn; internal Microsoft metrics, unreleased work and anything about named colleagues stay private unless he says otherwise. Confirm each save in one line (id, title, visibility). He can say "make 12 public", "edit 12", "delete 12" or "export" at any time.
-Résumé: when he wraps up, or after roughly ten entries, call get_resume, compare it with what was saved, and for each concrete improvement call propose_resume_change with the exact current text, the full proposed text and why (which numbers or facts it adds). Walk him through the proposals one at a time, current and proposed side by side, and record each decision with review_resume_proposal. Never claim the résumé itself changed: approved proposals are applied by Steven to the site and PDF, and list_resume_proposals shows what is still waiting.`
+Résumé: when he wraps up, or after roughly ten entries, call get_resume, compare it with what was saved, and for each concrete improvement call propose_resume_change with the exact current text, the full proposed text and why (which numbers or facts it adds). Walk him through the proposals one at a time, current and proposed side by side, and record each decision with review_resume_proposal.
+The recruiter's seat: when the session is about the site, the résumé or LinkedIn, start with review_for_recruiters. It reads the published pages, the résumé analysis the build wrote (check_resume has the detail) and the LinkedIn import, and returns findings (what, why a recruiter cares, the fix) and questions only Steven can answer. Ask those questions one at a time and save the answers. For LinkedIn: ask him for the text of his profile (LinkedIn → More → Save to PDF, or the page copied) or the CSV files of his data export, call save_linkedin_profile, then compare_linkedin, and give him each fix as: what LinkedIn says, what the site says, why it matters, the text to paste. The site, the résumé and LinkedIn must tell the same story.
+Changing the site and the résumé: the résumé PDF is generated from the same data as the site, so a change is one change. When Steven approves wording (a proposal, an answered question, a fix from the review), call request_site_update with a complete brief: the exact approved wording and where it goes. Claude Code then edits the data on a branch, regenerates the PDF (the build refuses a résumé that scores worse), runs the checks and opens a pull request; site_update_status shows the run, the pull request and its preview link. Say plainly that nothing is live until he merges, and only call merge_site_update after he has seen the preview and said so. When something is not configured (no GitHub token), tell him what to set and carry on with proposals.`

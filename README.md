@@ -28,7 +28,10 @@ npm run build && npx wrangler pages dev
 | Path | What it is |
 |---|---|
 | `src/App.tsx` | The whole site: pages, content, and routing (`pageFromLocation`) |
-| `src/resume.ts` | The résumé data: roles (each with a stable `key`), honors, recommendations, press. Shared with the MCP server |
+| `src/resume.ts` | Everything about Steven: `profile` (headline, summary, location, authorization, contact), roles (each with a stable `key`), `impact`, `skills`, `selectedWork`, honors, recommendations, press. The site, the resume PDF, the MCP server and the site assistant all read it |
+| `scripts/resume.mjs`, `scripts/resume-check.mjs` | Build the resume PDF from `src/resume.ts` and analyse it (see Updating the resume) |
+| `functions/_lib/review/` | The recruiter review and the LinkedIn import and comparison behind the MCP tools |
+| `.github/workflows/site-update.yml` | Claude Code changes the site on a branch and opens a pull request, started from the MCP server |
 | `src/pageMeta.ts` | Routes plus each page's title and description |
 | `src/analytics.ts` | Browser tracker: pageviews, time on page, scroll depth, clicks, Core Web Vitals |
 | `src/admin/` | The `/admin` analytics dashboard (separate Vite entry, `admin.html`) |
@@ -47,7 +50,15 @@ Add the route to `routes` and its title/description to `pageMeta` in `src/pageMe
 
 ### Updating the resume
 
-The resume is exported from a resume builder. Replace `public/steven-wilssens-resume-2026.pdf` with the new export (keep the filename, or update `resumeUrl` in `App.tsx`) and push.
+The resume PDF is generated from `src/resume.ts`, the same data the site shows, so the two cannot drift:
+
+```sh
+npm run resume:build   # renders public/steven-wilssens-resume-2026.pdf in the installed Edge (or Playwright's Chromium)
+npm run resume:check   # the analysis alone, on the current PDF
+node scripts/og-image.mjs   # the 1200×630 share image, after a headline or photo change
+```
+
+`scripts/resume.mjs` renders an HTML resume to PDF, then runs `scripts/resume-check.mjs` on the new and the current file: pages, extractable text and glyphs, contact details, headline, every role and date, the bullets of the two latest roles, tense of past roles, team size, ATS keywords, numbers without a backing bullet, plus the questions the dates raise (gaps, overlaps). A new PDF only replaces the current one when its score does not drop (`--force` overrides). `src/resume.test.ts` fails when the PDF no longer matches the data, and the build writes the report to `dist/resume-report.json` for the MCP server's `check_resume`. Fix findings in the data, never in the PDF.
 
 ## Ask about Steven: the assistant on the site
 
@@ -65,7 +76,10 @@ A floating "Ask about Steven" button on every page (and "Ask AI about my work" i
 
 - **What is published**: `about_steven`, `read_site_page` (the Markdown copies of the site's pages that the build writes, including the Building wilssens.com write-up, read through the `ASSETS` binding), `get_role`, `get_recommendations`, `get_patents_and_press`, `get_resume` (the entries in `src/resume.ts`).
 - **The dossier** (`dossier` table): facts and stories Steven records, one per entry, with a role key, topic, visibility and tags. `interview_status` shows which roles and topics are still empty and suggests questions; `save_entry`, `update_entry`, `delete_entry`, `list_entries`, `search_dossier`, `export_dossier` manage it. Entries are private by default; `public` means a recruiter-facing assistant on the site may use them later (that assistant is not built yet; it will work like the help assistant on wilssens.com: a server-side Claude call with the public dossier as a cached system prompt, never this MCP).
-- **The résumé** (`resume_proposals` table): at the end of a session Claude compares the dossier with `get_resume` and calls `propose_resume_change` for each concrete edit (exact current text, proposed text, why). Steven approves or rejects in the conversation (`review_resume_proposal`); `/admin` and `list_resume_proposals` show what is approved or waiting. Approved changes are applied by hand to `src/resume.ts` and the PDF, then marked `applied`.
+- **The résumé** (`resume_proposals` table): at the end of a session Claude compares the dossier with `get_resume` and calls `propose_resume_change` for each concrete edit (exact current text, proposed text, why). Steven approves or rejects in the conversation (`review_resume_proposal`); `/admin` and `list_resume_proposals` show what is approved or waiting. Approved changes go to the site through `request_site_update` (below), then are marked `applied`.
+- **The recruiter's seat** (`functions/_lib/review/`): `review_for_recruiters` reads the published pages, the resume report the build wrote and the LinkedIn import, and returns findings (what a recruiter trips over, why it matters, the fix: scope numbers, unexplained impact numbers, tense, gaps and overlaps, hiring logistics, proof from the wrong chapter, a resume that drifted from the site) plus the questions only Steven can answer. `check_resume` is the resume analysis on its own.
+- **LinkedIn** (`linkedin_profile` table): LinkedIn has no API, so `save_linkedin_profile` takes the profile as text (LinkedIn → More → Save to PDF, or the page copied) or the CSV files of LinkedIn's data export (Profile, Positions, Skills, Education, Languages; the reliable route). `compare_linkedin` then lists, per difference, what LinkedIn says, what the site says, why a recruiter cares, and the exact text to paste into LinkedIn.
+- **Changing the site** (`functions/_lib/github.ts`): `request_site_update` starts the **Site update** GitHub workflow (`.github/workflows/site-update.yml`), where Claude Code applies the brief on a branch (facts in `src/resume.ts`, `npm run resume:build`, lint, tests, build) and opens a pull request; `site_update_status` shows runs and open pull requests with their preview links; `merge_site_update` merges one into `main` (production) and only runs with Steven's explicit confirmation. Needs the `GITHUB_TOKEN` Pages secret (a fine-grained token with Actions: write, Contents: read, Pull requests: write on this repository; `GITHUB_REPO` overrides the default `stewils/stevenwilssens.com`) and, in the repository's Actions secrets, `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` for Claude Code plus optionally `GH_PAT` so the branch push triggers the Deploy workflow's preview.
 
 The server's `instructions` (in `functions/_lib/mcp/tools.ts`) tell Claude how to run a session: read what exists before asking, one question at a time, save as it goes, third-person entries, visibility rules, then the résumé proposals.
 
@@ -91,6 +105,8 @@ Pages Function secrets (set with `npx wrangler pages secret put <NAME> --project
 | `ADMIN_TOKEN` | Password for `/admin` and `/api/stats` |
 | `HASH_SALT` | Secret salt for the daily visitor hash |
 | `MCP_OWNER_KEY` | The key to the private MCP server at `/mcp/<MCP_OWNER_KEY>`; shown on `/admin` |
+| `GITHUB_TOKEN` | Lets the MCP server start the Site update workflow and read runs and pull requests (fine-grained token: Actions write, Contents read, Pull requests write) |
+| `GITHUB_REPO` | Optional; defaults to `stewils/stevenwilssens.com` |
 
 Schema changes: add a numbered file to `migrations/`, then apply it to production **before** deploying code that uses it:
 
