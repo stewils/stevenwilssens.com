@@ -68,7 +68,7 @@ Pushing to `main` runs lint, tests, and the build in GitHub Actions (`.github/wo
 
 - The workflow needs the `CLOUDFLARE_API_TOKEN` repository secret (Cloudflare "Edit Cloudflare Workers" token template).
 - Manual deploy: `npm run deploy` (requires `wrangler login`).
-- `steven.wilssens.com` is a Pages custom domain, as are `steven.wilssens.net`, `www.wilssens.net` and `wilssens.net`: `functions/_middleware.ts` answers those with a 301 to the matching `.wilssens.com` address (`functions/_lib/hosts.ts`), so the old blog domain and the bare `.net` name point at the current sites. Both zones' DNS is on Cloudflare, each name a `CNAME → stevenwilssens.pages.dev`.
+- `steven.wilssens.com` is a Pages custom domain, as are `steven.wilssens.net`, `www.wilssens.net` and `wilssens.net`: `functions/_middleware.ts` answers anything under `wilssens.net` with a 301 to the same path on `steven.wilssens.com` (`functions/_lib/hosts.ts`), so the old blog domain points at the current site. Both zones' DNS is on Cloudflare, each name a `CNAME → stevenwilssens.pages.dev`.
 - Unknown paths return `404.html` with a 404 status.
 
 ## Analytics
