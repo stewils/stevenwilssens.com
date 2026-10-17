@@ -19,7 +19,7 @@ describe('resume site', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Steven Wilssens' })).toBeInTheDocument()
     expect(screen.getByText('Principal product leader for data and AI.')).toBeInTheDocument()
     expect(screen.getByText('250%+')).toBeInTheDocument()
-    expect(screen.getByText('1B+')).toBeInTheDocument()
+    expect(screen.getByText('1.6B+')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Leadership that turns ambiguity into momentum.' })).toBeInTheDocument()
     expect(screen.getByText('Data and experimentation products')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Email Steven/ })).toHaveAttribute('href', 'mailto:steven@wilssens.com')
