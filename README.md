@@ -2,7 +2,7 @@
 
 Personal resume site for Steven Wilssens: a React + TypeScript + Vite single-page app hosted on Cloudflare Pages, with first-party, cookie-free analytics stored in Cloudflare D1.
 
-- **Site:** https://steven.wilssens.com (also served at https://stevenwilssens.pages.dev)
+- **Site:** https://steven.wilssens.com (https://stevenwilssens.pages.dev and every name under wilssens.net redirect to it)
 - **Analytics dashboard:** https://steven.wilssens.com/admin (token protected)
 
 ## Development
@@ -68,7 +68,7 @@ Pushing to `main` runs lint, tests, and the build in GitHub Actions (`.github/wo
 
 - The workflow needs the `CLOUDFLARE_API_TOKEN` repository secret (Cloudflare "Edit Cloudflare Workers" token template).
 - Manual deploy: `npm run deploy` (requires `wrangler login`).
-- `steven.wilssens.com` is a Pages custom domain. DNS for `wilssens.com` is at GoDaddy, with a `CNAME steven → stevenwilssens.pages.dev` record.
+- `steven.wilssens.com` is a Pages custom domain, as are `steven.wilssens.net`, `www.wilssens.net` and `wilssens.net`: `functions/_middleware.ts` answers anything under `wilssens.net` with a 301 to the same path on `steven.wilssens.com` (`functions/_lib/hosts.ts`), so the old blog domain points at the current site. Both zones' DNS is on Cloudflare, each name a `CNAME → stevenwilssens.pages.dev`.
 - Unknown paths return `404.html` with a 404 status.
 
 ## Analytics
