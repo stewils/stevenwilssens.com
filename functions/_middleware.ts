@@ -1,21 +1,17 @@
 import type { Env } from './_lib/env'
 import { identifyCrawler, isCrawlTarget } from './_lib/crawlers'
+import { redirectTarget } from './_lib/hosts'
 
-const canonicalHost = 'steven.wilssens.com'
-const productionPagesHost = 'stevenwilssens.pages.dev'
 const retentionMs = 395 * 86_400_000 // 13 months, as stated on /privacy
 
-// Send the production pages.dev address to the custom domain so there is one
-// public URL. Preview deployments (<hash>.stevenwilssens.pages.dev) are left alone.
+// Every other address of the site (the production pages.dev host, anything under
+// wilssens.net) redirects to its one public address; see _lib/hosts.ts.
 // Requests from crawlers are recorded after the response is sent, since crawlers
 // rarely run the browser tracker.
 export const onRequest: PagesFunction<Env> = async ({ request, env, next, waitUntil }) => {
   const url = new URL(request.url)
-  if (url.hostname === productionPagesHost) {
-    url.hostname = canonicalHost
-    url.protocol = 'https:'
-    return Response.redirect(url.toString(), 301)
-  }
+  const target = redirectTarget(url)
+  if (target) return Response.redirect(target, 301)
   const response = await next()
 
   // Preview deployments share this database; only production and local dev count.
