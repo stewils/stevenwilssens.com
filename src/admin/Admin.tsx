@@ -275,6 +275,75 @@ function McpServer({ token }: { token: string }) {
   )
 }
 
+type AskInfo = {
+  configured: boolean
+  mock: boolean
+  model: string
+  budgetUsd: number
+  humanCheck: boolean
+  month: { questions: number; answered: number; gap: number; off: number; limited: number; failed: number; costMicro: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number }
+  daily: { day: string; outcome: string; questions: number; costMicro: number; msFirst: number; msTotal: number }[]
+  votes: { day: string; helpful: number; unhelpful: number }[]
+  questions: { id: number; ts: number; reason: 'gap' | 'unhelpful'; page: string | null; question: string; answer: string | null; country: string | null; asOrg: string | null }[]
+}
+
+const usd = (micro: number) => `$${(micro / 1_000_000).toFixed(2)}`
+
+// "Ask about Steven", the assistant on the site: this month against its budget,
+// questions per day, votes, and the questions it could not answer (the gaps to
+// fill in the next MCP session).
+function AskAssistantPanel({ token, days, dayLabel }: { token: string; days: number; dayLabel: (day: string) => string }) {
+  const [info, setInfo] = useState<AskInfo | null>(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    fetch(`/api/ask/admin?days=${days}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (response) => { if (!response.ok) throw new Error(`HTTP ${response.status}`); setInfo(await response.json()) })
+      .catch((err: Error) => setError(`Could not load the assistant's numbers (${err.message}).`))
+  }, [token, days])
+  const perDay = new Map<string, { questions: number; costMicro: number; off: number; gap: number }>()
+  for (const row of info?.daily ?? []) {
+    const entry = perDay.get(row.day) ?? { questions: 0, costMicro: 0, off: 0, gap: 0 }
+    entry.questions += row.questions; entry.costMicro += row.costMicro
+    if (row.outcome === 'off') entry.off += row.questions
+    if (row.outcome === 'gap') entry.gap += row.questions
+    perDay.set(row.day, entry)
+  }
+  const answered = (info?.daily ?? []).filter((row) => row.outcome === 'answered' || row.outcome === 'gap')
+  const asked = answered.reduce((sum, row) => sum + row.questions, 0)
+  const avgFirst = asked ? answered.reduce((sum, row) => sum + row.msFirst, 0) / asked : null
+  const votes = (info?.votes ?? []).reduce((sum, row) => ({ helpful: sum.helpful + row.helpful, unhelpful: sum.unhelpful + row.unhelpful }), { helpful: 0, unhelpful: 0 })
+  const bars = fillDays([...perDay.entries()].map(([day, entry]) => ({ day, pageviews: entry.questions, visitors: entry.questions })), days)
+  return (
+    <section className="panel wide">
+      <h2>Ask about Steven: the assistant on the site</h2>
+      <p className="note">Claude ({info?.model ?? 'claude-opus-5-5'}) answers from the résumé data and the public dossier entries. Questions it could not answer are listed below; cover them in your next MCP session and they resolve themselves.{info && !info.configured && !info.mock && <strong> Not live yet: set the ANTHROPIC_API_KEY secret and redeploy.</strong>}{info?.mock && <strong> Mock mode (ASK_MOCK=1): canned answers, no API calls.</strong>}</p>
+      {error && <p className="error">{error}</p>}
+      {info && (
+        <>
+          <section className="tiles" aria-label="This month">
+            <div className={info.month.costMicro > info.budgetUsd * 800_000 ? 'highlight' : ''}><span>Spent this month</span><strong>{usd(info.month.costMicro)}</strong><small>of a {usd(info.budgetUsd * 1_000_000)} budget</small></div>
+            <div><span>Questions</span><strong>{formatNumber(info.month.questions)}</strong><small>{formatNumber(info.month.answered)} answered · {formatNumber(info.month.gap)} gaps · {formatNumber(info.month.off)} off topic</small></div>
+            <div><span>Turned away</span><strong>{formatNumber(info.month.limited)}</strong><small>limits, budget or human check</small></div>
+            <div><span>Votes ({days} days)</span><strong>{votes.helpful} / {votes.unhelpful}</strong><small>helpful / not helpful</small></div>
+            <div><span>Time to first word</span><strong>{avgFirst === null ? '—' : formatDuration(avgFirst)}</strong><small>average, last {days} days</small></div>
+            <div><span>Cache</span><strong>{info.month.cacheReadTokens + info.month.inputTokens ? Math.round((info.month.cacheReadTokens / (info.month.cacheReadTokens + info.month.inputTokens)) * 100) : 0}%</strong><small>of input tokens read from cache</small></div>
+          </section>
+          <BarChart title={`Questions per day (${days} days)`} bars={bars.map((row) => ({ key: row.day, label: dayLabel(row.day), value: row.pageviews, detail: `${formatNumber(row.pageviews)} questions · ${usd(perDay.get(row.day)?.costMicro ?? 0)} · ${perDay.get(row.day)?.off ?? 0} off topic` }))} axisLabels={bars.length > 1 ? [dayLabel(bars[0].day), dayLabel(bars[Math.floor(bars.length / 2)].day), dayLabel(bars[bars.length - 1].day)] : bars.map((row) => dayLabel(row.day))} />
+          <h3>Questions the dossier could not answer</h3>
+          {info.questions.length === 0 ? <p className="note">None in the last 90 days.</p> : (
+            <div className="table-scroll">
+              <table>
+                <thead><tr><th>When</th><th>Why</th><th>Question</th><th>What it answered</th><th>Page</th><th>Network</th></tr></thead>
+                <tbody>{info.questions.map((row) => <tr key={row.id}><td>{formatTime(row.ts)}</td><td><span className={`badge ${row.reason}`}>{row.reason === 'gap' ? 'not covered' : 'not helpful'}</span></td><td className="strong">{row.question}</td><td className="muted">{row.answer}</td><td>{row.page ?? '—'}</td><td>{[row.asOrg, row.country].filter(Boolean).join(', ') || '—'}</td></tr>)}</tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
 function TrackingLinks() {
   const [copied, setCopied] = useState('')
   const copy = (url: string) => { void navigator.clipboard?.writeText(url).then(() => setCopied(url)) }
@@ -409,6 +478,8 @@ export default function Admin() {
           </div>
 
           <McpServer token={token} />
+
+          <AskAssistantPanel token={token} days={days} dayLabel={dayLabel} />
 
           <section className="panel wide">
             <h2>Visitors</h2>

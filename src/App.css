@@ -141,3 +141,4 @@ main:focus { outline: none; }
 .privacy ul { margin: 0 0 25px; padding-left: 18px; }
 .privacy li { margin-bottom: 8px; font-size: 16px; line-height: 1.65; }
 .privacy a { color: var(--green); }
+.ask-hero-button { display: inline-flex; align-items: center; gap: 8px; padding: 10px 15px; border: 1px solid var(--line); border-radius: 3px; background: transparent; color: var(--ink); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; transition: border-color .2s, background .2s; }.ask-hero-button svg { color: var(--green); }.ask-hero-button:hover { border-color: var(--green); background: var(--blue); }.ask-hero-button:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }

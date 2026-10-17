@@ -40,6 +40,80 @@ const generalQuestions: Record<string, string> = {
   story: 'Which story do you want every recruiter to hear about you?',
 }
 
+// What a sceptical recruiter or hiring manager would push on, per role: written
+// angles plus what the dates themselves raise (short stints, long plateaus,
+// overlaps, the time since the last role).
+const recruiterAngles: Record<string, string[]> = {
+  'windows-devices-data': [
+    'Group PM for under two years: what did you inherit, what did you change, and what shipped because of you rather than the team you took over?',
+    'Scope in numbers: how many PMs, engineers and data scientists, which products, what budget, who were the customers and how many used it?',
+    'The role ended in September 2026: your decision or a reorg? How do you tell that story in one minute?',
+    'Experimentation and ML insights are easy to claim: which decision in Windows went differently because of your products, with the evidence?',
+  ],
+  'csx-data': [
+    'Nearly five years with the same title: how did the scope grow, and why no promotion earlier? What would your manager say?',
+    '"Data-supported decisions on quality": name three decisions, who made them, and what the data showed. Where did the data fail to change a decision?',
+    'How did you measure your own team\'s impact, and what number would you defend in a reference check?',
+  ],
+  'azure-devops': [
+    'Five months: a recruiter will assume it did not work out. What happened, what did you deliver, and why did you move on?',
+    '"Increased market penetration": by how much, measured how, and how much of that was yours?',
+  ],
+  'spatial-audio-lead': [
+    '250% growth in monthly active devices: from what base, measured how, and how much came from Xbox shipping it by default rather than your choices?',
+    'Which bets failed (xCloud audio, broadcast, casting) and what did you stop? Why leave media for Azure DevOps?',
+  ],
+  'spatial-audio-principal': [
+    'Four months before the Lead title: was this a staged promotion or a reorg? What changed in what you owned?',
+    'Dolby Access v3 and DTS Sound Unbound: what did Microsoft get from those partnerships in revenue or adoption?',
+  ],
+  'spatial-audio-senior': [
+    'Nine years as a Senior PM: the first question will be why promotion took that long. What were you shipping year by year, what held it back, and what did you learn?',
+    'The patents: which ones shipped in products people used, and which were defensive?',
+  ],
+  compuware: ['Lead of about 15 developers at 25: what did you actually decide, hire and ship? What from this period still shows in how you lead?'],
+  cosmos: ['The dates overlap with Info Support (2001 to 2004) and Compuware (2005): get the timeline straight before a recruiter does.'],
+  'info-support': ['Developer and trainer: what did you teach, to whom, and does any of it matter for a product leadership role today?'],
+  general: [
+    'The one-line pitch: who you are, what you want, why now. Say it without the word "passionate".',
+    'Why leave Microsoft after almost 18 years, and why is this the moment? What have you built since September 2026?',
+    'Level and scope you are actually a fit for: Director, Senior Director, VP? What evidence supports that, and what would make a hiring manager say "too narrow" (Windows only, Microsoft only)?',
+    'Weaknesses a reference would mention unprompted. What did you get wrong as a manager and change?',
+    'Remote, hybrid, relocation, start date, and compensation expectations (keep the numbers private).',
+  ],
+}
+
+const monthIndex: Record<string, number> = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 }
+// "Dec 2024 - Sep 2026" -> months, start and end as serial month numbers
+const span = (dates: string) => {
+  const parts = dates.split(/\s*-\s*/).map((part) => {
+    const match = /^([A-Za-z]{3})\w*\s+(\d{4})$/.exec(part.trim())
+    return match ? Number(match[2]) * 12 + monthIndex[match[1].toLowerCase()] : null
+  })
+  if (parts.length !== 2 || parts[0] === null || parts[1] === null) return null
+  return { start: parts[0], end: parts[1], months: parts[1] - parts[0] + 1 }
+}
+
+// What the dates alone would make a recruiter ask, plus the written angles.
+export const recruiterLens = (key: string) => {
+  const flags: string[] = []
+  const index = experiences.findIndex((item) => item.key === key)
+  const item = experiences[index]
+  if (item) {
+    const mine = span(item.dates)
+    if (mine) {
+      if (mine.months < 12) flags.push(`Short stint: ${mine.months} months.`)
+      if (mine.months >= 60 && !/Lead|Group/.test(item.role)) flags.push(`${Math.round(mine.months / 12)} years in one role without a visible promotion.`)
+      const previous = experiences[index + 1]
+      const before = previous ? span(previous.dates) : null
+      if (before && before.end > mine.start) flags.push(`Overlaps with ${previous.role} at ${previous.company} (${previous.dates}).`)
+      if (before && mine.start - before.end > 2) flags.push(`${mine.start - before.end - 1} months unaccounted for before this role.`)
+      if (previous && previous.company !== item.company) flags.push(`Company change from ${previous.company}.`)
+    }
+  }
+  return { flags, angles: recruiterAngles[key] ?? [] }
+}
+
 export type ToolContext = {
   store: DossierStore
   now: number
@@ -206,8 +280,10 @@ export const tools: Tool[] = [
         const topics = key === generalRole ? generalTopics : roleTopics
         const byTopic = Object.fromEntries(topics.map((topic) => [topic, mine.filter((entry) => entry.topic === topic).length]))
         for (const entry of mine) if (!(entry.topic in byTopic)) byTopic[entry.topic] = (byTopic[entry.topic] ?? 0) + 1
-        return { ...roleSummary(key), entries: mine.length, public: mine.filter((entry) => entry.visibility === 'public').length, byTopic, missingTopics: topics.filter((topic) => !byTopic[topic]) }
+        const lens = recruiterLens(key)
+        return { ...roleSummary(key), entries: mine.length, public: mine.filter((entry) => entry.visibility === 'public').length, byTopic, missingTopics: topics.filter((topic) => !byTopic[topic]), recruiterFlags: lens.flags, recruiterAngles: lens.angles }
       })
+      const gaps = await ctx.store.askGaps(20)
       // Most recent roles first, general topics woven in after the two latest roles,
       // taking one missing topic per role in turn so no single role fills the list.
       const order = [roleKeys[0], roleKeys[1], generalRole, ...roleKeys.slice(2, -1)]
@@ -218,7 +294,15 @@ export const tools: Tool[] = [
           if (topic && suggested.length < 6) suggested.push({ role: key, topic, question: (key === generalRole ? generalQuestions : roleQuestions)[topic] })
         }
       }
-      return { totals: { entries: entries.length, public: entries.filter((entry) => entry.visibility === 'public').length, private: entries.filter((entry) => entry.visibility === 'private').length }, roles, suggestedNext: suggested, topics: { roles: roleTopics, general: generalTopics } }
+      return {
+        totals: { entries: entries.length, public: entries.filter((entry) => entry.visibility === 'public').length, private: entries.filter((entry) => entry.visibility === 'private').length },
+        roles,
+        suggestedNext: suggested,
+        // What visitors asked the site assistant that the public dossier could not answer: the most valuable questions to cover.
+        askedOnTheSite: gaps,
+        topics: { roles: roleTopics, general: generalTopics },
+        howToInterview: 'Think like a sceptical recruiter: for each role use recruiterFlags and recruiterAngles, ask for evidence behind every claim, and record which concern an answer settles.',
+      }
     },
   },
   {
@@ -390,6 +474,7 @@ export const tools: Tool[] = [
 
 export const instructions = `Steven Wilssens is connected. This server is his private workspace for talking through his career; nobody else can reach it. Help him recall, sharpen and structure what he did, and keep the dossier (the facts and stories behind his résumé and his site) growing.
 Build on what is already there. Before asking about a role, read what exists: get_role (the résumé entry plus the dossier entries for it), read_site_page for the published pages (about, experience, projects, the Building wilssens.com write-up), get_recommendations and get_patents_and_press for what others have said and what is on record, search_dossier to check whether a fact was recorded before. Do not ask him what the site already answers; ask what it does not.
-A session can be: an interview (call interview_status: it shows the gaps and suggests questions; ask one question at a time and follow up for numbers, dates, team sizes, named products and partners, the decision and its alternatives, what happened, what he would do differently); thinking out loud about one role or theme; preparing for a specific interview or job description; or drafting résumé or LinkedIn wording.
+A session can be: an interview (call interview_status: it shows the gaps, what the site's visitors asked that the dossier could not answer, and per role what a recruiter would push on); thinking out loud about one role or theme; preparing for a specific interview or job description; or drafting résumé or LinkedIn wording.
+Interview like a sceptical recruiter and hiring manager, not a fan. For each role: scope versus influence (what he owned, decided and was measured on, versus what the team or the platform did anyway); evidence behind every claim (numbers with a baseline, how they were measured, who else would confirm them); what the dates raise (short stints, long plateaus without promotion, overlaps, the time since September 2026); why he moved in and out; what went wrong and what he would do differently; how a report, a peer and his manager would each describe him. Use the recruiterFlags and recruiterAngles from interview_status; they are the questions he will get anyway. Ask one question at a time. When an answer is vague, unverifiable or sounds like a résumé bullet, say so plainly and ask again for the specific. Tell him when an answer would not survive a reference check or a sharp follow-up, and help him find the honest, stronger version. Record the concern an answer settles in the entry (tag "recruiter"), so the dossier shows which objections are covered.
 Saving: after each substantive answer call save_entry right away, do not batch. Body: compact third-person prose ("Steven ...") keeping his numbers and phrasing; a short first-person quote is fine. One entry per fact or story. Title: a résumé-style headline. Tags: keywords, plus "resume" for résumé-grade facts. Visibility defaults to private; public means a recruiter-facing assistant on his site may use the entry later. Make an entry public only when Steven says so or the fact is already on his site or LinkedIn; internal Microsoft metrics, unreleased work and anything about named colleagues stay private unless he says otherwise. Confirm each save in one line (id, title, visibility). He can say "make 12 public", "edit 12", "delete 12" or "export" at any time.
 Résumé: when he wraps up, or after roughly ten entries, call get_resume, compare it with what was saved, and for each concrete improvement call propose_resume_change with the exact current text, the full proposed text and why (which numbers or facts it adds). Walk him through the proposals one at a time, current and proposed side by side, and record each decision with review_resume_proposal. Never claim the résumé itself changed: approved proposals are applied by Steven to the site and PDF, and list_resume_proposals shows what is still waiting.`

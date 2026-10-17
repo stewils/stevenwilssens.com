@@ -68,6 +68,7 @@ tr.detail p { margin: 0 0 4px; }
 .badge.download { background: var(--green); color: #fff; }
 .badge.ai-assistant { background: var(--series); color: #fff; }
 .badge.approved, .badge.applied { background: var(--green); color: #fff; }
+.badge.unhelpful { background: #f3d9d6; color: #7a1d16; }
 .badge.applied { opacity: 0.6; }
 
 .assessments { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 12px; }
