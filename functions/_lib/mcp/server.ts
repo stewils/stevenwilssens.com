@@ -5,8 +5,11 @@
 // they will get an assistant on the site itself.
 import type { Env } from '../env'
 import { bearerToken, sameSecret } from '../auth'
+import { gitHubClient, type GitHub } from '../github'
 import { D1Store, type DossierStore } from './store'
 import { instructions, siteUrl, ToolError, tools, type ToolContext } from './tools'
+
+export const defaultRepo = 'stewils/stevenwilssens.com'
 
 export const serverInfo = { name: 'steven-wilssens', title: 'Steven Wilssens: career dossier', version: '2.0.0' }
 const protocolVersions = ['2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25']
@@ -33,6 +36,7 @@ export type McpRequest = {
   request: Request
   store: DossierStore
   fetchPage: ToolContext['fetchPage']
+  github?: GitHub | null
   now?: number
 }
 
@@ -108,7 +112,7 @@ export const resolveOwner = (segment: string | undefined, request: Request, env:
   return Boolean(bearer) && sameSecret(bearer, key)
 }
 
-export const handleMcp = async ({ request, store, fetchPage, now = Date.now() }: McpRequest): Promise<Response> => {
+export const handleMcp = async ({ request, store, fetchPage, github = null, now = Date.now() }: McpRequest): Promise<Response> => {
   if (request.method === 'OPTIONS') return respond(null, 204)
   if (request.method === 'GET') {
     // A GET with Accept: text/event-stream asks for a server-to-client stream; this server never sends one.
@@ -122,7 +126,7 @@ export const handleMcp = async ({ request, store, fetchPage, now = Date.now() }:
   let parsed: unknown
   try { parsed = JSON.parse(body) } catch { return jsonResponse(error(null, -32700, 'Parse error'), 400) }
 
-  const ctx: ToolContext = { store, now, fetchPage }
+  const ctx: ToolContext = { store, now, fetchPage, github }
   const messages = Array.isArray(parsed) ? parsed as JsonRpcRequest[] : [parsed as JsonRpcRequest]
   if (!messages.length) return jsonResponse(error(null, -32600, 'Invalid Request'), 400)
   const responses: JsonRpcResponse[] = []
@@ -144,5 +148,6 @@ export const onMcpRequest: PagesFunction<Env> = async ({ request, env, params })
     const response = await env.ASSETS.fetch(new URL(pagePath, request.url).toString())
     return response.ok ? response.text() : null
   }
-  return handleMcp({ request, store: new D1Store(env.DB), fetchPage })
+  const github = env.GITHUB_TOKEN ? gitHubClient(env.GITHUB_TOKEN, env.GITHUB_REPO || defaultRepo) : null
+  return handleMcp({ request, store: new D1Store(env.DB), fetchPage, github })
 }

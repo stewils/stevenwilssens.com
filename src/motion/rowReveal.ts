@@ -1,4 +1,4 @@
-const rowSelector = '.timeline-item, .recommendation, .archive-list article, .project-card, .capability-grid article'
+const rowSelector = '.timeline-item, .recommendation, .archive-list article, .project-card, .capability-grid article, .work-list article'
 const staggerMs = 90
 const maxStaggerMs = 450
 

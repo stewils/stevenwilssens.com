@@ -26,3 +26,6 @@ dist-ssr
 .wrangler
 
 .dev.vars
+
+# LinkedIn profile import for the MCP (personal data, stays local)
+.linkedin

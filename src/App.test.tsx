@@ -26,6 +26,36 @@ describe('resume site', () => {
     expect(screen.getByRole('link', { name: /Connect on LinkedIn/ })).toHaveAttribute('href', 'https://www.linkedin.com/in/steven-wilssens-59495889/')
   })
 
+  it('answers the recruiter screen on the home page: scope, location, work authorization, availability', () => {
+    render(<App />)
+
+    expect(screen.getByText(/led 10 to 20 product managers/)).toBeInTheDocument()
+    expect(screen.getByText('Seattle, Washington · US permanent resident (green card)')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Hiring a product leader for data, experimentation or AI?' })).toBeInTheDocument()
+    expect(screen.getByText(/Available now, based in Seattle, Washington, a US permanent resident/)).toBeInTheDocument()
+    expect(screen.getAllByText(/choosing my next/).length).toBeLessThanOrEqual(1)
+  })
+
+  it('shows the selected work from the data and AI years, each case with its source', () => {
+    setPath('/work')
+    render(<App />)
+
+    expect(screen.getByRole('heading', { name: 'Selected work' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Windows quality, measured from preview channels to retail' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'An OKR tool, rebuilt with AI when the old one retired' })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: 'Amit Gupte' }).length).toBeGreaterThan(0)
+    expect(screen.getByRole('link', { name: /Read the write-up/ })).toHaveAttribute('href', '/building-wilssens')
+  })
+
+  it('moves the honors into the About sidebar with the hiring logistics', () => {
+    setPath('/about')
+    render(<App />)
+
+    expect(screen.getByText('US permanent resident (green card)')).toBeInTheDocument()
+    expect(screen.getByText('Seattle, Washington')).toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: 'Honors and awards' })).getAllByRole('listitem')).toHaveLength(4)
+  })
+
   it('features the wilssens.com write-up on the home page', () => {
     render(<App />)
 
@@ -113,6 +143,7 @@ describe('resume site', () => {
   it.each([
     ['/about', 'About'],
     ['/experience', 'Experience'],
+    ['/work', 'Selected work'],
     ['/recommendations', 'Recommendations'],
     ['/patents', 'Patents'],
     ['/honors', 'Honors & awards'],
@@ -140,6 +171,8 @@ describe('resume site', () => {
 
     const navigation = within(screen.getByRole('navigation'))
     expect(navigation.getByRole('link', { name: 'Experience' })).toHaveAttribute('href', '/experience')
+    expect(navigation.getByRole('link', { name: 'Selected work' })).toHaveAttribute('href', '/work')
+    expect(navigation.queryByRole('link', { name: 'Honors' })).not.toBeInTheDocument()
     expect(navigation.getByRole('link', { name: 'In the News' })).toHaveAttribute('href', '/news')
     expect(navigation.getByRole('link', { name: 'Projects' })).toHaveAttribute('href', '/projects')
   })

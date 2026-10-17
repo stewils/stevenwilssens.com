@@ -4,7 +4,7 @@
 
 export const siteUrl = 'https://steven.wilssens.com'
 
-export const routes = ['about', 'experience', 'recommendations', 'patents', 'honors', 'news', 'projects', 'building-wilssens', 'privacy'] as const
+export const routes = ['about', 'experience', 'work', 'recommendations', 'patents', 'honors', 'news', 'projects', 'building-wilssens', 'privacy'] as const
 
 export type Page = 'home' | (typeof routes)[number] | 'notFound'
 
@@ -12,6 +12,7 @@ export const pageMeta: Record<Page, { title: string; description: string }> = {
   home: { title: 'Steven Wilssens | Principal product leader, data and AI', description: 'Steven Wilssens, principal product leader for data, experimentation and AI: more than a decade at Microsoft, most recently leading Windows & Devices Data product management.' },
   about: { title: 'About | Steven Wilssens', description: 'Learn about Steven Wilssens and his approach to product, portfolio, and people leadership.' },
   experience: { title: 'Experience | Steven Wilssens', description: 'A career across product leadership, Windows & Devices, spatial audio, Azure DevOps, and software.' },
+  work: { title: 'Selected work | Steven Wilssens', description: 'Selected work from Steven Wilssens’s data and AI chapter at Microsoft, 2020 to 2026: Windows quality data products, experimentation and AI for Windows development, an OKR tool rebuilt with AI, plus wilssens.com and the spatial audio platform.' },
   recommendations: { title: 'Recommendations | Steven Wilssens', description: 'Recommendations from leaders, peers, and teammates who worked with Steven Wilssens.' },
   patents: { title: 'Patents | Steven Wilssens', description: 'Patents across spatial audio, media, streaming, and connected computing.' },
   honors: { title: 'Honors & awards | Steven Wilssens', description: 'Recognition for teamwork, individual excellence, and technical leadership.' },
@@ -43,7 +44,7 @@ const person = {
     { '@type': 'CollegeOrUniversity', name: 'Karel de Grote', address: { '@type': 'PostalAddress', addressCountry: 'BE' } },
     { '@type': 'Organization', name: 'Microsoft', url: 'https://www.microsoft.com/' },
   ],
-  homeLocation: { '@type': 'Place', name: 'Seattle area, Washington, United States' },
+  homeLocation: { '@type': 'Place', name: 'Seattle, Washington, United States' },
   sameAs: [
     'https://www.linkedin.com/in/steven-wilssens-59495889/',
     'https://patents.justia.com/inventor/steven-wilssens',

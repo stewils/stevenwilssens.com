@@ -228,7 +228,7 @@ function CrawlerTraffic({ stats, dayLabel }: { stats: Stats; dayLabel: (day: str
 type McpInfo = {
   ownerUrl: string | null
   entries: { total: number; public: number; roles: number }
-  proposals: { id: number; updatedAt: number; role: string; kind: 'replace' | 'add' | 'remove'; currentText: string | null; proposedText: string | null; rationale: string; status: 'proposed' | 'approved' | 'rejected' | 'applied'; decisionNote: string | null }[]
+  proposals: { id: number; updatedAt: number; role: string; field?: string | null; kind: 'replace' | 'add' | 'remove'; currentText: string | null; proposedText: string | null; rationale: string; status: 'proposed' | 'approved' | 'rejected' | 'applied'; decisionNote: string | null }[]
 }
 
 // The private MCP server at /mcp/<key>: the link to add to Claude, the size of
@@ -265,7 +265,7 @@ function McpServer({ token }: { token: string }) {
             <div className="table-scroll">
               <table>
                 <thead><tr><th>Status</th><th>Where</th><th>Change</th><th>Why</th><th>Updated</th></tr></thead>
-                <tbody>{info.proposals.map((row) => <tr key={row.id}><td><span className={`badge ${row.status}`}>{row.status}</span></td><td className="strong">{row.role}<small className="muted"><br />{row.kind}</small></td><td>{row.currentText && <s className="muted">{row.currentText}</s>}{row.currentText && row.proposedText && <br />}{row.proposedText}{row.decisionNote && <small className="muted"><br />Note: {row.decisionNote}</small>}</td><td>{row.rationale}</td><td>{formatTime(row.updatedAt)}</td></tr>)}</tbody>
+                <tbody>{info.proposals.map((row) => <tr key={row.id}><td><span className={`badge ${row.status}`}>{row.status}</span></td><td className="strong">{row.role}<small className="muted"><br />{row.field && row.field !== 'point' ? `${row.field} · ` : ''}{row.kind}</small></td><td>{row.currentText && <s className="muted">{row.currentText}</s>}{row.currentText && row.proposedText && <br />}{row.proposedText}{row.decisionNote && <small className="muted"><br />Note: {row.decisionNote}</small>}</td><td>{row.rationale}</td><td>{formatTime(row.updatedAt)}</td></tr>)}</tbody>
               </table>
             </div>
           )}

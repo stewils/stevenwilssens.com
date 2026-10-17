@@ -1,0 +1,123 @@
+# Site update: Claude Code changes the site and the resume on a branch and opens a
+# pull request. Started by the private MCP server (request_site_update) or by hand
+# from the Actions tab. The deploy workflow then builds a preview for the branch.
+#
+# Secrets: ANTHROPIC_API_KEY (or CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`)
+# for Claude Code, and optionally GH_PAT, a fine-grained token with Contents and Pull
+# requests: write; pushes made with the default GITHUB_TOKEN do not start the deploy
+# workflow, so without GH_PAT the pull request gets no preview until someone pushes.
+name: Site update
+
+on:
+  workflow_dispatch:
+    inputs:
+      instruction:
+        description: 'What to change, in plain words (facts, wording, a new section, a resume fix)'
+        required: true
+        type: string
+      title:
+        description: 'Short title for the branch and the pull request'
+        required: true
+        type: string
+
+concurrency:
+  group: site-update
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT || github.token }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - name: Install Chromium for the resume PDF
+        run: npx playwright-core install --with-deps chromium
+
+      - name: Create the branch
+        id: branch
+        env:
+          TITLE: ${{ inputs.title }}
+        run: |
+          slug=$(printf '%s' "$TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]\+/-/g; s/^-//; s/-$//' | cut -c1-40)
+          branch="update/${slug:-change}-${GITHUB_RUN_NUMBER}"
+          git checkout -b "$branch"
+          git config user.name "Steven Wilssens (via Claude)"
+          git config user.email "steven@wilssens.com"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Let Claude make the change
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GH_PAT || github.token }}
+          prompt: |
+            You are updating steven.wilssens.com, Steven Wilssens's resume site. Read CLAUDE.md first and follow it.
+
+            Steven's instruction:
+            ${{ inputs.instruction }}
+
+            Rules for this change:
+            - Facts about Steven (roles, bullets, headline, summary, skills, impact numbers, selected work, location, authorization) live in src/resume.ts. Change them there, not in App.tsx.
+            - After any change to src/resume.ts, run `npm run resume:build`. It regenerates public/steven-wilssens-resume-2026.pdf and refuses a resume that scores worse than the current one; read its findings and fix the data until it passes. Never commit a resume with errors.
+            - If the headline or the photo changed, run `node scripts/og-image.mjs`.
+            - Run `npm run lint`, `npm test` and `npm run build` and make them pass.
+            - Do not invent numbers or facts. If the instruction needs a fact you do not have, leave a `TODO(steven): question` comment in src/resume.ts and list the question in your final message.
+            - Commit nothing yourself; the workflow commits and opens the pull request. End with a short summary of what changed and any open questions, written for Steven.
+          claude_args: '--max-turns 80 --allowedTools "Read,Edit,Write,MultiEdit,Glob,Grep,Bash(npm run *),Bash(npm test*),Bash(node scripts/*),Bash(npx vitest*),Bash(git diff*),Bash(git status*),Bash(ls*)"'
+
+      - name: Check, commit and push
+        id: commit
+        env:
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          TITLE: ${{ inputs.title }}
+          INSTRUCTION: ${{ inputs.instruction }}
+        run: |
+          set -e
+          if git diff --quiet && [ -z "$(git status --porcelain)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Claude made no changes."
+            exit 0
+          fi
+          status=passed
+          (npm run lint && npm test && npm run build) || status=failed
+          git add -A
+          git commit -m "$TITLE" -m "$INSTRUCTION" -m "Requested through the MCP server; made by Claude Code in the Site update workflow (run ${GITHUB_RUN_ID})." -m "Co-Authored-By: Claude <noreply@anthropic.com>"
+          git push -u origin "$BRANCH"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "checks=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Open the pull request
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          TITLE: ${{ inputs.title }}
+          INSTRUCTION: ${{ inputs.instruction }}
+          CHECKS: ${{ steps.commit.outputs.checks }}
+        run: |
+          alias=$(printf '%s' "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | cut -c1-28)
+          body=$(printf '%s\n\n%s\n\n%s\n\n%s\n\n%s' \
+            "**Instruction**" "$INSTRUCTION" \
+            "**Checks in this run:** $CHECKS (lint, tests, build). The Deploy workflow builds a preview at https://$alias.stevenwilssens.pages.dev once it runs for this branch." \
+            "Merging deploys to production. Review the resume PDF in the branch before merging." \
+            "🤖 Generated with [Claude Code](https://claude.com/claude-code) from a request made through the MCP server.")
+          url=$(gh pr create --base main --head "$BRANCH" --title "$TITLE" --body "$body")
+          echo "### Pull request: $url" >> "$GITHUB_STEP_SUMMARY"
+          echo "Preview (after the Deploy workflow runs): https://$alias.stevenwilssens.pages.dev" >> "$GITHUB_STEP_SUMMARY"

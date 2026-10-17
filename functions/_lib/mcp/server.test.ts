@@ -86,7 +86,7 @@ describe('what is already there', () => {
   it('lists every tool with annotations', async () => {
     const response = await send(rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' }), new MemoryStore())
     const tools = ((await response.json()) as { result: { tools: { name: string; annotations: { readOnlyHint: boolean } }[] } }).result.tools
-    expect(tools.map((tool) => tool.name)).toEqual(['about_steven', 'read_site_page', 'get_role', 'search_dossier', 'get_recommendations', 'get_patents_and_press', 'interview_status', 'save_entry', 'update_entry', 'delete_entry', 'list_entries', 'export_dossier', 'get_resume', 'propose_resume_change', 'list_resume_proposals', 'review_resume_proposal'])
+    expect(tools.map((tool) => tool.name)).toEqual(['about_steven', 'read_site_page', 'get_role', 'search_dossier', 'get_recommendations', 'get_patents_and_press', 'interview_status', 'save_entry', 'update_entry', 'delete_entry', 'list_entries', 'export_dossier', 'get_resume', 'propose_resume_change', 'list_resume_proposals', 'review_resume_proposal', 'review_for_recruiters', 'check_resume', 'save_linkedin_profile', 'compare_linkedin', 'request_site_update', 'site_update_status', 'merge_site_update'])
     expect(tools.find((tool) => tool.name === 'save_entry')!.annotations.readOnlyHint).toBe(false)
     expect(tools.find((tool) => tool.name === 'get_role')!.annotations.readOnlyHint).toBe(true)
   })
@@ -217,6 +217,23 @@ describe('the résumé', () => {
     expect(parse((await call(store, 'list_resume_proposals', { status: 'proposed' })).text).count).toBe(0)
     expect((await call(store, 'review_resume_proposal', { id: 42, decision: 'reject' })).text).toContain('no proposal')
     expect((await call(store, 'review_resume_proposal', { id: proposal.id, decision: 'maybe' })).text).toContain('decision must be')
+  })
+
+  it('proposes changes to the dates, title and other fields of a role, checking the current value', async () => {
+    const store = new MemoryStore()
+    const wrong = await call(store, 'propose_resume_change', { role: 'compuware', field: 'dates', kind: 'replace', current_text: 'Jan 2005 - Dec 2007', proposed_text: 'Jan 2005 - Jun 2007', rationale: 'Left mid-2007.' })
+    expect(wrong.text).toContain('does not match the résumé')
+    const badFormat = await call(store, 'propose_resume_change', { role: 'compuware', field: 'dates', kind: 'replace', current_text: 'Jan 2005 - Dec 2006', proposed_text: 'January 2005 to June 2007', rationale: 'x' })
+    expect(badFormat.text).toContain('written like')
+    const notAdd = await call(store, 'propose_resume_change', { role: 'compuware', field: 'dates', kind: 'add', proposed_text: 'Jan 2005 - Jun 2007', rationale: 'x' })
+    expect(notAdd.text).toContain('can only be replaced')
+    const dates = await call(store, 'propose_resume_change', { role: 'compuware', field: 'dates', kind: 'replace', current_text: 'Jan 2005 - Dec 2006', proposed_text: 'Jan 2005 - Jun 2007', rationale: 'Steven left Compuware in June 2007 (entry 12).', based_on: '12' })
+    expect((parse(dates.text).proposed as { field: string; proposedText: string }).field).toBe('dates')
+    const title = await call(store, 'propose_resume_change', { role: 'csx-data', field: 'title', kind: 'replace', current_text: 'Principal Product Manager Lead - CSX Data', proposed_text: 'Principal Product Manager Lead - Windows Customer Experience Data', rationale: 'Spell out CSX.' })
+    expect((parse(title.text).proposed as { field: string }).field).toBe('title')
+    const section = await call(store, 'propose_resume_change', { role: 'headline', kind: 'replace', current_text: 'x', proposed_text: 'y', rationale: 'z' })
+    expect((parse(section.text).proposed as { field: string | null }).field).toBeNull()
+    expect(parse((await call(store, 'list_resume_proposals')).text).count).toBe(3)
   })
 })
 

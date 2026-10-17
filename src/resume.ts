@@ -5,8 +5,8 @@
 // key: stable id used by the MCP server's tools and the dossier table.
 export type Entry = { key: string; role: string; company: string; dates: string; location: string; summary: string; points: string[] }
 export const experiences: Entry[] = [
-  { key: 'windows-devices-data', role: 'Principal Group Product Manager - Windows & Devices Data', company: 'Microsoft', dates: 'Dec 2024 - Sep 2026', location: 'Redmond, Washington', summary: 'Led the PM team responsible for the data, insights, experimentation, and machine learning models that power decision-making across Windows and Devices.', points: ['Owned strategy and roadmap for data platform and insights products used by Windows engineers and PMs.', 'Led product managers driving experimentation, customer-signal analysis, and ML-powered insight products.', 'Partnered with engineering, data science, and research leadership across telemetry from more than a billion Windows devices.'] },
-  { key: 'csx-data', role: 'Principal Product Manager Lead - CSX Data', company: 'Microsoft', dates: 'Feb 2020 - Dec 2024', location: 'Redmond, Washington', summary: 'Built data products that told the story of the Windows customer experience and informed continuous improvement.', points: ['Wove customer signals and machine learning together to produce useful insights for Microsoft engineers.', 'Enabled data-supported decisions on hardware, software, and services quality.', 'Helped teams quickly detect and address issues affecting customer experiences.'] },
+  { key: 'windows-devices-data', role: 'Principal Group Product Manager - Windows & Devices Data', company: 'Microsoft', dates: 'Dec 2024 - Sep 2026', location: 'Redmond, Washington', summary: 'Led the PM team responsible for the data, insights, experimentation, and machine learning models that power decision-making across Windows and Devices.', points: ['Led a team of 10 to 20 product managers, as the team grew and was reshaped, driving experimentation, customer-signal analysis, and ML-powered insight products.', 'Owned strategy and roadmap for the data platform and insights products Windows engineers and PMs use to ship higher-quality releases.', 'Partnered with engineering, data science, and research leadership across telemetry from more than a billion Windows devices.', 'Set the direction for how AI and ML are used internally to accelerate Windows product development.'] },
+  { key: 'csx-data', role: 'Principal Product Manager Lead - CSX Data', company: 'Microsoft', dates: 'Feb 2020 - Dec 2024', location: 'Redmond, Washington', summary: 'Built data products that told the story of the Windows customer experience and informed continuous improvement.', points: ['Led the product managers who wove customer signals and machine learning together into insights Microsoft engineers acted on.', 'Enabled data-supported decisions on hardware, software, and services quality, from the Insider preview channels to retail.', 'Helped teams detect and address issues affecting customer experiences faster.'] },
   { key: 'azure-devops', role: 'Principal Product Manager Lead - Azure DevOps', company: 'Microsoft', dates: 'Sep 2019 - Feb 2020', location: 'Redmond, Washington', summary: 'Defined new products, go-to-market strategies, and business decisions for the Azure DevOps Platform.', points: ['Increased market penetration through new product and business strategy.', 'Spearheaded rapid product analysis for a new product priority following GitHub’s acquisition.'] },
   { key: 'spatial-audio-lead', role: 'Principal Product Manager Lead - Silicon, Graphics, Media', company: 'Microsoft', dates: 'Jan 2018 - Sep 2019', location: 'Operating System Group · Redmond, Washington', summary: 'Led audio, spatial audio, game streaming, xCloud, Game DVR, broadcast, and casting initiatives.', points: ['Led the Microsoft Spatial Audio Platform across Windows, Xbox One, and new platforms.', 'Grew monthly active devices playing spatial audio by more than 250% over 1.5 years.', 'Worked with developers and data insights to identify and deliver essential spatial audio features.'] },
   { key: 'spatial-audio-principal', role: 'Principal Product Manager - Silicon, Graphics, Media', company: 'Microsoft', dates: 'Sep 2017 - Jan 2018', location: 'Operating System Group · Redmond, Washington', summary: 'Drove the Windows Sonic spatial audio platform for Windows and Xbox One while representing Microsoft at developer and game conferences.', points: ['Drove the launch of Dolby Access v3 and DTS Sound Unbound with new app services, licensing, and customization models.', 'Built partnerships with Surface, Store, Marketing, and Gaming to expand spatial audio to more endpoints and games.', 'Collaborated with Disney+ and Netflix to bring Dolby Atmos to Xbox and Windows.'] },
@@ -89,3 +89,61 @@ export const recommendationLinks: Record<string, string> = {
   'Amit Gupte': 'https://www.linkedin.com/in/amit-gupte/?skipRedirect=true',
   'Jayant Arora': 'https://www.linkedin.com/in/arorajayant/',
 }
+
+// Who Steven is, in the words the site, the resume PDF and the MCP server share.
+// scripts/resume.mjs builds the PDF from this file and src/resume.test.ts fails when
+// the PDF no longer matches it, so a change here always comes with a new resume.
+export const profile = {
+  name: 'Steven Wilssens',
+  headline: 'Principal product leader for data and AI',
+  resumeHeadline: 'Principal product leader: data, experimentation and AI',
+  summary: 'Principal product leader with more than a decade at Microsoft building the data products, metrics, experimentation platforms and ML-powered insights that decide what ships across a billion-plus Windows devices. I led teams of 10 to 20 product managers, turned telemetry and customer signals into decision systems used by engineers and product leaders, and kept building myself, most recently in AI.',
+  lookingFor: 'Product leadership roles in data, experimentation and AI',
+  location: 'Seattle, Washington',
+  workAuthorization: 'US permanent resident (green card)',
+  availability: 'Available now',
+  teamSize: '10 to 20 product managers',
+  email: 'steven@wilssens.com',
+  phone: '425.533.7722',
+  linkedin: 'https://www.linkedin.com/in/steven-wilssens-59495889/',
+  site: 'https://steven.wilssens.com',
+  resumePdf: '/steven-wilssens-resume-2026.pdf',
+  resumeFileName: 'Steven Wilssens Resume 2026.pdf',
+}
+
+// The numbers on the home page and in the resume's key achievements. `backing` is the
+// key of the role whose bullets explain the number; a number without backing is one a
+// hiring manager will ask about, and the recruiter review flags it.
+export type Impact = { value: string; label: string; backing?: string }
+export const impact: Impact[] = [
+  { value: '250%+', label: 'growth in monthly active spatial-audio devices', backing: 'spatial-audio-lead' },
+  { value: '1B+', label: 'Windows devices informing product decisions', backing: 'windows-devices-data' },
+  { value: '15%', label: 'increase in Windows adoption' },
+  { value: '30%', label: 'reduction in customer issues' },
+]
+
+// Keywords the resume carries for applicant tracking systems and recruiter searches.
+export const skills = [
+  'Product strategy and roadmaps',
+  'Data platforms and telemetry',
+  'Experimentation and A/B testing',
+  'Machine learning and AI products',
+  'Metrics and decision systems',
+  'Leading PM teams (10 to 20 PMs)',
+  'Stakeholder and executive communication',
+  'Go-to-market and partnerships',
+  'Software engineering background (C#, .NET)',
+]
+
+// Selected work: the data and AI chapter (2020 to 2026) first, then the two earlier
+// stories recruiters ask about. Outcomes stay within what is public or what colleagues
+// wrote in their recommendations; `source` names who said it.
+export type Work = { key: string; title: string; period: string; role: string; context: string; work: string; outcome: string; source?: string; link?: { href: string; label: string } }
+export const selectedWork: Work[] = [
+  { key: 'windows-quality', title: 'Windows quality, measured from preview channels to retail', period: '2020 - 2026', role: 'csx-data', context: 'Windows ships to more than a billion devices. Engineers needed to know whether a release was healthy before it reached customers, and to find the issues that mattered once it had.', work: 'Led the PM team that built the data products and the review rhythms measuring Windows quality across the Insider preview channels and at retail scale, weaving customer signals and machine learning into insights engineers act on.', outcome: 'Data-supported release and quality decisions across hardware, software and services, and faster detection of the issues affecting customers. Colleagues describe these as the critical data products that measured and elevated Windows quality.', source: 'Amit Gupte' },
+  { key: 'experimentation-ai', title: 'Experimentation and AI for how Windows is built', period: '2024 - 2026', role: 'windows-devices-data', context: 'As Group PM for Windows & Devices Data, I set the direction for how experimentation, machine learning and AI are used internally to accelerate Windows product development.', work: 'Met weekly with engineering leadership on experimentation and AI problems, and delivered large AI projects myself alongside the team’s roadmap.', outcome: '“Steven completed some large AI projects that even after his departure are having significant impact here.”', source: 'Ryan Parsell' },
+  { key: 'ai-feature-forecast', title: 'Forecasting how a Windows AI feature would land', period: '2024 - 2026', role: 'windows-devices-data', context: 'A key Windows AI feature was heading to retail, and leadership wanted to know how customers would receive it.', work: 'Read the preview-channel signals and forecast the feature’s retail reception well before broad rollout.', outcome: 'The forecast held. Amit Gupte calls it the clearest demonstration of “an intuitive understanding of customer behavior second to none.”', source: 'Amit Gupte' },
+  { key: 'okr-tool', title: 'An OKR tool, rebuilt with AI when the old one retired', period: '2024 - 2026', role: 'windows-devices-data', context: 'The organization’s OKR management tool was being retired, leaving the planning rhythm without a home.', work: 'With a member of my team, ideated and stood up a working replacement from scratch using AI coding tools, rather than waiting for a procurement cycle.', outcome: 'The gap was closed with a functional replacement, and the project became the team’s working example of a modern AI development lifecycle.', source: 'Amit Gupte' },
+  { key: 'wilssens-com', title: 'wilssens.com: a family platform built in 16 days', period: '2026', role: 'general', context: 'After Microsoft, I wanted to stay sharp on what platform teams ship by shipping one: email and websites at the family domain for everyone named Wilssens.', work: 'Designed and built the platform with Claude Code: rules enforced by the database, experiments shipped dark and measured, AI help restricted by architecture rather than by prompt, and payments built and switched off.', outcome: 'Live and serving the family, with the design decisions written up for hiring managers.', link: { href: '/building-wilssens', label: 'Read the write-up' } },
+  { key: 'spatial-audio', title: 'Spatial audio, from a Windows feature to a platform', period: '2016 - 2019', role: 'spatial-audio-lead', context: 'Immersive audio existed in cinemas and on a few headsets. Windows and Xbox needed a platform that developers, Dolby, DTS and streaming services would build on.', work: 'Led the Microsoft Spatial Audio Platform across Windows and Xbox: Windows Sonic, the Dolby Access and DTS Sound Unbound launches, and the partnerships with Disney+ and Netflix that brought Dolby Atmos to both.', outcome: 'Monthly active devices playing spatial audio grew more than 250% in 18 months, and the work produced 19 granted US patents.', link: { href: '/patents', label: 'See the patents' } },
+]
