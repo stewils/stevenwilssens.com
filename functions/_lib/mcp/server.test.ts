@@ -235,6 +235,33 @@ describe('the résumé', () => {
     expect((parse(section.text).proposed as { field: string | null }).field).toBeNull()
     expect(parse((await call(store, 'list_resume_proposals')).text).count).toBe(3)
   })
+
+  it('proposes adding, replacing and removing whole roles', async () => {
+    const store = new MemoryStore()
+    const entry = { role: 'Founder', company: 'wilssens.com', dates: 'Oct 2026 - Present', location: 'Seattle, Washington', summary: 'Building a family platform.', points: ['Shipped email and websites at the family domain.'] }
+    expect((await call(store, 'propose_resume_change', { role: 'new-role', kind: 'add', proposed_text: 'not json', rationale: 'x' })).text).toContain('must be JSON')
+    expect((await call(store, 'propose_resume_change', { role: 'new-role', kind: 'add', proposed_text: JSON.stringify({ ...entry, dates: 'since 2026' }), rationale: 'x' })).text).toContain('written like')
+    expect((await call(store, 'propose_resume_change', { role: 'new-role', kind: 'add', proposed_text: JSON.stringify({ ...entry, points: [] }), rationale: 'x' })).text).toContain('non-empty array')
+    expect((await call(store, 'propose_resume_change', { role: 'new-role', kind: 'replace', field: 'role', proposed_text: JSON.stringify(entry), rationale: 'x' })).text).toContain('to add a role')
+    expect((await call(store, 'propose_resume_change', { role: 'cosmos', field: 'role', kind: 'add', proposed_text: JSON.stringify(entry), rationale: 'x' })).text).toContain('set role to "new-role"')
+
+    const added = parse((await call(store, 'propose_resume_change', { role: 'new-role', kind: 'add', proposed_text: JSON.stringify(entry), rationale: 'Steven has been building wilssens.com since leaving Microsoft (entry 3).', based_on: '3' })).text)
+    expect((added.proposed as { field: string; kind: string; currentText: string | null }).field).toBe('role')
+    expect(JSON.parse((added.proposed as { proposedText: string }).proposedText)).toEqual(entry)
+    expect(added.next).toContain('new role')
+
+    const removed = parse((await call(store, 'propose_resume_change', { role: 'cosmos', field: 'role', kind: 'remove', rationale: 'A placement inside the Info Support years; one line is enough.' })).text)
+    const removedProposal = removed.proposed as { kind: string; currentText: string; proposedText: string | null }
+    expect(removedProposal.kind).toBe('remove')
+    expect(JSON.parse(removedProposal.currentText).company).toBe('Cosmos')
+    expect(removedProposal.proposedText).toBeNull()
+
+    const replaced = parse((await call(store, 'propose_resume_change', { role: 'compuware', field: 'role', kind: 'replace', proposed_text: JSON.stringify({ ...entry, role: 'Lead Developer and Team Lead', company: 'Compuware', dates: 'Jan 2005 - Jun 2007' }), rationale: 'New dates and a sharper summary.' })).text)
+    const replacedProposal = replaced.proposed as { currentText: string; proposedText: string }
+    expect(JSON.parse(replacedProposal.currentText).dates).toBe('Jan 2005 - Dec 2006')
+    expect(JSON.parse(replacedProposal.proposedText).dates).toBe('Jan 2005 - Jun 2007')
+    expect(parse((await call(store, 'list_resume_proposals')).text).count).toBe(3)
+  })
 })
 
 describe('searchTerms', () => {
