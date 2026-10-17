@@ -105,6 +105,7 @@ jobs:
           echo "checks=$status" >> "$GITHUB_OUTPUT"
 
       - name: Open the pull request
+        id: pr
         if: steps.commit.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -124,3 +125,37 @@ jobs:
           gh workflow run deploy.yml --ref "$BRANCH"
           echo "### Pull request: $url" >> "$GITHUB_STEP_SUMMARY"
           echo "Preview (a few minutes after the Deploy workflow for the branch finishes): https://$alias.stevenwilssens.pages.dev" >> "$GITHUB_STEP_SUMMARY"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "preview=https://$alias.stevenwilssens.pages.dev" >> "$GITHUB_OUTPUT"
+          if git diff --name-only origin/main...HEAD | grep -qE '^(public/steven-wilssens-resume-2026\.pdf|src/resume\.ts)$'; then echo "resume_changed=true" >> "$GITHUB_OUTPUT"; else echo "resume_changed=false" >> "$GITHUB_OUTPUT"; fi
+
+      # Steven asked to be told when the resume has been updated: here, when a pull request with a new resume is ready to review.
+      - name: Email Steven that the resume is ready to review
+        if: steps.pr.outputs.resume_changed == 'true'
+        continue-on-error: true
+        env:
+          MAIL_APP_PASSWORD: ${{ secrets.MAIL_APP_PASSWORD }}
+          MAIL_SMTP_HOST: ${{ vars.MAIL_SMTP_HOST }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+          PREVIEW: ${{ steps.pr.outputs.preview }}
+          TITLE: ${{ inputs.title }}
+          INSTRUCTION: ${{ inputs.instruction }}
+          CHECKS: ${{ steps.commit.outputs.checks }}
+        run: |
+          score=$(node scripts/resume-check.mjs 2>/dev/null | head -1 | sed -E 's/.*score ([0-9]+\/100).*/\1/')
+          {
+            echo "Your resume has been updated on a branch and is ready to review."
+            echo
+            echo "Change: $TITLE"
+            echo "Resume score: ${score:-unknown} (lint, tests, build: $CHECKS)"
+            echo
+            echo "Pull request: $PR_URL"
+            echo "Preview of the site: $PREVIEW"
+            echo "Resume PDF on the preview: $PREVIEW/steven-wilssens-resume-2026.pdf"
+            echo
+            echo "Nothing is live yet. Merge the pull request (or tell Claude to) and you will get a second email when it is on steven.wilssens.com."
+            echo
+            echo "What was asked:"
+            echo "$INSTRUCTION"
+          } > /tmp/mail.txt
+          python3 scripts/send-mail.py --subject "Resume updated: ready to review ($TITLE)" --body-file /tmp/mail.txt

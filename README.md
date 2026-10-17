@@ -108,6 +108,8 @@ Pages Function secrets (set with `npx wrangler pages secret put <NAME> --project
 | `GITHUB_TOKEN` | Lets the MCP server start the Site update workflow and read runs and pull requests (fine-grained token: Actions write, Contents read, Pull requests write) |
 | `GITHUB_REPO` | Optional; defaults to `stewils/stevenwilssens.com` |
 
+Repository Actions secrets (GitHub → Settings → Secrets and variables → Actions): `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` for Claude Code in the Site update workflow, and `MAIL_APP_PASSWORD`, a Zoho app password for steven@wilssens.com, so the workflows can email Steven when a pull request carries an updated resume (`scripts/send-mail.py`, from the Site update workflow) and when a deploy to `main` changed the resume PDF or `src/resume.ts` (from the Deploy workflow). Without the password the steps print a notice and the workflows still pass. A mailbox in Zoho's EU data centre needs the repository variable `MAIL_SMTP_HOST=smtp.zoho.eu`.
+
 Schema changes: add a numbered file to `migrations/`, then apply it to production **before** deploying code that uses it:
 
 ```sh
