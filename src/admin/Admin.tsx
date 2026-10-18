@@ -1,366 +1,55 @@
-import { Fragment, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ignoreKey } from '../analytics'
-import { fillDays, formatDuration, formatNumber, formatPercent, formatTime, formatVital, rateVital, vitalInfo } from './format'
+import { AssistantPage } from './AssistantPage'
+import { AudiencePage } from './AudiencePage'
+import { CrawlersPage } from './CrawlersPage'
+import { formatTime } from './format'
+import { LinksPage } from './LinksPage'
+import { McpPage } from './McpPage'
+import { badgeCounts, computeNeeds, computeSummaries } from './needs'
+import { Overview } from './Overview'
+import { pageById, pages, type PageDef } from './pages'
+import { ResumePage } from './ResumePage'
+import { SourcesPage } from './SourcesPage'
+import { SpeedPage } from './SpeedPage'
+import { SubNav } from './SubNav'
+import { TrafficPage } from './TrafficPage'
+import type { AdminData, AskInfo, McpInfo, ResumeInfo, Stats } from './types'
 
-type Row = { name: string; visitors: number; pageviews?: number; detail?: string }
-type PageRow = { name: string; views: number; visitors: number; avgDurationMs: number | null; avgScrollPct: number | null }
-type ClickRow = { category: string; label: string; target: string | null; context: string | null; clicks: number; visitors: number }
-type VisitorRow = {
-  visitor: string; firstSeen: number; lastSeen: number; pageviews: number; journey: string; city: string | null; region: string | null; country: string | null
-  organization: string | null; browser: string; os: string; device: string; referrer: string | null; utmSource: string | null; channel: string; engagedMs: number | null; downloaded: number; clicked: string | null
-}
-type RecentRow = {
-  ts: number; type: string; path: string | null; category: string | null; label: string | null; durationMs: number | null; scrollPct: number | null
-  referrer: string | null; city: string | null; country: string | null; organization: string | null; browser: string; os: string; device: string
-}
-type VitalSummary = { metric: string; p75: number; samples: number; good: number; needsImprovement: number; poor: number }
-type DeviceVitals = { device: string; visits: number; passes: boolean | null } & Partial<Record<'LCP' | 'INP' | 'CLS', number>>
-type VitalCulprit = { metric: string; path: string; target: string; samples: number; p75: number }
-type CrawlCategory = 'search' | 'ai-search' | 'ai-training' | 'ai-assistant' | 'social' | 'seo' | 'other'
-type Crawls = {
-  crawlTotals: { requests: number; bots: number; search: number; ai: number; assistant: number; other: number; errors: number }
-  crawlDaily: { day: string; requests: number; search: number; ai: number }[]
-  crawlBots: { bot: string; operator: string | null; category: CrawlCategory; requests: number; pages: number; lastSeen: number; errors: number; networks: number; network: string | null }[]
-  crawlPages: { path: string; requests: number; search: number; ai: number; assistant: number; bots: number; status: number }[]
-  crawlRecent: { ts: number; bot: string; category: CrawlCategory; path: string; status: number; country: string | null; network: string | null }[]
-}
-type Stats = Crawls & {
-  days: number
-  generatedAt: number
-  totals: { pageviews: number; visitors: number; avgDurationMs: number | null; avgScrollPct: number | null; bounceRate: number | null; downloads: number; downloaders: number; contactClicks: number }
-  daily: { day: string; pageviews: number; visitors: number }[]
-  hours: { hour: number; pageviews: number }[]
-  pages: PageRow[]
-  entryPages: Row[]
-  clicks: ClickRow[]
-  visitors: VisitorRow[]
-  recent: RecentRow[]
-  channels: Row[]
-  vitals: { metrics: VitalSummary[]; pages: ({ path: string } & Record<string, number>)[]; devices: DeviceVitals[]; culprits: VitalCulprit[] }
-} & Record<'referrers' | 'utmSources' | 'utmCampaigns' | 'countries' | 'cities' | 'organizations' | 'browsers' | 'systems' | 'devices' | 'languages' | 'screens', Row[]>
+// The dashboard: a menu on the left (a tab bar on narrow screens) with one page per
+// area, chosen by the URL hash; the overview lists what needs Steven and links there.
+// Same access as before: one shared ADMIN_TOKEN, typed once, kept in this browser's
+// localStorage, sent as Authorization: Bearer; a 401 clears it.
 
 const tokenKey = 'sw-admin-token'
 const ranges = [[1, 'Today'], [7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '1 year']] as const
-const trackingLinks = [
-  ['Resume', 'https://steven.wilssens.com/?ref=resume', 'Link from the resume PDF'],
-  ['LinkedIn', 'https://steven.wilssens.com/?ref=linkedin', 'Profile website field, Featured section, posts'],
-  ['Email', 'https://steven.wilssens.com/?ref=email', 'Email signature and messages'],
-] as const
-
-const cloudflareAnalyticsUrl = 'https://dash.cloudflare.com/?to=/:account/web-analytics'
 
 const storage = {
   get: (key: string) => { try { return localStorage.getItem(key) } catch { return null } },
   set: (key: string, value: string | null) => { try { if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, value) } catch { /* storage unavailable */ } },
 }
 
-const place = (row: { city: string | null; region?: string | null; country: string | null }) => [row.city, row.region, row.country].filter(Boolean).join(', ') || 'Unknown'
+type Loaded<T> = { data: T | null; error: string; loading: boolean }
 
-type Bar = { key: string; label: string; value: number; detail: string }
-
-function BarChart({ title, bars, axisLabels }: { title: string; bars: Bar[]; axisLabels: string[] }) {
-  const [hovered, setHovered] = useState<number | null>(null)
-  // Round the axis up to an even number so the midpoint gridline is a whole number.
-  const peak = Math.max(...bars.map((bar) => bar.value), 0)
-  const max = Math.max(2, peak + (peak % 2))
-  const active = hovered === null ? null : bars[hovered]
-  return (
-    <figure className="chart">
-      <figcaption>
-        <span>{title}</span>
-        <span className="chart-readout">{active ? `${active.label} · ${active.detail}` : `Peak ${formatNumber(peak)}`}</span>
-      </figcaption>
-      <div className="chart-plot" onMouseLeave={() => setHovered(null)}>
-        <span className="chart-grid" style={{ bottom: '100%' }}><em>{formatNumber(max)}</em></span>
-        <span className="chart-grid" style={{ bottom: '50%' }}><em>{formatNumber(max / 2)}</em></span>
-        <div className="chart-bars">
-          {bars.map((bar, index) => (
-            <button type="button" key={bar.key} className={`chart-bar ${hovered === index ? 'active' : ''}`} onMouseEnter={() => setHovered(index)} onFocus={() => setHovered(index)} onBlur={() => setHovered(null)} aria-label={`${bar.label}: ${bar.detail}`}>
-              <span style={{ height: `${(bar.value / max) * 100}%` }} />
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="chart-axis">{axisLabels.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}</div>
-    </figure>
-  )
-}
-
-function RankedList({ title, rows, unit = 'visitors', empty = 'No data yet' }: { title: string; rows: Row[]; unit?: string; empty?: string }) {
-  const max = Math.max(1, ...rows.map((row) => row.visitors))
-  return (
-    <section className="panel">
-      <h2>{title}</h2>
-      {rows.length === 0 ? <p className="empty">{empty}</p> : (
-        <ol className="ranked">
-          {rows.map((row) => (
-            <li key={row.name} title={row.pageviews ? `${formatNumber(row.visitors)} ${unit} · ${formatNumber(row.pageviews)} pageviews` : undefined}>
-              <span className="ranked-bar" style={{ width: `${(row.visitors / max) * 100}%` }} />
-              <span className="ranked-name">{row.name}{row.detail && <small> · {row.detail}</small>}</span>
-              <span className="ranked-value">{formatNumber(row.visitors)}</span>
-            </li>
-          ))}
-        </ol>
-      )}
-    </section>
-  )
-}
-
-const ratingLabel = { good: '✓ Good', 'needs-improvement': '! Needs work', poor: '✕ Poor' } as const
-
-function WebVitals({ vitals }: { vitals: Stats['vitals'] }) {
-  const order = ['LCP', 'INP', 'CLS', 'FCP', 'TTFB']
-  const metrics = order.map((metric) => vitals.metrics.find((row) => row.metric === metric)).filter((row): row is VitalSummary => Boolean(row))
-  return (
-    <section className="panel wide">
-      <h2>Page speed (Core Web Vitals)</h2>
-      <p className="note">Measured in visitors' browsers. Values are the 75th percentile, the number Google uses to rate a site. Google rates phones and desktops separately; a device type passes when LCP, INP and CLS are all good. The bar shows the share of visits rated good, needs work, and poor.</p>
-      {metrics.length === 0 ? <p className="empty">No measurements yet</p> : (
-        <>
-          <div className="assessments">
-            {vitals.devices.map((row) => (
-              <div key={row.device} className={`assessment ${row.passes === null ? '' : row.passes ? 'good' : 'poor'}`}>
-                <span className="vital-name">{row.device} <small>{formatNumber(row.visits)} visits</small></span>
-                <strong>{row.passes === null ? 'Not enough data' : row.passes ? '✓ Passes' : '✕ Fails'}</strong>
-                <small>{(['LCP', 'INP', 'CLS'] as const).map((metric) => `${metric} ${formatVital(metric, row[metric])}`).join(' · ')}</small>
-              </div>
-            ))}
-          </div>
-          <div className="vitals">
-            {metrics.map((row) => {
-              const rating = rateVital(row.metric, row.p75)
-              return (
-                <div key={row.metric} className="vital">
-                  <span className="vital-name" title={vitalInfo[row.metric]?.name}>{row.metric} <small>{vitalInfo[row.metric]?.name}</small></span>
-                  <strong>{formatVital(row.metric, row.p75)}</strong>
-                  <span className={`status ${rating}`}>{ratingLabel[rating]}</span>
-                  <span className="vital-share" aria-label={`${formatPercent(row.good, true)} good, ${formatPercent(row.needsImprovement, true)} needs work, ${formatPercent(row.poor, true)} poor`}>
-                    <span className="good" style={{ flexGrow: row.good }} />
-                    <span className="needs-improvement" style={{ flexGrow: row.needsImprovement }} />
-                    <span className="poor" style={{ flexGrow: row.poor }} />
-                  </span>
-                  <small>{formatPercent(row.good, true)} good · {formatNumber(row.samples)} visits</small>
-                </div>
-              )
-            })}
-          </div>
-          <div className="table-scroll">
-            <table>
-              <thead><tr><th>Page</th>{order.map((metric) => <th className="num" key={metric}>{metric}</th>)}</tr></thead>
-              <tbody>{vitals.pages.map((row) => <tr key={row.path}><td className="strong">{row.path}</td>{order.map((metric) => <td className="num" key={metric}>{row[metric] == null ? '—' : <span className={`status-text ${rateVital(metric, row[metric])}`}>{formatVital(metric, row[metric])}</span>}</td>)}</tr>)}</tbody>
-            </table>
-          </div>
-          <h3>What to fix</h3>
-          <p className="note">The page elements behind visits rated needs work or poor: the largest image or text block (LCP), the control that responded slowly (INP), and the element that moved most (CLS).</p>
-          {vitals.culprits.length === 0 ? <p className="empty">Nothing slow to report</p> : (
-            <div className="table-scroll">
-              <table>
-                <thead><tr><th>Metric</th><th>Page</th><th>Element</th><th className="num">Visits</th><th className="num">75th pct</th></tr></thead>
-                <tbody>{vitals.culprits.map((row) => <tr key={`${row.metric}|${row.path}|${row.target}`}><td className="strong">{row.metric}</td><td>{row.path}</td><td className="target" title={row.target}>{row.target}</td><td className="num">{formatNumber(row.samples)}</td><td className="num"><span className={`status-text ${rateVital(row.metric, row.p75)}`}>{formatVital(row.metric, row.p75)}</span></td></tr>)}</tbody>
-              </table>
-            </div>
-          )}
-        </>
-      )}
-    </section>
-  )
-}
-
-const crawlCategories: Record<CrawlCategory, string> = {
-  search: 'Search engine',
-  'ai-search': 'AI search',
-  'ai-training': 'AI training',
-  'ai-assistant': 'AI assistant',
-  social: 'Link preview',
-  seo: 'SEO tool',
-  other: 'Other bot',
-}
-
-function CrawlerTraffic({ stats, dayLabel }: { stats: Stats; dayLabel: (day: string) => string }) {
-  const totals = stats.crawlTotals
-  const daily = fillDays(stats.crawlDaily, stats.days, new Date(), (day) => ({ day, requests: 0, search: 0, ai: 0 }))
-  return (
-    <section className="panel wide">
-      <h2>Crawlers: search engines and AI</h2>
-      <p className="note">Requests from bots, recorded on the server because crawlers rarely run the page tracker. They are not counted as visitors. <b>AI assistant</b> means a person asked ChatGPT, Claude, Perplexity or similar something that made it read the page right then. <b>AI search</b> indexes pages for AI answers, and <b>AI training</b> collects text to train models. Anyone can pretend to be a crawler, so check that the network matches the operator (Googlebot from Google, GPTBot from Microsoft, and so on).</p>
-      <div className="tiles">
-        <div><span>Crawler requests</span><strong>{formatNumber(totals.requests)}</strong><small>from {formatNumber(totals.bots)} crawlers</small></div>
-        <div><span>Search engines</span><strong>{formatNumber(totals.search)}</strong><small>Google, Bing, Apple…</small></div>
-        <div><span>AI crawlers</span><strong>{formatNumber(totals.ai)}</strong><small>AI search and training</small></div>
-        <div className="highlight"><span>AI assistants</span><strong>{formatNumber(totals.assistant)}</strong><small>read when someone asked an AI</small></div>
-        <div><span>Other bots</span><strong>{formatNumber(totals.other)}</strong><small>link previews, SEO tools, scripts</small></div>
-        <div><span>Errors</span><strong>{formatNumber(totals.errors)}</strong><small>answered 4xx or 5xx</small></div>
-      </div>
-      {totals.requests === 0 ? <p className="empty">No crawler requests in this range yet</p> : (
-        <>
-          <BarChart
-            title="Crawler requests per day"
-            bars={daily.map((row) => ({ key: row.day, label: dayLabel(row.day), value: row.requests, detail: `${formatNumber(row.requests)} requests · ${formatNumber(row.search)} search · ${formatNumber(row.ai)} AI` }))}
-            axisLabels={daily.length > 1 ? [dayLabel(daily[0].day), dayLabel(daily[Math.floor(daily.length / 2)].day), dayLabel(daily[daily.length - 1].day)] : daily.map((row) => dayLabel(row.day))}
-          />
-          <h3>Crawlers</h3>
-          <div className="table-scroll">
-            <table>
-              <thead><tr><th>Crawler</th><th>Purpose</th><th>Operator</th><th>Network</th><th className="num">Requests</th><th className="num">Pages</th><th className="num">Errors</th><th>Last seen</th></tr></thead>
-              <tbody>{stats.crawlBots.map((row) => <tr key={`${row.bot}|${row.category}`}><td className="strong">{row.bot}</td><td><span className={`badge ${row.category}`}>{crawlCategories[row.category]}</span></td><td>{row.operator ?? '—'}</td><td>{row.network ?? 'Unknown'}{row.networks > 1 && <small className="muted"> +{row.networks - 1} more</small>}</td><td className="num">{formatNumber(row.requests)}</td><td className="num">{formatNumber(row.pages)}</td><td className="num">{row.errors ? formatNumber(row.errors) : ''}</td><td>{formatTime(row.lastSeen)}</td></tr>)}</tbody>
-            </table>
-          </div>
-          <h3>Most crawled</h3>
-          <div className="table-scroll">
-            <table>
-              <thead><tr><th>Address</th><th className="num">Requests</th><th className="num">Search</th><th className="num">AI crawlers</th><th className="num">AI assistants</th><th className="num">Crawlers</th></tr></thead>
-              <tbody>{stats.crawlPages.map((row) => <tr key={row.path}><td className="strong">{row.path}{row.status >= 400 && <small className="muted"> · {row.status}</small>}</td><td className="num">{formatNumber(row.requests)}</td><td className="num">{formatNumber(row.search)}</td><td className="num">{formatNumber(row.ai)}</td><td className="num">{formatNumber(row.assistant)}</td><td className="num">{formatNumber(row.bots)}</td></tr>)}</tbody>
-            </table>
-          </div>
-          <h3>Latest crawls</h3>
-          <div className="table-scroll">
-            <table>
-              <thead><tr><th>Time</th><th>Crawler</th><th>Purpose</th><th>Address</th><th className="num">Status</th><th>Network</th><th>Country</th></tr></thead>
-              <tbody>{stats.crawlRecent.map((row, index) => <tr key={index}><td>{formatTime(row.ts)}</td><td className="strong">{row.bot}</td><td><span className={`badge ${row.category}`}>{crawlCategories[row.category]}</span></td><td>{row.path}</td><td className="num">{row.status}</td><td>{row.network}</td><td>{row.country}</td></tr>)}</tbody>
-            </table>
-          </div>
-        </>
-      )}
-    </section>
-  )
-}
-
-type McpInfo = {
-  ownerUrl: string | null
-  entries: { total: number; public: number; roles: number }
-  proposals: { id: number; updatedAt: number; role: string; field?: string | null; kind: 'replace' | 'add' | 'remove'; currentText: string | null; proposedText: string | null; rationale: string; status: 'proposed' | 'approved' | 'rejected' | 'applied'; decisionNote: string | null }[]
-}
-
-// The private MCP server at /mcp/<key>: the link to add to Claude, the size of
-// the dossier, and the résumé proposals approved or still waiting.
-function McpServer({ token }: { token: string }) {
-  const [info, setInfo] = useState<McpInfo | null>(null)
-  const [error, setError] = useState('')
-  const [copied, setCopied] = useState(false)
-  const [revealed, setRevealed] = useState(false)
+// One admin API call, re-run when its path changes (the range, a refresh). Loading
+// until the answer for the current path is in.
+function useApi<T>(path: string, token: string, onUnauthorized: () => void): Loaded<T> {
+  const [state, setState] = useState<{ data: T | null; error: string; answered: string }>({ data: null, error: '', answered: '' })
   useEffect(() => {
-    fetch('/api/mcp', { headers: { Authorization: `Bearer ${token}` } })
-      .then(async (response) => { if (!response.ok) throw new Error(`HTTP ${response.status}`); setInfo(await response.json()) })
-      .catch((err: Error) => setError(`Could not load the MCP details (${err.message}).`))
-  }, [token])
-  const copy = (url: string) => { void navigator.clipboard?.writeText(url).then(() => setCopied(true)) }
-  const masked = (url: string) => url.replace(/\/mcp\/.+$/, '/mcp/' + '•'.repeat(12))
-  return (
-    <section className="panel wide">
-      <h2>Your career MCP</h2>
-      <p className="note">A private MCP server for talking through your career with Claude. It reads what is already on the site and in the dossier, interviews you where there are gaps, saves what you say, and proposes résumé edits for you to approve or reject. Add it in Claude under Settings → Connectors → Add custom connector (no sign-in step), or in Claude Code with <code>claude mcp add --transport http my-career &lt;link&gt;</code>. The key in the link is the <code>MCP_OWNER_KEY</code> secret: anyone with it can read and change the dossier, so keep it to yourself.</p>
-      {error && <p className="error">{error}</p>}
-      {info && (
-        <>
-          <ul className="links">
-            <li>
-              <div><strong>Owner link</strong><small>Only you. Rotate it by setting a new MCP_OWNER_KEY secret and redeploying.</small><code>{info.ownerUrl ? (revealed ? info.ownerUrl : masked(info.ownerUrl)) : 'Not configured: set the MCP_OWNER_KEY secret and redeploy.'}</code></div>
-              {info.ownerUrl && <button type="button" className="ghost" onClick={() => setRevealed((value) => !value)}>{revealed ? 'Hide' : 'Reveal'}</button>}
-              {info.ownerUrl && <button type="button" className="ghost" onClick={() => copy(info.ownerUrl!)}>{copied ? 'Copied' : 'Copy'}</button>}
-            </li>
-          </ul>
-          <p className="note" style={{ margin: '12px 0 0' }}>Dossier: {formatNumber(info.entries.total)} entries across {info.entries.roles} roles, {formatNumber(info.entries.public)} marked public (usable by a recruiter-facing assistant on the site later).</p>
-          <h3>Résumé proposals</h3>
-          {info.proposals.length === 0 ? <p className="note">None yet. When you wrap up a session, Claude proposes résumé edits; approve or reject them in that conversation and they show up here. Approved ones are applied by hand to src/resume.ts and the PDF.</p> : (
-            <div className="table-scroll">
-              <table>
-                <thead><tr><th>Status</th><th>Where</th><th>Change</th><th>Why</th><th>Updated</th></tr></thead>
-                <tbody>{info.proposals.map((row) => <tr key={row.id}><td><span className={`badge ${row.status}`}>{row.status}</span></td><td className="strong">{row.role}<small className="muted"><br />{row.field && row.field !== 'point' ? `${row.field} · ` : ''}{row.kind}</small></td><td>{row.currentText && <s className="muted">{row.currentText}</s>}{row.currentText && row.proposedText && <br />}{row.proposedText}{row.decisionNote && <small className="muted"><br />Note: {row.decisionNote}</small>}</td><td>{row.rationale}</td><td>{formatTime(row.updatedAt)}</td></tr>)}</tbody>
-              </table>
-            </div>
-          )}
-        </>
-      )}
-    </section>
-  )
-}
-
-type AskInfo = {
-  configured: boolean
-  mock: boolean
-  model: string
-  budgetUsd: number
-  humanCheck: boolean
-  month: { questions: number; answered: number; gap: number; off: number; limited: number; failed: number; costMicro: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number }
-  daily: { day: string; outcome: string; questions: number; costMicro: number; msFirst: number; msTotal: number }[]
-  votes: { day: string; helpful: number; unhelpful: number }[]
-  questions: { id: number; ts: number; reason: 'gap' | 'unhelpful'; page: string | null; question: string; answer: string | null; country: string | null; asOrg: string | null }[]
-}
-
-const usd = (micro: number) => `$${(micro / 1_000_000).toFixed(2)}`
-
-// "Ask about Steven", the assistant on the site: this month against its budget,
-// questions per day, votes, and the questions it could not answer (the gaps to
-// fill in the next MCP session).
-function AskAssistantPanel({ token, days, dayLabel }: { token: string; days: number; dayLabel: (day: string) => string }) {
-  const [info, setInfo] = useState<AskInfo | null>(null)
-  const [error, setError] = useState('')
-  useEffect(() => {
-    fetch(`/api/ask/admin?days=${days}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(async (response) => { if (!response.ok) throw new Error(`HTTP ${response.status}`); setInfo(await response.json()) })
-      .catch((err: Error) => setError(`Could not load the assistant's numbers (${err.message}).`))
-  }, [token, days])
-  const perDay = new Map<string, { questions: number; costMicro: number; off: number; gap: number }>()
-  for (const row of info?.daily ?? []) {
-    const entry = perDay.get(row.day) ?? { questions: 0, costMicro: 0, off: 0, gap: 0 }
-    entry.questions += row.questions; entry.costMicro += row.costMicro
-    if (row.outcome === 'off') entry.off += row.questions
-    if (row.outcome === 'gap') entry.gap += row.questions
-    perDay.set(row.day, entry)
-  }
-  const answered = (info?.daily ?? []).filter((row) => row.outcome === 'answered' || row.outcome === 'gap')
-  const asked = answered.reduce((sum, row) => sum + row.questions, 0)
-  const avgFirst = asked ? answered.reduce((sum, row) => sum + row.msFirst, 0) / asked : null
-  const votes = (info?.votes ?? []).reduce((sum, row) => ({ helpful: sum.helpful + row.helpful, unhelpful: sum.unhelpful + row.unhelpful }), { helpful: 0, unhelpful: 0 })
-  const bars = fillDays([...perDay.entries()].map(([day, entry]) => ({ day, pageviews: entry.questions, visitors: entry.questions })), days)
-  return (
-    <section className="panel wide">
-      <h2>Ask about Steven: the assistant on the site</h2>
-      <p className="note">Claude ({info?.model ?? 'claude-opus-5-5'}) answers from the résumé data and the public dossier entries. Questions it could not answer are listed below; cover them in your next MCP session and they resolve themselves.{info && !info.configured && !info.mock && <strong> Not live yet: set the ANTHROPIC_API_KEY secret and redeploy.</strong>}{info?.mock && <strong> Mock mode (ASK_MOCK=1): canned answers, no API calls.</strong>}</p>
-      {error && <p className="error">{error}</p>}
-      {info && (
-        <>
-          <section className="tiles" aria-label="This month">
-            <div className={info.month.costMicro > info.budgetUsd * 800_000 ? 'highlight' : ''}><span>Spent this month</span><strong>{usd(info.month.costMicro)}</strong><small>of a {usd(info.budgetUsd * 1_000_000)} budget</small></div>
-            <div><span>Questions</span><strong>{formatNumber(info.month.questions)}</strong><small>{formatNumber(info.month.answered)} answered · {formatNumber(info.month.gap)} gaps · {formatNumber(info.month.off)} off topic</small></div>
-            <div><span>Turned away</span><strong>{formatNumber(info.month.limited)}</strong><small>limits, budget or human check</small></div>
-            <div><span>Votes ({days} days)</span><strong>{votes.helpful} / {votes.unhelpful}</strong><small>helpful / not helpful</small></div>
-            <div><span>Time to first word</span><strong>{avgFirst === null ? '—' : formatDuration(avgFirst)}</strong><small>average, last {days} days</small></div>
-            <div><span>Cache</span><strong>{info.month.cacheReadTokens + info.month.inputTokens ? Math.round((info.month.cacheReadTokens / (info.month.cacheReadTokens + info.month.inputTokens)) * 100) : 0}%</strong><small>of input tokens read from cache</small></div>
-          </section>
-          <BarChart title={`Questions per day (${days} days)`} bars={bars.map((row) => ({ key: row.day, label: dayLabel(row.day), value: row.pageviews, detail: `${formatNumber(row.pageviews)} questions · ${usd(perDay.get(row.day)?.costMicro ?? 0)} · ${perDay.get(row.day)?.off ?? 0} off topic` }))} axisLabels={bars.length > 1 ? [dayLabel(bars[0].day), dayLabel(bars[Math.floor(bars.length / 2)].day), dayLabel(bars[bars.length - 1].day)] : bars.map((row) => dayLabel(row.day))} />
-          <h3>Questions the dossier could not answer</h3>
-          {info.questions.length === 0 ? <p className="note">None in the last 90 days.</p> : (
-            <div className="table-scroll">
-              <table>
-                <thead><tr><th>When</th><th>Why</th><th>Question</th><th>What it answered</th><th>Page</th><th>Network</th></tr></thead>
-                <tbody>{info.questions.map((row) => <tr key={row.id}><td>{formatTime(row.ts)}</td><td><span className={`badge ${row.reason}`}>{row.reason === 'gap' ? 'not covered' : 'not helpful'}</span></td><td className="strong">{row.question}</td><td className="muted">{row.answer}</td><td>{row.page ?? '—'}</td><td>{[row.asOrg, row.country].filter(Boolean).join(', ') || '—'}</td></tr>)}</tbody>
-              </table>
-            </div>
-          )}
-        </>
-      )}
-    </section>
-  )
-}
-
-function TrackingLinks() {
-  const [copied, setCopied] = useState('')
-  const copy = (url: string) => { void navigator.clipboard?.writeText(url).then(() => setCopied(url)) }
-  return (
-    <section className="panel">
-      <h2>Your tracking links</h2>
-      <p className="note">Use these so visits are credited to the right channel. PDFs, email apps, and the LinkedIn app usually don't say where a visitor came from.</p>
-      <ul className="links">
-        {trackingLinks.map(([name, url, where]) => (
-          <li key={name}>
-            <div><strong>{name}</strong><small>{where}</small><code>{url}</code></div>
-            <button type="button" className="ghost" onClick={() => copy(url)}>{copied === url ? 'Copied' : 'Copy'}</button>
-          </li>
-        ))}
-      </ul>
-    </section>
-  )
+    if (!token) return
+    let cancelled = false
+    fetch(path, { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (response) => {
+        if (cancelled) return
+        if (response.status === 401) { onUnauthorized(); return }
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const data = (await response.json()) as T
+        if (!cancelled) setState({ data, error: '', answered: path })
+      })
+      .catch((error: unknown) => { if (!cancelled) setState((current) => ({ ...current, error: error instanceof Error ? error.message : 'Request failed', answered: path })) })
+    return () => { cancelled = true }
+  }, [path, token, onUnauthorized])
+  return { data: state.data, error: state.error, loading: state.answered !== path }
 }
 
 function Login({ onSubmit, error }: { onSubmit: (token: string) => void; error: string }) {
@@ -368,230 +57,117 @@ function Login({ onSubmit, error }: { onSubmit: (token: string) => void; error: 
   return (
     <main className="login">
       <form onSubmit={(event) => { event.preventDefault(); onSubmit(value.trim()) }}>
-        <h1>Site analytics</h1>
-        <p>Enter the admin token to view visitor data for steven.wilssens.com.</p>
+        <h1>Admin</h1>
+        <p>Enter the admin token to run steven.wilssens.com: visitors, the résumé score, the assistant and your career MCP.</p>
         <input type="password" autoComplete="current-password" value={value} onChange={(event) => setValue(event.target.value)} placeholder="Admin token" aria-label="Admin token" autoFocus />
         {error && <p className="error">{error}</p>}
-        <button type="submit" className="primary">View analytics</button>
+        <button type="submit" className="primary">Sign in</button>
       </form>
     </main>
   )
 }
 
+const readHash = () => (typeof location === 'undefined' ? '' : location.hash.slice(1))
+
 export default function Admin() {
   const [token, setToken] = useState(() => storage.get(tokenKey) ?? '')
   const [days, setDays] = useState(30)
-  const [stats, setStats] = useState<Stats | null>(null)
-  const [error, setError] = useState('')
   const [refreshCount, setRefreshCount] = useState(0)
-  const [loadedKey, setLoadedKey] = useState('')
+  const [loginError, setLoginError] = useState('')
   const [ignored, setIgnored] = useState(() => storage.get(ignoreKey) === '1')
-  const [openVisitor, setOpenVisitor] = useState<string | null>(null)
-  const requestKey = `${token}|${days}|${refreshCount}`
-  const loading = Boolean(token) && loadedKey !== requestKey
-  const load = () => setRefreshCount((count) => count + 1)
+  const [hash, setHash] = useState(readHash)
+  const scroller = useRef<HTMLDivElement>(null)
+
+  const signOut = (message = '') => { storage.set(tokenKey, null); setToken(''); setLoginError(message) }
+  const rejected = useCallback(() => { storage.set(tokenKey, null); setToken(''); setLoginError('That token was not accepted.') }, [])
+  const tz = -new Date().getTimezoneOffset()
+  const stats = useApi<Stats>(`/api/stats?days=${days}&tz=${tz}&r=${refreshCount}`, token, rejected)
+  const ask = useApi<AskInfo>(`/api/ask/admin?days=${days}&r=${refreshCount}`, token, rejected)
+  const mcp = useApi<McpInfo>(`/api/mcp?r=${refreshCount}`, token, rejected)
+  const resume = useApi<ResumeInfo>(`/api/resume?r=${refreshCount}`, token, rejected)
 
   useEffect(() => {
-    if (!token) return
-    let cancelled = false
-    fetch(`/api/stats?days=${days}&tz=${-new Date().getTimezoneOffset()}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(async (response) => {
-        if (cancelled) return
-        if (response.status === 401) {
-          storage.set(tokenKey, null)
-          setToken('')
-          setError('That token was not accepted.')
-          return
-        }
-        if (!response.ok) throw new Error(`Request failed (${response.status})`)
-        const data: Stats = await response.json()
-        if (cancelled) return
-        setStats(data)
-        setError('')
-      })
-      .catch((caught: unknown) => { if (!cancelled) setError(caught instanceof Error ? caught.message : 'Could not load analytics.') })
-      .finally(() => { if (!cancelled) setLoadedKey(requestKey) })
-    return () => { cancelled = true }
-  }, [token, days, requestKey])
+    const onChange = () => setHash(readHash())
+    addEventListener('hashchange', onChange)
+    return () => removeEventListener('hashchange', onChange)
+  }, [])
+  const page: PageDef = pageById(hash) ?? pages[0]
+  useEffect(() => {
+    document.title = `${page.title} · Admin · steven.wilssens.com`
+    scroller.current?.scrollTo({ top: 0 })
+  }, [page])
 
-  const signIn = (value: string) => {
-    storage.set(tokenKey, value)
-    storage.set(ignoreKey, '1')
-    setIgnored(true)
-    setToken(value)
+  if (!token) return <Login onSubmit={(value) => { storage.set(tokenKey, value); storage.set(ignoreKey, '1'); setIgnored(true); setLoginError(''); setToken(value) }} error={loginError} />
+
+  const data: AdminData = { days, stats: stats.data, mcp: mcp.data, ask: ask.data, resume: resume.data }
+  const needs = computeNeeds(data)
+  const badges = badgeCounts(needs)
+  const summaries = computeSummaries(data)
+  const loading = stats.loading || ask.loading || mcp.loading || resume.loading
+  const errors = [['visitor data', stats.error], ['the assistant', ask.error], ['the MCP', mcp.error], ['the résumé', resume.error]].filter(([, error]) => error).map(([what, error]) => `Could not load ${what} (${error}).`)
+  const version = `${Boolean(stats.data)}${Boolean(ask.data)}${Boolean(mcp.data)}${Boolean(resume.data)}|${days}|${refreshCount}`
+  const waiting = (what: string) => <p className="status">Loading {what}…</p>
+
+  const content = () => {
+    switch (page.id) {
+      case 'traffic': return stats.data ? <TrafficPage stats={stats.data} /> : waiting('visitor data')
+      case 'sources': return stats.data ? <SourcesPage stats={stats.data} /> : waiting('visitor data')
+      case 'audience': return stats.data ? <AudiencePage stats={stats.data} /> : waiting('visitor data')
+      case 'crawlers': return stats.data ? <CrawlersPage stats={stats.data} /> : waiting('crawler data')
+      case 'speed': return stats.data ? <SpeedPage vitals={stats.data.vitals} /> : waiting('page speed data')
+      case 'resume': return resume.data ? <ResumePage resume={resume.data} proposals={mcp.data?.proposals ?? null} /> : waiting('the résumé report')
+      case 'assistant': return ask.data ? <AssistantPage info={ask.data} days={days} /> : waiting("the assistant's numbers")
+      case 'mcp': return mcp.data ? <McpPage info={mcp.data} /> : waiting('the MCP details')
+      case 'links': return <LinksPage />
+      default: return <Overview data={data} needs={needs} summaries={summaries} />
+    }
   }
-
-  const toggleIgnored = () => {
-    storage.set(ignoreKey, ignored ? null : '1')
-    setIgnored(!ignored)
-  }
-
-  if (!token) return <Login onSubmit={signIn} error={error} />
-
-  const totals = stats?.totals
-  const daily = stats ? fillDays(stats.daily, stats.days) : []
-  const dayLabel = (day: string) => new Date(`${day}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  const hourly = Array.from({ length: 24 }, (_, hour) => stats?.hours.find((row) => row.hour === hour)?.pageviews ?? 0)
-  const hourLabel = (hour: number) => new Date(2000, 0, 1, hour).toLocaleTimeString('en-US', { hour: 'numeric' })
 
   return (
-    <div className="admin">
-      <header className="admin-header">
-        <a className="wordmark" href="/">steven<span>.</span>wilssens</a>
-        <span className="admin-title">Analytics</span>
-        <nav className="range" aria-label="Date range">
-          {ranges.map(([value, label]) => <button type="button" key={value} className={days === value ? 'active' : ''} aria-pressed={days === value} onClick={() => setDays(value)}>{label}</button>)}
+    <div className="shell">
+      <aside className="side">
+        <a className="brand" href="#overview"><span className="mark" aria-hidden="true">SW</span><span>steven.wilssens.com<small>Admin</small></span></a>
+        <nav className="tabs" aria-label="Admin pages">
+          {pages.map((item) => (
+            <a key={item.id} href={`#${item.id}`} aria-current={item.id === page.id ? 'page' : undefined}>
+              {item.icon}<span className="lbl">{item.title}</span>
+              {(badges[item.id] ?? 0) > 0 && <span className="tab-badge">{badges[item.id]! > 99 ? '99+' : badges[item.id]}</span>}
+            </a>
+          ))}
         </nav>
-        <button type="button" className="ghost" onClick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
-      </header>
+        <div className="side-foot">
+          <a className="site-link" href="/">Open the site ↗</a>
+          <label><input type="checkbox" checked={ignored} onChange={() => { storage.set(ignoreKey, ignored ? null : '1'); setIgnored(!ignored) }} /> Don't track this browser</label>
+          <button type="button" onClick={() => signOut()}>Sign out</button>
+        </div>
+      </aside>
 
-      {error && <p className="error banner">{error}</p>}
-
-      {stats && totals && (
-        <main>
-          <section className="tiles" aria-label="Summary">
-            <div><span>Visitors</span><strong>{formatNumber(totals.visitors)}</strong><small>unique per day</small></div>
-            <div><span>Pageviews</span><strong>{formatNumber(totals.pageviews)}</strong><small>{totals.visitors ? (totals.pageviews / totals.visitors).toFixed(1) : '0'} per visitor</small></div>
-            <div><span>Time on page</span><strong>{formatDuration(totals.avgDurationMs)}</strong><small>average, while visible</small></div>
-            <div><span>Scroll depth</span><strong>{formatPercent(totals.avgScrollPct)}</strong><small>average deepest point</small></div>
-            <div><span>Bounce rate</span><strong>{formatPercent(totals.bounceRate, true)}</strong><small>viewed a single page</small></div>
-            <div className="highlight"><span>Resume downloads</span><strong>{formatNumber(totals.downloads)}</strong><small>by {formatNumber(totals.downloaders)} visitors</small></div>
-            <div><span>Contact clicks</span><strong>{formatNumber(totals.contactClicks)}</strong><small>email & LinkedIn</small></div>
-          </section>
-
-          <section className="charts">
-            <BarChart
-              title="Visitors per day"
-              bars={daily.map((row) => ({ key: row.day, label: dayLabel(row.day), value: row.visitors, detail: `${formatNumber(row.visitors)} visitors · ${formatNumber(row.pageviews)} pageviews` }))}
-              axisLabels={daily.length > 1 ? [dayLabel(daily[0].day), dayLabel(daily[Math.floor(daily.length / 2)].day), dayLabel(daily[daily.length - 1].day)] : daily.map((row) => dayLabel(row.day))}
-            />
-            <BarChart
-              title="Pageviews by hour (your time)"
-              bars={hourly.map((value, hour) => ({ key: String(hour), label: hourLabel(hour), value, detail: `${formatNumber(value)} pageviews` }))}
-              axisLabels={['12 AM', '6 AM', '12 PM', '6 PM', '11 PM']}
-            />
-          </section>
-
-          <div className="channel-row">
-            <RankedList title="Channels" rows={stats.channels} />
-            <TrackingLinks />
-          </div>
-
-          <McpServer token={token} />
-
-          <AskAssistantPanel token={token} days={days} dayLabel={dayLabel} />
-
-          <section className="panel wide">
-            <h2>Visitors</h2>
-            <p className="note">Each row is one visitor on one day, with the pages they viewed in order. Organization is the network they browsed from, which is often their employer.</p>
-            {stats.visitors.length === 0 ? <p className="empty">No visitors in this range yet</p> : (
-              <div className="table-scroll">
-                <table>
-                  <thead><tr><th>Last seen</th><th>Organization</th><th>Location</th><th>Channel</th><th>Pages</th><th>Time</th><th>Device</th><th>Resume</th></tr></thead>
-                  <tbody>
-                    {stats.visitors.map((row) => (
-                      <Fragment key={row.visitor}>
-                        <tr className="clickable" onClick={() => setOpenVisitor(openVisitor === row.visitor ? null : row.visitor)} aria-expanded={openVisitor === row.visitor}>
-                          <td>{formatTime(row.lastSeen)}</td>
-                          <td className="strong">{row.organization ?? 'Unknown'}</td>
-                          <td>{place(row)}</td>
-                          <td><span className="strong">{row.channel}</span>{(row.utmSource ?? row.referrer) && <small className="muted"> · {row.utmSource ?? row.referrer}</small>}</td>
-                          <td className="num">{row.pageviews}</td>
-                          <td className="num">{formatDuration(row.engagedMs)}</td>
-                          <td>{row.device} · {row.os} · {row.browser}</td>
-                          <td>{row.downloaded ? <span className="badge">Downloaded</span> : ''}</td>
-                        </tr>
-                        {openVisitor === row.visitor && (
-                          <tr className="detail">
-                            <td colSpan={8}>
-                              <p><b>Journey:</b> {row.journey}</p>
-                              <p><b>Clicked:</b> {row.clicked ?? 'nothing'}</p>
-                              <p><b>First seen:</b> {formatTime(row.firstSeen)}</p>
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-
-          <section className="panel wide">
-            <h2>Pages</h2>
-            {stats.pages.length === 0 ? <p className="empty">No pageviews yet</p> : (
-              <div className="table-scroll">
-                <table>
-                  <thead><tr><th>Page</th><th className="num">Views</th><th className="num">Visitors</th><th className="num">Avg time</th><th className="num">Avg scroll</th></tr></thead>
-                  <tbody>{stats.pages.map((row) => <tr key={row.name}><td className="strong">{row.name}</td><td className="num">{formatNumber(row.views)}</td><td className="num">{formatNumber(row.visitors)}</td><td className="num">{formatDuration(row.avgDurationMs)}</td><td className="num">{formatPercent(row.avgScrollPct)}</td></tr>)}</tbody>
-                </table>
-              </div>
-            )}
-          </section>
-
-          <CrawlerTraffic stats={stats} dayLabel={dayLabel} />
-
-          <div className="grid">
-            <RankedList title="Organizations" rows={stats.organizations} />
-            <RankedList title="Referrers" rows={stats.referrers} />
-            <RankedList title="Entry pages" rows={stats.entryPages} />
-            <RankedList title="Cities" rows={stats.cities} />
-            <RankedList title="Countries" rows={stats.countries} />
-            <RankedList title="Campaigns (utm_campaign)" rows={stats.utmCampaigns} />
-            <RankedList title="Sources (utm_source / ref)" rows={stats.utmSources} />
-            <RankedList title="Devices" rows={stats.devices} />
-            <RankedList title="Operating systems" rows={stats.systems} />
-            <RankedList title="Browsers" rows={stats.browsers} />
-            <RankedList title="Languages" rows={stats.languages} />
-            <RankedList title="Screen sizes" rows={stats.screens} />
-          </div>
-
-          <WebVitals vitals={stats.vitals} />
-
-          <section className="panel wide">
-            <h2>Clicks</h2>
-            {stats.clicks.length === 0 ? <p className="empty">No clicks yet</p> : (
-              <div className="table-scroll">
-                <table>
-                  <thead><tr><th>Type</th><th>Label</th><th>Where</th><th>Target</th><th className="num">Clicks</th><th className="num">Visitors</th></tr></thead>
-                  <tbody>{stats.clicks.map((row, index) => <tr key={index}><td><span className={`badge ${row.category}`}>{row.category}</span></td><td className="strong">{row.label}</td><td>{row.context}</td><td className="target">{row.target}</td><td className="num">{formatNumber(row.clicks)}</td><td className="num">{formatNumber(row.visitors)}</td></tr>)}</tbody>
-                </table>
-              </div>
-            )}
-          </section>
-
-          <section className="panel wide">
-            <h2>Activity log</h2>
-            <p className="note">The latest 200 events, newest first.</p>
-            <div className="table-scroll">
-              <table>
-                <thead><tr><th>Time</th><th>Event</th><th>Page</th><th>Detail</th><th>Organization</th><th>Location</th><th>Device</th></tr></thead>
-                <tbody>
-                  {stats.recent.map((row, index) => (
-                    <tr key={index}>
-                      <td>{formatTime(row.ts)}</td>
-                      <td><span className={`badge ${row.type}`}>{row.type === 'click' ? row.category : row.type}</span></td>
-                      <td className="strong">{row.path}</td>
-                      <td>{row.type === 'click' ? row.label : row.type === 'engagement' ? `${formatDuration(row.durationMs)} · ${formatPercent(row.scrollPct)} scrolled` : row.referrer ? `from ${row.referrer}` : ''}</td>
-                      <td>{row.organization}</td>
-                      <td>{place(row)}</td>
-                      <td>{row.device} · {row.browser}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      <div className="main" id="scroller" ref={scroller}>
+        <div className="main-in">
+          <header className="page-head">
+            <div>
+              <h1>{page.title}</h1>
+              <p className="page-sub">{page.sub}</p>
             </div>
-          </section>
+            <div className="head-tools">
+              {page.range && (
+                <div className="ranges" role="group" aria-label="Time range">
+                  {ranges.map(([value, label]) => <button type="button" key={value} className={days === value ? 'active' : ''} aria-pressed={days === value} onClick={() => setDays(value)}>{label}</button>)}
+                </div>
+              )}
+              <button type="button" className="ghost" onClick={() => setRefreshCount((count) => count + 1)} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
+              {stats.data && <span className="updated">Updated {formatTime(stats.data.generatedAt)}</span>}
+            </div>
+          </header>
+          {errors.map((error) => <p key={error} className="banner" role="alert">{error}</p>)}
 
-          <footer className="admin-footer">
-            <label><input type="checkbox" checked={ignored} onChange={toggleIgnored} /> Exclude this browser from tracking</label>
-            <a href={cloudflareAnalyticsUrl} target="_blank" rel="noreferrer">Cloudflare Web Analytics ↗</a>
-            <span>Updated {formatTime(stats.generatedAt)}</span>
-            <button type="button" className="ghost" onClick={() => { storage.set(tokenKey, null); setToken(''); setStats(null) }}>Sign out</button>
-          </footer>
-        </main>
-      )}
+          <SubNav scroller={scroller} page={page.id} version={version} />
+
+          <div className="page" key={page.id} data-page={page.id}>
+            {content()}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
