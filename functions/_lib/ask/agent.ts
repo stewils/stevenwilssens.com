@@ -5,14 +5,17 @@
 // hidden line that says whether it was in scope and which sections it used,
 // off-topic questions get our own fixed answer, and in-scope questions the
 // dossier could not answer are saved so Steven can fill the gap in an MCP
-// session. Limits: an optional Turnstile check, 30 questions an hour per IP,
-// short questions and history, and a monthly budget from the API's own token
-// counts. Answers carry our signature so the browser can send the conversation
-// back and vote on them without being able to forge an earlier answer.
+// session. A user turn marked `kind: 'fit'` is a pasted job description: the
+// model compares it with the dossier (covered, partly covered, not shown, what
+// to ask) and the requirements it could not match are saved the same way, as
+// questions for Steven. Limits: an optional Turnstile check, 30 questions an
+// hour per IP, short questions and history, and a monthly budget from the API's
+// own token counts. Answers carry our signature so the browser can send the
+// conversation back and vote on them without being able to forge an earlier answer.
 import Anthropic from '@anthropic-ai/sdk'
 import type { Env } from '../env'
 import type { DossierStore } from '../mcp/store'
-import { contact, loadArticles, sources as allSources, systemPrompt, type Articles, type Source } from './prompt'
+import { contact, jdPrefix, loadArticles, sources as allSources, systemPrompt, type Articles, type Source } from './prompt'
 import { dayOf, monthStart, type AskStore, type Outcome, type Usage } from './store'
 
 export const MODEL = 'claude-opus-5-5'
@@ -21,14 +24,21 @@ export const PRICE = { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 8 }
 export const DEFAULT_BUDGET_USD = 25
 const PER_IP_PER_HOUR = 30
 const MAX_QUESTION = 1000
+/** A pasted job description: long enough for a full posting, short enough to keep the cost of one check near a few cents. */
+export const MAX_JD = 8000
 const MAX_ANSWER = 6000
 const MAX_TURNS = 12
-const MAX_HISTORY_CHARS = 20_000
+const MAX_HISTORY_CHARS = 30_000
 const MAX_TOKENS = 1500
+const MAX_TOKENS_FIT = 2200
+const MAX_SOURCES = 3
+const MAX_SOURCES_FIT = 6
+const MAX_FIT_GAPS = 8
 const KEEP_MS = 90 * 86_400_000
 
 export const words = {
   offTopic: "I can only answer questions about Steven's work: his roles, results, leadership, patents, projects and how to reach him. Ask me one of those, or email him at steven@wilssens.com.",
+  notAPosting: "That does not read like a job description. Paste the posting itself (the role, the requirements, the responsibilities) and I'll compare it with Steven's record.",
   failed: 'Something went wrong on my side. Please try again, or email Steven at steven@wilssens.com.',
   tooLong: 'That question is too long for me. Could you shorten it?',
   busy: 'Too many questions from this connection in the last hour. Please try again later, or email steven@wilssens.com.',
@@ -37,11 +47,11 @@ export const words = {
   unavailable: 'The assistant is not available right now.',
 }
 
-export type Turn = { role: 'user'; content: string } | { role: 'assistant'; content: string; sources: string[]; id: number | null; sig: string }
+export type Turn = { role: 'user'; content: string; kind?: 'fit' } | { role: 'assistant'; content: string; sources: string[]; id: number | null; sig: string }
 export type AskBody = { messages: Turn[]; page: string; turnstileToken: string }
 
 const str = (value: unknown, max: number) => (typeof value === 'string' ? value.slice(0, max) : '')
-const sourceIds = (value: unknown) => (Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string' && /^(role|site):[a-z0-9-]{1,40}$|^notes$/.test(id)).slice(0, 3) : [])
+const sourceIds = (value: unknown) => (Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string' && /^(role|site):[a-z0-9-]{1,40}$|^notes$/.test(id)).slice(0, MAX_SOURCES_FIT) : [])
 
 export function parseBody(raw: unknown): AskBody | 'tooLong' | 'failed' {
   const body = (raw ?? {}) as Record<string, unknown>
@@ -53,9 +63,10 @@ export function parseBody(raw: unknown): AskBody | 'tooLong' | 'failed' {
     const role = index % 2 === 0 ? 'user' : 'assistant'
     if (turn.role !== role || typeof turn.content !== 'string') return 'failed'
     const content = turn.content.trim()
-    if (!content || content.length > (role === 'user' ? MAX_QUESTION : MAX_ANSWER)) return 'tooLong'
+    const fit = role === 'user' && turn.kind === 'fit'
+    if (!content || content.length > (role === 'assistant' ? MAX_ANSWER : fit ? MAX_JD : MAX_QUESTION)) return 'tooLong'
     total += content.length
-    if (role === 'user') messages.push({ role, content })
+    if (role === 'user') messages.push(fit ? { role, content, kind: 'fit' } : { role, content })
     else messages.push({ role, content, sources: sourceIds(turn.sources), id: Number.isInteger(turn.id) && (turn.id as number) > 0 ? turn.id as number : null, sig: str(turn.sig, 100) })
   }
   if (messages[messages.length - 1].role !== 'user' || total > MAX_HISTORY_CHARS) return 'tooLong'
@@ -96,6 +107,9 @@ export const redact = (text: string) => text
   .replace(/\b(?:sk|ghp|xox[a-z])[-_][A-Za-z0-9_-]{8,}/g, '[key]')
   .replace(/\+?\d[\d\s().-]{7,}\d/g, '[number]')
 
+/** A job description is not kept; what /admin shows for a vote on a fit check is its size and its first words. */
+export const describeQuestion = (question: string) => question.length > MAX_QUESTION ? `Job description (${question.length} characters): ${redact(question).slice(0, 240).trim()}…` : redact(question)
+
 export const ipHash = async (request: Request, env: Env) => {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${request.headers.get('CF-Connecting-IP') ?? 'unknown'}|${env.HASH_SALT ?? ''}`))
   return [...new Uint8Array(digest).slice(0, 16)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
@@ -108,15 +122,33 @@ export const budgetMicro = (env: Env) => Math.round((Number(env.ASK_BUDGET_USD) 
 
 export const HEADER = /^\s*\[\[\s*(in|out)\s*(?::\s*([^\]]*))?\]\]\s*/
 
+/** The requirements a fit check filed under "Not shown on the site": each one becomes a question for Steven. */
+export const missingRequirements = (answer: string): string[] => {
+  const lines = answer.replace(/\r\n/g, '\n').split('\n')
+  const start = lines.findIndex((line) => /^\s*\*\*\s*not shown/i.test(line))
+  if (start < 0) return []
+  const found: string[] = []
+  for (const line of lines.slice(start + 1)) {
+    if (/^\s*\*\*/.test(line)) break
+    const match = /^\s*[-*•]\s+(.*\S)\s*$/.exec(line)
+    if (!match) continue
+    const text = match[1].replace(/\*\*/g, '').replace(/\s*[:.]\s*$/, '').trim()
+    if (!text || /^none\b/i.test(text)) continue
+    found.push(text.slice(0, 300))
+  }
+  return found.slice(0, MAX_FIT_GAPS)
+}
+
 // What the agent needs from a stream: text deltas, then the final message's usage and stop reason.
 export type AnswerStream = { [Symbol.asyncIterator](): AsyncIterator<{ type: string; delta?: { type: string; text?: string } }>; finalMessage(): Promise<{ stop_reason: string | null; usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null } } | null>; abort(): void }
-export type StreamFactory = (system: string, context: string, messages: Anthropic.Beta.BetaMessageParam[]) => AnswerStream
+export type StreamOptions = { maxTokens: number }
+export type StreamFactory = (system: string, context: string, messages: Anthropic.Beta.BetaMessageParam[], options: StreamOptions) => AnswerStream
 
-const claudeStream = (env: Env): StreamFactory => (system, context, messages) => {
+const claudeStream = (env: Env): StreamFactory => (system, context, messages, options) => {
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, maxRetries: 1, defaultHeaders: env.ANTHROPIC_WORKSPACE_ID ? { 'anthropic-workspace-id': env.ANTHROPIC_WORKSPACE_ID } : undefined })
   return client.beta.messages.stream({
     model: MODEL,
-    max_tokens: MAX_TOKENS,
+    max_tokens: options.maxTokens,
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
     thinking: { type: 'adaptive' },
@@ -135,7 +167,23 @@ export const mockStream: StreamFactory = (_system, _context, messages) => {
   const question = typeof last.content === 'string' ? last.content : ''
   const text = /\b(weather|recipe|poem|homework)\b/i.test(question)
     ? '[[out]]'
-    : `[[in: role:windows-devices-data, site:recommendations]]
+    : question.startsWith(jdPrefix)
+      ? `[[in: role:windows-devices-data, role:csx-data, site:recommendations]]
+
+**Covered**
+- Led a product management organization: Steven led 10 to 20 product managers as Principal Group Product Manager, Windows & Devices Data.
+- Experimentation at scale: he scaled experimentation adoption across Windows (Windows & Devices Data role).
+**Partly covered**
+- Owned a P&L: the dossier shows a multi-million-dollar infrastructure budget, not a revenue line.
+**Not shown on the site**
+- Hands-on SQL and Python
+- Consumer subscription products
+**Ask Steven**
+1. How large was the budget he owned, and what did he cut and reinvest?
+2. Which parts of the analytics work did he do hands-on?
+
+The record covers the leadership and experimentation asks well; the hands-on and consumer-subscription asks are open.`
+      : `[[in: role:windows-devices-data, site:recommendations]]
 
 Steven most recently led the **Windows & Devices Data** PM team at Microsoft (Dec 2024 to Sep 2026): the data, insights, experimentation and ML products that Windows engineers and PMs use to decide what ships, built on telemetry from more than a billion devices.
 
@@ -213,13 +261,16 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
   const titles = allSources()
   const [entries, writeUps] = await Promise.all([dossier.list({ visibility: 'public' }), articles(pages)])
   const system = systemPrompt(entries, writeUps)
-  const context = `The reader is on the ${parsed.page === 'home' ? 'home' : parsed.page} page of steven.wilssens.com.`
+  const last = parsed.messages[parsed.messages.length - 1] as Extract<Turn, { role: 'user' }>
+  const fit = last.kind === 'fit'
+  const context = `The reader is on the ${parsed.page === 'home' ? 'home' : parsed.page} page of steven.wilssens.com.${fit ? ' The last message is a job description pasted for a fit check: follow the fit-check format.' : ''}`
   const messages: Anthropic.Beta.BetaMessageParam[] = parsed.messages.map((turn) => turn.role === 'assistant'
     ? { role: 'assistant', content: `[[in: ${turn.sources.length ? turn.sources.join(', ') : 'none'}]]\n\n${turn.content}` }
-    : { role: 'user', content: turn.content })
-  const question = parsed.messages[parsed.messages.length - 1].content
+    : { role: 'user', content: turn.kind === 'fit' ? `${jdPrefix}\n\n${turn.content}` : turn.content })
+  const question = last.content
   const cf = ((request as Request & { cf?: IncomingRequestCfProperties }).cf ?? {}) as Partial<IncomingRequestCfProperties>
   const makeStream = stream ?? (env.ASK_MOCK === '1' ? mockStream : claudeStream(env))
+  const maxSources = fit ? MAX_SOURCES_FIT : MAX_SOURCES
 
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
   const writer = writable.getWriter()
@@ -234,7 +285,7 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
       const match = HEADER.exec(state.head)
       if (match) {
         state.scope = match[1] === 'out' ? 'out' : 'in'
-        state.sources = (match[2] ?? '').split(',').map((id) => id.trim()).filter((id) => titles.has(id)).slice(0, 3).map((id) => titles.get(id)!)
+        state.sources = (match[2] ?? '').split(',').map((id) => id.trim()).filter((id) => titles.has(id)).slice(0, maxSources).map((id) => titles.get(id)!)
       }
       if (state.scope === 'out') return
       await send('meta', { scope: 'in', sources: state.sources })
@@ -242,7 +293,7 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
       if (rest) { firstAt ||= now(); state.answer += rest; await send('delta', { text: rest }) }
     }
     try {
-      const answerStream = makeStream(system, context, messages)
+      const answerStream = makeStream(system, context, messages, { maxTokens: fit ? MAX_TOKENS_FIT : MAX_TOKENS })
       for await (const event of answerStream) {
         if (event.type !== 'content_block_delta' || event.delta?.type !== 'text_delta' || typeof event.delta.text !== 'string') continue
         if (state.decided) {
@@ -254,7 +305,7 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
           continue
         }
         state.head += event.delta.text
-        if (!state.head.includes('\n') && state.head.length < 200) continue
+        if (!state.head.includes('\n') && state.head.length < (fit ? 400 : 200)) continue
         await decide()
         if (state.scope === 'out') { answerStream.abort(); break }
       }
@@ -264,13 +315,17 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
       // A declined request (safety classifiers) gets the same answer as an off-topic one.
       if (final?.stop_reason === 'refusal' && !state.answer.trim()) state.scope = 'out'
       if (state.scope === 'out') {
-        state.answer = words.offTopic
+        state.answer = fit ? words.notAPosting : words.offTopic
         await send('meta', { scope: 'out', sources: [] })
-        await send('delta', { text: words.offTopic })
+        await send('delta', { text: state.answer })
       }
       let id: number | null = null
-      if (state.scope === 'in' && !state.sources.length && state.answer.trim()) {
-        id = await store.saveQuestion({ ts: started, reason: 'gap', page: parsed.page, question: redact(question).slice(0, MAX_QUESTION), answer: redact(state.answer).slice(0, MAX_ANSWER), country: (cf.country as string | undefined) ?? null, asOrg: (cf.asOrganization as string | undefined) ?? null }, KEEP_MS).catch(() => null)
+      const where = { page: parsed.page, country: (cf.country as string | undefined) ?? null, asOrg: (cf.asOrganization as string | undefined) ?? null }
+      if (state.scope === 'in' && fit) {
+        // The requirements the record does not show are the questions Steven should answer next; the posting itself is not kept.
+        for (const requirement of missingRequirements(state.answer)) await store.saveQuestion({ ts: started, reason: 'fit', question: requirement, answer: null, ...where }, KEEP_MS).catch(() => null)
+      } else if (state.scope === 'in' && !state.sources.length && state.answer.trim()) {
+        id = await store.saveQuestion({ ts: started, reason: 'gap', question: redact(question).slice(0, MAX_QUESTION), answer: redact(state.answer).slice(0, MAX_ANSWER), ...where }, KEEP_MS).catch(() => null)
       }
       const ids = state.scope === 'in' ? state.sources.map((source) => source.id) : []
       const sig = await signAnswer(env, question, state.answer, ids, id)
@@ -297,7 +352,7 @@ export async function feedback(request: Request, { env, store, now = Date.now }:
   if (await store.countHits(`${hash}:vote`, started - 3_600_000) >= 40) return json({ ok: false }, 429)
   const body = ((await request.json().catch(() => null)) ?? {}) as Record<string, unknown>
   if (typeof body.helpful !== 'boolean') return json({ ok: false }, 400)
-  const question = str(body.question, MAX_QUESTION).trim()
+  const question = str(body.question, MAX_JD).trim()
   const answer = str(body.answer, MAX_ANSWER).trim()
   const sources = sourceIds(body.sources)
   const id = Number.isInteger(body.id) && (body.id as number) > 0 ? body.id as number : null
@@ -306,7 +361,7 @@ export async function feedback(request: Request, { env, store, now = Date.now }:
   await store.recordVote(dayOf(started), body.helpful)
   if (!body.helpful && id === null) {
     const page = str(body.page, 40)
-    await store.saveQuestion({ ts: started, reason: 'unhelpful', page: /^[a-z0-9-]{1,40}$/.test(page) ? page : null, question: redact(question), answer: redact(answer), country: null, asOrg: null }, KEEP_MS)
+    await store.saveQuestion({ ts: started, reason: 'unhelpful', page: /^[a-z0-9-]{1,40}$/.test(page) ? page : null, question: describeQuestion(question), answer: redact(answer), country: null, asOrg: null }, KEEP_MS)
   }
   return json({ ok: true })
 }

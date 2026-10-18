@@ -1,6 +1,6 @@
 // GET /api/ask/admin?days=30: what the dashboard shows about the assistant: this
-// month against the budget, questions and cost per day and outcome, votes, and
-// the questions it could not answer (admin token).
+// month against the budget, questions and cost per day and outcome, votes, the
+// open questions it could not answer, and how many Steven has closed (admin token).
 import type { Env } from '../../_lib/env'
 import { isAdmin } from '../../_lib/auth'
 import { budgetMicro, DEFAULT_BUDGET_USD, MODEL } from '../../_lib/ask/agent'
@@ -14,7 +14,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const now = Date.now()
   const store = new D1AskStore(env.DB)
   const sinceDay = dayOf(now - days * 86_400_000)
-  const [daily, votes, questions, monthRows] = await Promise.all([store.daily(sinceDay), store.votes(sinceDay), store.questions(now - 90 * 86_400_000, 200), store.daily(monthStart(now))])
+  const ninetyDays = now - 90 * 86_400_000
+  const [daily, votes, questions, resolved, monthRows] = await Promise.all([store.daily(sinceDay), store.votes(sinceDay), store.questions(ninetyDays, 200), store.resolvedCounts(ninetyDays), store.daily(monthStart(now))])
   const month = { questions: 0, answered: 0, gap: 0, off: 0, limited: 0, failed: 0, costMicro: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
   for (const row of monthRows) {
     month.questions += row.questions
@@ -37,5 +38,6 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     daily,
     votes,
     questions,
+    resolved,
   })
 }
