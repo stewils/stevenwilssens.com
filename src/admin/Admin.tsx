@@ -25,9 +25,9 @@ import type { AdminData, AskInfo, McpInfo, ResumeInfo, Stats } from './types'
 const tokenKey = 'sw-admin-token'
 const themeKey = 'sw-admin-theme'
 const ranges = [[1, 'Today'], [7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '1 year']] as const
-// Light, dark, or whatever the system says; admin.html applies the choice before the first paint.
-type Theme = 'system' | 'light' | 'dark'
-const themes: [Theme, string][] = [['system', 'Auto'], ['light', 'Light'], ['dark', 'Dark']]
+// Dark like the site unless Steven picks light or auto (the system); admin.html applies the choice before the first paint.
+type Theme = 'dark' | 'light' | 'system'
+const themes: [Theme, string][] = [['dark', 'Dark'], ['light', 'Light'], ['system', 'Auto']]
 // Numbers older than this are fetched again when the tab comes back into view.
 const STALE_MS = 5 * 60_000
 
@@ -82,7 +82,7 @@ export default function Admin() {
   const [refreshCount, setRefreshCount] = useState(0)
   const [loginError, setLoginError] = useState('')
   const [ignored, setIgnored] = useState(() => storage.get(ignoreKey) === '1')
-  const [theme, setTheme] = useState<Theme>(() => (themes.some(([value]) => value === storage.get(themeKey)) ? (storage.get(themeKey) as Theme) : 'system'))
+  const [theme, setTheme] = useState<Theme>(() => (themes.some(([value]) => value === storage.get(themeKey)) ? (storage.get(themeKey) as Theme) : 'dark'))
   const [hash, setHash] = useState(readHash)
   const [now, setNow] = useState(() => Date.now())
   const scroller = useRef<HTMLDivElement>(null)
@@ -106,9 +106,8 @@ export default function Admin() {
     scroller.current?.scrollTo({ top: 0 })
   }, [page])
   useEffect(() => {
-    if (theme === 'system') delete document.documentElement.dataset.theme
-    else document.documentElement.dataset.theme = theme
-    storage.set(themeKey, theme === 'system' ? null : theme)
+    document.documentElement.dataset.theme = theme
+    storage.set(themeKey, theme === 'dark' ? null : theme)
   }, [theme])
   // "Updated 4 min ago" keeps counting, and numbers that went stale while the tab was
   // in the background are fetched again as soon as it is looked at.

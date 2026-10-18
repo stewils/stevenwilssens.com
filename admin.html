@@ -7,8 +7,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow" />
     <title>Admin · steven.wilssens.com</title>
-    <!-- The chosen theme (light, dark, or the system's) before the first paint, so it never flashes. -->
-    <script>try { var theme = localStorage.getItem('sw-admin-theme'); if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme } catch (e) {}</script>
+    <!-- Dark unless a choice was saved (light, or the system's), applied before the first paint so it never flashes. -->
+    <script>try { var theme = localStorage.getItem('sw-admin-theme'); if (theme === 'light' || theme === 'system') document.documentElement.dataset.theme = theme } catch (e) {}</script>
   </head>
   <body>
     <div id="root"></div>
