@@ -5,7 +5,17 @@ export type Outcome = 'answered' | 'gap' | 'off' | 'limited' | 'failed'
 export type Usage = { input: number; output: number; cacheRead: number; cacheWrite: number }
 export type DailyRow = { day: string; outcome: Outcome; questions: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; costMicro: number; msFirst: number; msTotal: number }
 export type VoteRow = { day: string; helpful: number; unhelpful: number }
-export type SavedQuestion = { id: number; ts: number; reason: 'gap' | 'unhelpful'; page: string | null; question: string; answer: string | null; country: string | null; asOrg: string | null }
+// Why a question was kept: the dossier did not cover it (gap), a job description
+// named a requirement the record does not show (fit), or the answer was voted down.
+export type QuestionReason = 'gap' | 'unhelpful' | 'fit'
+// How Steven closed it in an MCP session: with a dossier entry (answered) or by
+// setting it aside (dismissed). Open questions have no resolution.
+export type Resolution = 'answered' | 'dismissed'
+export type SavedQuestion = { id: number; ts: number; reason: QuestionReason; page: string | null; question: string; answer: string | null; country: string | null; asOrg: string | null; resolvedAt?: number | null; resolution?: Resolution | null; entryId?: number | null }
+export type QuestionInput = Omit<SavedQuestion, 'id' | 'resolvedAt' | 'resolution' | 'entryId'>
+
+// The public report card: everything since the assistant went live.
+export type ReportTotals = { since: string | null; questions: number; answered: number; gap: number; off: number; limited: number; costMicro: number; msFirst: number }
 
 export interface AskStore {
   countHits(ipHash: string, since: number): Promise<number>
@@ -13,17 +23,24 @@ export interface AskStore {
   spentMicroSince(day: string): Promise<number>
   recordUsage(day: string, outcome: Outcome, usage: Usage, costMicro: number, msFirst: number, msTotal: number): Promise<void>
   recordVote(day: string, helpful: boolean): Promise<void>
-  saveQuestion(q: Omit<SavedQuestion, 'id'>, keepMs: number): Promise<number>
+  saveQuestion(q: QuestionInput, keepMs: number): Promise<number>
   daily(sinceDay: string): Promise<DailyRow[]>
   votes(sinceDay: string): Promise<VoteRow[]>
+  // Open questions (not yet answered or dismissed), newest first.
   questions(since: number, limit: number): Promise<SavedQuestion[]>
+  // How many questions Steven closed since `since`, by resolution.
+  resolvedCounts(since: number): Promise<{ answered: number; dismissed: number }>
+  // Totals over the assistant's whole life, for the public report card.
+  totals(): Promise<ReportTotals>
+  allVotes(): Promise<{ helpful: number; unhelpful: number }>
 }
 
 export const dayOf = (ts: number) => new Date(ts).toISOString().slice(0, 10)
 export const monthStart = (ts: number) => `${dayOf(ts).slice(0, 7)}-01`
 
 type DailyDb = { day: string; outcome: Outcome; questions: number; input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number; cost_micro: number; ms_first: number; ms_total: number }
-type QuestionDb = { id: number; ts: number; reason: 'gap' | 'unhelpful'; page: string | null; question: string; answer: string | null; country: string | null; as_org: string | null }
+type QuestionDb = { id: number; ts: number; reason: QuestionReason; page: string | null; question: string; answer: string | null; country: string | null; as_org: string | null; resolved_at: number | null; resolution: Resolution | null; entry_id: number | null }
+export const questionFromRow = (row: QuestionDb): SavedQuestion => ({ id: row.id, ts: row.ts, reason: row.reason, page: row.page, question: row.question, answer: row.answer, country: row.country, asOrg: row.as_org, resolvedAt: row.resolved_at ?? null, resolution: row.resolution ?? null, entryId: row.entry_id ?? null })
 
 export class D1AskStore implements AskStore {
   constructor(private db: D1Database) {}
@@ -58,10 +75,11 @@ export class D1AskStore implements AskStore {
       ON CONFLICT(day) DO UPDATE SET helpful = helpful + ?2, unhelpful = unhelpful + ?3`).bind(day, helpful ? 1 : 0, helpful ? 0 : 1).run()
   }
 
-  async saveQuestion(q: Omit<SavedQuestion, 'id'>, keepMs: number) {
+  async saveQuestion(q: QuestionInput, keepMs: number) {
     const row = await this.db.prepare('INSERT INTO ask_questions (ts, reason, page, question, answer, country, as_org) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id')
       .bind(q.ts, q.reason, q.page, q.question, q.answer, q.country, q.asOrg).first<{ id: number }>()
-    await this.db.prepare('DELETE FROM ask_questions WHERE ts < ?').bind(q.ts - keepMs).run()
+    // Open questions expire; answered ones stay, since the report card counts them.
+    await this.db.prepare('DELETE FROM ask_questions WHERE ts < ? AND resolved_at IS NULL').bind(q.ts - keepMs).run()
     return row!.id
   }
 
@@ -76,9 +94,41 @@ export class D1AskStore implements AskStore {
   }
 
   async questions(since: number, limit: number) {
-    const { results } = await this.db.prepare('SELECT * FROM ask_questions WHERE ts >= ? ORDER BY ts DESC LIMIT ?').bind(since, limit).all<QuestionDb>()
-    return results.map((row) => ({ id: row.id, ts: row.ts, reason: row.reason, page: row.page, question: row.question, answer: row.answer, country: row.country, asOrg: row.as_org }))
+    const { results } = await this.db.prepare('SELECT * FROM ask_questions WHERE ts >= ? AND resolved_at IS NULL ORDER BY ts DESC LIMIT ?').bind(since, limit).all<QuestionDb>()
+    return results.map(questionFromRow)
   }
+
+  async resolvedCounts(since: number) {
+    const { results } = await this.db.prepare('SELECT resolution, COUNT(*) AS n FROM ask_questions WHERE resolved_at >= ? GROUP BY resolution').bind(since).all<{ resolution: Resolution; n: number }>()
+    const counts = { answered: 0, dismissed: 0 }
+    for (const row of results) if (row.resolution in counts) counts[row.resolution] = row.n
+    return counts
+  }
+
+  async totals() {
+    const { results } = await this.db.prepare('SELECT outcome, SUM(questions) AS questions, SUM(cost_micro) AS cost_micro, SUM(ms_first) AS ms_first, MIN(day) AS since FROM ask_daily GROUP BY outcome').all<{ outcome: Outcome; questions: number; cost_micro: number; ms_first: number; since: string }>()
+    return sumTotals(results.map((row) => ({ outcome: row.outcome, questions: row.questions, costMicro: row.cost_micro, msFirst: row.ms_first, since: row.since })))
+  }
+
+  async allVotes() {
+    const row = await this.db.prepare('SELECT COALESCE(SUM(helpful), 0) AS helpful, COALESCE(SUM(unhelpful), 0) AS unhelpful FROM ask_votes').first<{ helpful: number; unhelpful: number }>()
+    return { helpful: row?.helpful ?? 0, unhelpful: row?.unhelpful ?? 0 }
+  }
+}
+
+// Per-outcome sums into one report line. Time to first word is only summed for answers (answered and gap).
+export const sumTotals = (rows: { outcome: Outcome; questions: number; costMicro: number; msFirst: number; since: string }[]): ReportTotals => {
+  const totals: ReportTotals = { since: null, questions: 0, answered: 0, gap: 0, off: 0, limited: 0, costMicro: 0, msFirst: 0 }
+  for (const row of rows) {
+    if (!totals.since || row.since < totals.since) totals.since = row.since
+    totals.costMicro += row.costMicro
+    if (row.outcome === 'failed') continue
+    if (row.outcome === 'limited') { totals.limited += row.questions; continue }
+    totals.questions += row.questions
+    totals[row.outcome] += row.questions
+    if (row.outcome !== 'off') totals.msFirst += row.msFirst
+  }
+  return totals
 }
 
 export class MemoryAskStore implements AskStore {
@@ -103,14 +153,20 @@ export class MemoryAskStore implements AskStore {
     if (helpful) row.helpful++; else row.unhelpful++
   }
 
-  async saveQuestion(q: Omit<SavedQuestion, 'id'>, keepMs: number) {
-    const id = this.saved.length + 1
-    this.saved.push({ id, ...q })
-    this.saved = this.saved.filter((item) => item.ts >= q.ts - keepMs)
+  async saveQuestion(q: QuestionInput, keepMs: number) {
+    const id = (this.saved[this.saved.length - 1]?.id ?? 0) + 1
+    this.saved.push({ id, ...q, resolvedAt: null, resolution: null, entryId: null })
+    this.saved = this.saved.filter((item) => item.ts >= q.ts - keepMs || item.resolvedAt)
     return id
   }
 
   async daily(sinceDay: string) { return this.rows.filter((row) => row.day >= sinceDay) }
   async votes(sinceDay: string) { return this.voteRows.filter((row) => row.day >= sinceDay) }
-  async questions(since: number, limit: number) { return this.saved.filter((q) => q.ts >= since).sort((a, b) => b.ts - a.ts).slice(0, limit) }
+  async questions(since: number, limit: number) { return this.saved.filter((q) => q.ts >= since && !q.resolvedAt).sort((a, b) => b.ts - a.ts).slice(0, limit) }
+  async resolvedCounts(since: number) {
+    const closed = this.saved.filter((q) => (q.resolvedAt ?? 0) >= since)
+    return { answered: closed.filter((q) => q.resolution === 'answered').length, dismissed: closed.filter((q) => q.resolution === 'dismissed').length }
+  }
+  async totals() { return sumTotals(this.rows.map((row) => ({ outcome: row.outcome, questions: row.questions, costMicro: row.costMicro, msFirst: row.msFirst, since: row.day }))) }
+  async allVotes() { return this.voteRows.reduce((sum, row) => ({ helpful: sum.helpful + row.helpful, unhelpful: sum.unhelpful + row.unhelpful }), { helpful: 0, unhelpful: 0 }) }
 }

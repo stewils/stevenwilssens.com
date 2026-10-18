@@ -47,6 +47,8 @@ const llms = [
   '',
   `This is Steven Wilssens's personal site at ${siteUrl}/. Each page below is also available as Markdown; ${siteUrl}/llms-full.txt has all of them in one file. Contact: steven@wilssens.com.`,
   '',
+  `AI assistants can also connect to ${siteUrl}/mcp, a read-only Model Context Protocol server (Streamable HTTP) with the résumé, every role, the recommendations, the patents, Steven's public notes and a fit check against a job description.`,
+  '',
   '## Pages',
   '',
   ...linked.filter((page) => page !== 'privacy').map(entry),

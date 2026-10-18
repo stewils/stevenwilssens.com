@@ -44,10 +44,14 @@ export type Stats = Crawls & {
 } & Record<'referrers' | 'utmSources' | 'utmCampaigns' | 'countries' | 'cities' | 'organizations' | 'browsers' | 'systems' | 'devices' | 'languages' | 'screens', Row[]>
 
 export type Proposal = { id: number; updatedAt: number; role: string; field?: string | null; kind: 'replace' | 'add' | 'remove'; currentText: string | null; proposedText: string | null; rationale: string; status: 'proposed' | 'approved' | 'rejected' | 'applied'; decisionNote: string | null }
+export type PublicCall = { ts: number; tool: string; query: string | null; country: string | null; asOrg: string | null }
 export type McpInfo = {
   ownerUrl: string | null
+  publicUrl: string
   entries: { total: number; public: number; roles: number }
   proposals: Proposal[]
+  // The read-only server at /mcp: calls in the range, per tool, and the latest ones.
+  publicCalls: { days: number; total: number; byTool: { tool: string; calls: number }[]; recent: PublicCall[] }
 }
 
 export type AskInfo = {
@@ -59,7 +63,9 @@ export type AskInfo = {
   month: { questions: number; answered: number; gap: number; off: number; limited: number; failed: number; costMicro: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number }
   daily: { day: string; outcome: string; questions: number; costMicro: number; msFirst: number; msTotal: number }[]
   votes: { day: string; helpful: number; unhelpful: number }[]
-  questions: { id: number; ts: number; reason: 'gap' | 'unhelpful'; page: string | null; question: string; answer: string | null; country: string | null; asOrg: string | null }[]
+  // Open questions (not yet answered or dismissed in the MCP), and how many were closed in the last 90 days.
+  questions: { id: number; ts: number; reason: 'gap' | 'unhelpful' | 'fit'; page: string | null; question: string; answer: string | null; country: string | null; asOrg: string | null }[]
+  resolved: { answered: number; dismissed: number }
 }
 
 // The résumé report the build writes (scripts/resume-check.mjs) and the score history

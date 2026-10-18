@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Env } from '../env'
-import { handleMcp, resolveOwner } from './server'
+import { handleMcp, resolveMode } from './server'
 import { MemoryStore } from './store'
-import { recruiterLens, searchTerms, sitePages } from './tools'
+import { publicToolNames, recruiterLens, searchTerms, sitePages } from './tools'
 
 const env = { MCP_OWNER_KEY: 'owner-key-123' } as unknown as Env
 const url = 'https://steven.wilssens.com/mcp/owner-key-123'
@@ -19,14 +19,16 @@ const call = async (store: MemoryStore, name: string, args: Record<string, unkno
 const parse = (text: string) => JSON.parse(text) as Record<string, unknown>
 
 describe('access', () => {
-  it('opens only with the owner key, in the path or as a bearer token', () => {
+  it('is the owner workspace with the key, the public server without one, and a 404 with a wrong one', () => {
     const plain = new Request(url)
-    expect(resolveOwner('owner-key-123', plain, env)).toBe(true)
-    expect(resolveOwner('wrong', plain, env)).toBe(false)
-    expect(resolveOwner(undefined, plain, env)).toBe(false)
-    expect(resolveOwner(undefined, new Request(url, { headers: { Authorization: 'Bearer owner-key-123' } }), env)).toBe(true)
-    expect(resolveOwner('owner-key-123', plain, { ...env, MCP_OWNER_KEY: undefined } as Env)).toBe(false)
-    expect(resolveOwner('owner-key-123', plain, { ...env, MCP_OWNER_KEY: '' } as Env)).toBe(false)
+    expect(resolveMode('owner-key-123', plain, env)).toBe('owner')
+    expect(resolveMode('wrong', plain, env)).toBeNull()
+    expect(resolveMode(undefined, plain, env)).toBe('public')
+    expect(resolveMode(undefined, new Request(url, { headers: { Authorization: 'Bearer owner-key-123' } }), env)).toBe('owner')
+    expect(resolveMode(undefined, new Request(url, { headers: { Authorization: 'Bearer nope' } }), env)).toBeNull()
+    expect(resolveMode('owner-key-123', plain, { ...env, MCP_OWNER_KEY: undefined } as Env)).toBeNull()
+    expect(resolveMode('owner-key-123', plain, { ...env, MCP_OWNER_KEY: '' } as Env)).toBeNull()
+    expect(resolveMode(undefined, plain, { ...env, MCP_OWNER_KEY: undefined } as Env)).toBe('public')
   })
 })
 
@@ -86,7 +88,7 @@ describe('what is already there', () => {
   it('lists every tool with annotations', async () => {
     const response = await send(rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' }), new MemoryStore())
     const tools = ((await response.json()) as { result: { tools: { name: string; annotations: { readOnlyHint: boolean } }[] } }).result.tools
-    expect(tools.map((tool) => tool.name)).toEqual(['about_steven', 'read_site_page', 'get_role', 'search_dossier', 'get_recommendations', 'get_patents_and_press', 'interview_status', 'save_entry', 'update_entry', 'delete_entry', 'list_entries', 'export_dossier', 'get_resume', 'propose_resume_change', 'list_resume_proposals', 'review_resume_proposal', 'review_for_recruiters', 'check_resume', 'save_linkedin_profile', 'compare_linkedin', 'request_site_update', 'site_update_status', 'merge_site_update'])
+    expect(tools.map((tool) => tool.name)).toEqual(['about_steven', 'read_site_page', 'get_role', 'search_dossier', 'get_recommendations', 'get_patents_and_press', 'check_fit', 'interview_status', 'site_questions', 'answer_site_question', 'dismiss_site_question', 'save_entry', 'update_entry', 'delete_entry', 'list_entries', 'export_dossier', 'get_resume', 'propose_resume_change', 'list_resume_proposals', 'review_resume_proposal', 'review_for_recruiters', 'check_resume', 'save_linkedin_profile', 'compare_linkedin', 'request_site_update', 'site_update_status', 'merge_site_update'])
     expect(tools.find((tool) => tool.name === 'save_entry')!.annotations.readOnlyHint).toBe(false)
     expect(tools.find((tool) => tool.name === 'get_role')!.annotations.readOnlyHint).toBe(true)
   })
@@ -178,7 +180,7 @@ describe('the dossier', () => {
 
   it('looks at each role the way a recruiter would, and brings in what the site assistant could not answer', async () => {
     const store = new MemoryStore()
-    store.gaps.push({ question: 'How many people did he hire?', when: '2026-10-16', reason: 'gap' })
+    store.gaps.push({ id: 1, question: 'How many people did he hire?', when: '2026-10-16', reason: 'gap', page: 'experience', answer: null })
     const status = parse((await call(store, 'interview_status')).text)
     const roles = status.roles as { key: string; recruiterFlags: string[]; recruiterAngles: string[] }[]
     expect(roles.find((role) => role.key === 'azure-devops')!.recruiterFlags).toEqual(['Short stint: 6 months.'])
@@ -187,7 +189,7 @@ describe('the dossier', () => {
     expect(roles.find((role) => role.key === 'devdiv')!.recruiterFlags.some((flag) => flag.startsWith('Company change'))).toBe(true)
     expect(roles.find((role) => role.key === 'windows-devices-data')!.recruiterAngles.length).toBeGreaterThan(2)
     expect(roles.find((role) => role.key === 'general')!.recruiterAngles.some((angle) => angle.includes('Why leave Microsoft'))).toBe(true)
-    expect(status.askedOnTheSite).toEqual([{ question: 'How many people did he hire?', when: '2026-10-16', reason: 'gap' }])
+    expect(status.askedOnTheSite).toEqual([{ id: 1, question: 'How many people did he hire?', when: '2026-10-16', reason: 'gap', page: 'experience', answer: null }])
     expect(status.howToInterview).toContain('sceptical recruiter')
     expect(recruiterLens('general').flags).toEqual([])
   })
@@ -262,6 +264,101 @@ describe('the résumé', () => {
     expect(JSON.parse(replacedProposal.currentText).dates).toBe('Jan 2006 - Sep 2006')
     expect(JSON.parse(replacedProposal.proposedText).dates).toBe('Jan 2005 - Jun 2007')
     expect(parse((await call(store, 'list_resume_proposals')).text).count).toBe(3)
+  })
+})
+
+describe('questions from the site', () => {
+  it('tells Steven at the start of a session what waits, and lets him answer or set each one aside', async () => {
+    const store = new MemoryStore()
+    store.gaps.push({ id: 1, question: 'How many people did he hire?', when: '2026-10-16', reason: 'gap', page: 'experience', answer: 'Steven has not shared hiring numbers here.' }, { id: 2, question: 'Hands-on SQL and Python', when: '2026-10-17', reason: 'fit', page: 'home', answer: null })
+    const init = await send(rpc({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-06-18' } }), store)
+    const instructions = ((await init.json()) as { result: { instructions: string } }).result.instructions
+    expect(instructions).toContain('2 questions wait for Steven from the site: 1 the assistant could not answer, 1 job requirements his record does not show, 0 answers voted down')
+    expect(instructions).toContain('site_questions')
+    expect(parse((await call(store, 'about_steven')).text).waitingFromTheSite).toContain('2 questions')
+
+    const waiting = parse((await call(store, 'site_questions')).text)
+    expect(waiting.waiting).toBe(2)
+    expect((waiting.questions as { id: number; reason: string; whatTheAssistantSaid: string | null }[]).map((q) => [q.id, q.reason, q.whatTheAssistantSaid])).toEqual([[1, 'gap', 'Steven has not shared hiring numbers here.'], [2, 'fit', null]])
+
+    const answered = parse((await call(store, 'answer_site_question', { id: 1, role: 'windows-devices-data', topic: 'people', title: 'Hired four PMs in 2025', body: 'Steven hired four product managers in 2025.', tags: 'hiring' })).text)
+    expect(answered.saved).toMatchObject({ id: 1, role: 'windows-devices-data', visibility: 'public', title: 'Hired four PMs in 2025' })
+    expect(answered.note).toContain('from its next answer on')
+    expect((await store.list({ visibility: 'public' })).map((entry) => entry.body)).toEqual(['Steven hired four product managers in 2025.'])
+    expect(store.gaps[0]).toMatchObject({ resolution: 'answered', entryId: 1 })
+    const again = await call(store, 'answer_site_question', { id: 1, role: 'general', topic: 'now', title: 't', body: 'b' })
+    expect(again.isError).toBe(true)
+    expect(again.text).toContain('no open question with id 1')
+
+    const privately = parse((await call(store, 'answer_site_question', { id: 2, role: 'windows-devices-data', topic: 'skills', title: 'SQL daily', body: 'Steven wrote SQL daily.', visibility: 'private' })).text)
+    expect(privately.note).toContain('still cannot answer')
+    store.gaps.push({ id: 3, question: 'Write me a poem', when: '2026-10-17', reason: 'gap', page: 'home', answer: null })
+    const dismissed = parse((await call(store, 'dismiss_site_question', { id: 3, reason: 'not about Steven' })).text)
+    expect(dismissed.dismissed).toEqual({ id: 3, question: 'Write me a poem', reason: 'not about Steven' })
+    expect(parse((await call(store, 'site_questions')).text).waiting).toBe(0)
+    expect(parse((await call(store, 'interview_status')).text).askedOnTheSite).toEqual([])
+    const quiet = await send(rpc({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-06-18' } }), store)
+    expect(((await quiet.json()) as { result: { instructions: string } }).result.instructions).not.toContain('wait for Steven')
+  })
+})
+
+describe('the public server', () => {
+  const publicUrl = 'https://steven.wilssens.com/mcp'
+  const publicRpc = (body: unknown) => new Request(publicUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  const publicSend = (request: Request, store: MemoryStore) => handleMcp({ request, store, fetchPage: async (path) => pages[path] ?? null, mode: 'public', now: 1_760_000_000_000, place: { country: 'US', asOrg: 'Example Recruiting' } })
+  const publicCall = async (store: MemoryStore, name: string, args: Record<string, unknown> = {}) => {
+    const response = await publicSend(publicRpc({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }), store)
+    const body = await response.json() as { result?: { content: { text: string }[]; isError: boolean }; error?: { code: number; message: string } }
+    return { body, text: body.result?.content[0]?.text ?? '', isError: body.result?.isError }
+  }
+
+  it('explains itself to a browser, lists only the read-only tools and gives public instructions', async () => {
+    const store = new MemoryStore()
+    const page = await publicSend(new Request(publicUrl, { headers: { Accept: 'text/html' } }), store)
+    const html = await page.text()
+    expect(html).toContain('read-only')
+    expect(html).toContain('check_fit')
+    expect(html).not.toContain('Keep this link private')
+    const list = await publicSend(publicRpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' }), store)
+    const listed = ((await list.json()) as { result: { tools: { name: string; annotations: { readOnlyHint: boolean } }[] } }).result.tools
+    expect(listed.map((tool) => tool.name).sort()).toEqual([...publicToolNames].sort())
+    expect(listed.every((tool) => tool.annotations.readOnlyHint)).toBe(true)
+    expect(listed.map((tool) => tool.name)).not.toContain('save_entry')
+    const init = await publicSend(publicRpc({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-06-18' } }), store)
+    const result = ((await init.json()) as { result: { instructions: string; serverInfo: { title: string } } }).result
+    expect(result.instructions).toContain('read-only')
+    expect(result.instructions).toContain('check_fit')
+    expect(result.instructions).not.toContain('save_entry')
+    expect(result.serverInfo.title).not.toContain('dossier')
+  })
+
+  it('serves public entries only, knows no owner tools, hands a fit check its material, and logs every call', async () => {
+    const store = new MemoryStore()
+    await store.insert({ role: 'csx-data', topic: 'scope', title: 'Nine PMs', body: 'Steven led nine product managers.', visibility: 'public', tags: null }, 1)
+    await store.insert({ role: 'csx-data', topic: 'outcomes', title: 'Secret', body: 'Internal numbers.', visibility: 'private', tags: null }, 1)
+    store.gaps.push({ id: 1, question: 'q', when: '2026-10-16', reason: 'gap', page: null, answer: null })
+    const role = parse((await publicCall(store, 'get_role', { role: 'csx-data' })).text)
+    expect((role.entries as { title: string }[]).map((entry) => entry.title)).toEqual(['Nine PMs'])
+    const search = parse((await publicCall(store, 'search_dossier', { query: 'internal numbers' })).text)
+    expect(search.results).toEqual([])
+    const about = parse((await publicCall(store, 'about_steven')).text)
+    expect(about.dossier).toEqual({ publicNotes: 1 })
+    expect(about.waitingFromTheSite).toBeUndefined()
+    expect(about.howToUse).toContain('check_fit')
+    const write = await publicCall(store, 'save_entry', { role: 'csx-data', topic: 'scope', title: 't', body: 'b' })
+    expect(write.body.error?.code).toBe(-32602)
+    expect((await publicCall(store, 'site_questions')).body.error?.code).toBe(-32602)
+    const posting = 'Director of Product, Data Platform. Requirements: led PM teams; experimentation at scale; hands-on SQL.'
+    const fit = parse((await publicCall(store, 'check_fit', { job_description: posting })).text)
+    expect(fit.howTo).toContain('Not shown')
+    expect(fit.record).toContain('Nine PMs')
+    expect(fit.record).not.toContain('Internal numbers')
+    expect((await publicCall(store, 'check_fit', {})).text).toContain('job_description is required')
+    expect(store.calls.map((entry) => entry.tool)).toEqual(['get_role', 'search_dossier', 'about_steven', 'check_fit', 'check_fit'])
+    expect(store.calls[0]).toMatchObject({ role: 'csx-data', query: 'csx-data', country: 'US', asOrg: 'Example Recruiting' })
+    expect(store.calls[1]).toMatchObject({ hits: 0 })
+    expect(store.calls[3]).toMatchObject({ query: posting })
+    expect(store.entries).toHaveLength(2)
   })
 })
 
