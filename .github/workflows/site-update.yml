@@ -88,7 +88,7 @@ jobs:
             Rules for this change:
             - Facts about Steven (roles, bullets, headline, summary, skills, impact numbers, selected work, location, authorization) live in src/resume.ts. Change them there, not in App.tsx.
             - After any change to src/resume.ts, run `npm run resume:build`. It regenerates public/steven-wilssens-resume-2026.pdf and refuses a resume that scores worse than the current one; read its findings and fix the data until it passes. Never commit a resume with errors.
-            - The resume on main scores ${{ steps.baseline.outputs.score }}/100 for recruiters (`node scripts/resume-check.mjs` shows the findings). Keep it there or raise it. Never pass `--force` to resume:build. If Steven's instruction cannot be carried out without lowering the score (a bullet he wants removed carried a keyword or a number, say), make the change he asked for, keep the data honest, and say plainly in your summary which check got worse and why: the workflow warns him and he decides.
+            - The resume on main scores ${{ steps.baseline.outputs.score }}/100 with applicant tracking systems: the ATS score (`node scripts/resume-check.mjs` shows the findings and which of them count). Keep it there or raise it. Never pass `--force` to resume:build. If Steven's instruction cannot be carried out without lowering the score (a bullet he wants removed carried a keyword or a number, say), make the change he asked for, keep the data honest, and say plainly in your summary which check got worse and why: the workflow warns him and he decides.
             - If the headline or the photo changed, run `node scripts/og-image.mjs`.
             - Run `npm run lint`, `npm test` and `npm run build` and make them pass.
             - Do not invent numbers or facts. If the instruction needs a fact you do not have, leave a `TODO(steven): question` comment in src/resume.ts and list the question in your final message.
@@ -163,7 +163,7 @@ jobs:
           alias=$(printf '%s' "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | cut -c1-28)
           warning=""
           if [ "$SCORE_LOWER" = true ]; then
-            warning=$(printf '> ⚠️ **This update lowers the resume score from %s to %s.** The resume would read worse to recruiters than the one live today. New findings:\n%s\n\nFix the data on this branch (or ask Claude to) before merging, or merge knowing the trade-off.\n\n' "$SCORE_BEFORE" "$SCORE_AFTER" "$(cat /tmp/resume-new-findings.txt 2>/dev/null || true)")
+            warning=$(printf '> ⚠️ **This update lowers the resume score from %s to %s.** An applicant tracking system would read it worse than the one live today. New findings:\n%s\n\nFix the data on this branch (or ask Claude to) before merging, or merge knowing the trade-off.\n\n' "$SCORE_BEFORE" "$SCORE_AFTER" "$(cat /tmp/resume-new-findings.txt 2>/dev/null || true)")
           fi
           # The hidden marker is read by the MCP server (site_update_status, merge_site_update) so Claude can warn Steven.
           marker=""
@@ -171,7 +171,7 @@ jobs:
           body=$(printf '%s%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s' \
             "$warning" \
             "**Instruction**" "$INSTRUCTION" \
-            "**Resume score:** ${SCORE_LINE:-unknown} (100 is the best a recruiter, an ATS and an editor would score it; see scripts/resume-check.mjs)" \
+            "**Resume score:** ${SCORE_LINE:-unknown} (the ATS score: 100 means an applicant tracking system parses every part of it; see scripts/resume-check.mjs)" \
             "**Checks in this run:** $CHECKS (lint, tests, build). Preview, once the Deploy workflow for this branch finishes: https://$alias.stevenwilssens.pages.dev" \
             "Merging deploys to production. Review the resume PDF in the branch before merging." \
             "🤖 Generated with [Claude Code](https://claude.com/claude-code) from a request made through the MCP server." \

@@ -53,7 +53,7 @@ describe('what needs Steven', () => {
     expect(summaries.sources).toBe('LinkedIn leads with 7 visitors · 2 channels')
     expect(summaries.audience).toBe('Microsoft is the top organization · 1 country')
     expect(summaries.speed).toBe('phone passes · desktop fails')
-    expect(summaries.resume).toBe('Score 85/100 · 2 pages · 3 warnings · lower than the live résumé before')
+    expect(summaries.resume).toBe('ATS score 85/100 · 2 pages · 3 warnings · lower than the live résumé before')
     expect(summaries.assistant).toBe('$1.25 of $25.00 this month · 10 questions · 2 gaps')
     expect(summaries.mcp).toBe('40 dossier entries across 6 roles · 8 public · 12 public calls')
     expect(computeSummaries({ days: 30, stats: null, mcp: null, ask: null, resume: { report: null, history: [] } }).resume).toBe('No résumé report in this deployment')

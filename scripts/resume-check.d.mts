@@ -1,5 +1,7 @@
 // Types for scripts/resume-check.mjs, for src/resume.test.ts.
-export type Finding = { severity: 'error' | 'warn' | 'info'; id: string; message: string }
+// Only 'ats' findings make the score (the ATS score); 'site' and 'recruiter' are listed beside it.
+export type Lens = 'ats' | 'site' | 'recruiter'
+export type Finding = { severity: 'error' | 'warn' | 'info'; lens: Lens; id: string; message: string }
 export type Question = { about: string; question: string }
 export type Baseline = { source: string; score: number; errors: number | null; warnings: number | null; checkedAt: string | null }
 export type Comparison = Baseline & { change: number; lower: boolean; verdict: 'lower' | 'higher' | 'unchanged' }
@@ -7,8 +9,9 @@ export type Report = {
   path: string
   exists: boolean
   score: number
-  errors?: number
-  warnings?: number
+  errors: number
+  warnings: number
+  ats: { errors: number; warnings: number }
   pages: number
   bytes: number
   pdfHash?: string
@@ -22,6 +25,8 @@ export type Report = {
   baseline?: Comparison | null
 }
 export const resumePath: string
+export const lenses: Record<Lens, string>
+export function atsScore(findings: { severity: string; lens: string }[]): number
 export function extractPdf(path: string): Promise<{ pages: string[]; text: string; title: string | null; bytes: number; sha256: string }>
 export function commitInfo(): { commit: string | null; commitMessage: string | null }
 export function span(dates: string): { start: number; end: number } | null

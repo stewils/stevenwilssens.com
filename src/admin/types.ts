@@ -70,9 +70,11 @@ export type AskInfo = {
 
 // The résumé report the build writes (scripts/resume-check.mjs) and the score history
 // functions/_lib/resume-scores.ts keeps.
-export type Finding = { severity: 'error' | 'warn' | 'info'; id: string; message: string }
+// The lens a finding belongs to: only `ats` findings make the score (the ATS score).
+export type Lens = 'ats' | 'site' | 'recruiter'
+export type Finding = { severity: 'error' | 'warn' | 'info'; lens?: Lens; id: string; message: string }
 export type ResumeReport = {
-  exists?: boolean; score: number; errors?: number; warnings?: number; pages?: number; bytes?: number; title?: string | null; matchesSite?: boolean; checkedAt?: string
+  exists?: boolean; score: number; errors?: number; warnings?: number; ats?: { errors: number; warnings: number }; pages?: number; bytes?: number; title?: string | null; matchesSite?: boolean; checkedAt?: string
   pdfHash?: string; commit?: string | null; commitMessage?: string | null
   findings: Finding[]
   questions: { about: string; question: string }[]

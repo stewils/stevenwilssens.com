@@ -2,7 +2,7 @@
 // The resume PDF is generated from src/resume.ts (npm run resume:build). This test
 // fails when the two drift, so a content change never ships without a new resume.
 import { describe, expect, it } from 'vitest'
-import { analyzeResume, compareScores, dataQuestions, formatComparison, readBaseline } from '../scripts/resume-check.mjs'
+import { analyzeResume, atsScore, compareScores, dataQuestions, formatComparison, lenses, readBaseline } from '../scripts/resume-check.mjs'
 
 describe('the resume PDF', () => {
   it('matches src/resume.ts and passes the resume checks', async () => {
@@ -11,7 +11,18 @@ describe('the resume PDF', () => {
     expect(errors, 'run npm run resume:build after changing src/resume.ts').toEqual([])
     expect(report.pages).toBeLessThanOrEqual(2)
     expect(report.score).toBeGreaterThanOrEqual(70)
+    expect(report.findings.every((finding: { lens: string }) => finding.lens in lenses)).toBe(true)
+    expect(report.ats.errors).toBe(0)
   }, 30_000)
+
+  // The score is what an applicant tracking system makes of the PDF: what a recruiter
+  // would say and where the PDF differs from the site are listed but do not count.
+  it('scores only the findings an applicant tracking system trips over', () => {
+    expect(atsScore([])).toBe(100)
+    expect(atsScore([{ severity: 'warn', lens: 'recruiter' }, { severity: 'error', lens: 'site' }, { severity: 'info', lens: 'ats' }])).toBe(100)
+    expect(atsScore([{ severity: 'error', lens: 'ats' }, { severity: 'warn', lens: 'ats' }, { severity: 'warn', lens: 'ats' }])).toBe(65)
+    expect(atsScore(Array.from({ length: 6 }, () => ({ severity: 'error', lens: 'ats' })))).toBe(0)
+  })
 
   it('raises the questions the dates and numbers leave open', () => {
     const questions = dataQuestions(new Date('2026-10-17'))
