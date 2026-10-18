@@ -9,7 +9,7 @@ export const routes = ['about', 'experience', 'work', 'recommendations', 'patent
 export type Page = 'home' | (typeof routes)[number] | 'notFound'
 
 export const pageMeta: Record<Page, { title: string; description: string }> = {
-  home: { title: 'Steven Wilssens | Principal product leader, data and AI', description: 'Steven Wilssens, principal product leader for data, experimentation and AI: nearly 20 years at Microsoft, most recently leading Windows & Devices Data product management.' },
+  home: { title: 'Steven Wilssens | Principal product leader, data and AI', description: 'Steven Wilssens, product leader who invents new products, using data, experimentation and AI as tools: nearly 20 years at Microsoft, from spatial audio and xCloud to Windows & Devices Data.' },
   about: { title: 'About | Steven Wilssens', description: 'Learn about Steven Wilssens and his approach to product, portfolio, and people leadership.' },
   experience: { title: 'Experience | Steven Wilssens', description: 'A career across product leadership, Windows & Devices, spatial audio, Azure DevOps, and software.' },
   work: { title: 'Selected work | Steven Wilssens', description: 'Selected work from Steven Wilssens’s data and AI chapter at Microsoft, 2020 to 2026: Windows quality data products, experimentation and AI for Windows development, an OKR tool rebuilt with AI, plus wilssens.com and the spatial audio platform.' },
