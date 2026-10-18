@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""Sends one plain-text email through the Zoho mailbox, for the GitHub workflows: they
-tell Steven when a pull request carries an updated resume and when the resume is live.
+"""Sends one email through the Zoho mailbox, for the GitHub workflows: they tell Steven
+when a pull request carries an updated resume and when the resume is live. The body is
+plain text, with an HTML version alongside when --html-file is given (scripts/resume-mail.mjs
+writes both).
 
 Environment:
   MAIL_APP_PASSWORD  a Zoho app password for the mailbox (required; without it the
@@ -9,7 +11,7 @@ Environment:
   MAIL_FROM, MAIL_TO default steven@wilssens.com
   MAIL_SMTP_HOST     default smtp.zoho.com (smtp.zoho.eu for a mailbox in the EU data centre)
 
-Usage: python3 scripts/send-mail.py --subject "..." --body-file body.txt
+Usage: python3 scripts/send-mail.py --subject "..." --body-file body.txt [--html-file body.html]
 """
 import argparse
 import os
@@ -21,6 +23,7 @@ from email.utils import formatdate, make_msgid
 parser = argparse.ArgumentParser()
 parser.add_argument('--subject', required=True)
 parser.add_argument('--body-file', required=True)
+parser.add_argument('--html-file', help='an HTML version of the same message, sent as the alternative mail clients prefer')
 args = parser.parse_args()
 
 password = os.environ.get('MAIL_APP_PASSWORD', '')
@@ -41,6 +44,9 @@ message['To'] = recipient
 message['Date'] = formatdate(localtime=True)
 message['Message-ID'] = make_msgid(domain=sender.split('@')[-1])
 message.set_content(body)
+if args.html_file:
+    with open(args.html_file, encoding='utf-8') as handle:
+        message.add_alternative(handle.read(), subtype='html')
 
 with smtplib.SMTP_SSL(host, 465, timeout=30) as smtp:
     smtp.login(sender, password)
