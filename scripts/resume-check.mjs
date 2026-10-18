@@ -10,6 +10,8 @@
 // earlier report: what main scored before a change, or the live site's
 // /resume-report.json. The workflows use it to warn when an update would lower the
 // score recruiters see today; the comparison is written into the report (baseline).
+import { execSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
@@ -22,7 +24,8 @@ export async function extractPdf(path) {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
   const require = createRequire(import.meta.url)
   pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(require.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs')).href
-  const task = pdfjs.getDocument({ data: new Uint8Array(readFileSync(path)), useSystemFonts: true, isEvalSupported: false, disableFontFace: true })
+  const bytes = readFileSync(path)
+  const task = pdfjs.getDocument({ data: new Uint8Array(bytes), useSystemFonts: true, isEvalSupported: false, disableFontFace: true })
   const doc = await task.promise
   const pages = []
   for (let number = 1; number <= doc.numPages; number++) {
@@ -34,7 +37,8 @@ export async function extractPdf(path) {
   }
   const meta = await doc.getMetadata().catch(() => null)
   await task.destroy()
-  return { pages, text: pages.join('\n\n'), title: meta?.info?.Title ?? null, bytes: statSync(path).size }
+  // The hash identifies one PDF across builds: the admin's score history keeps one row per PDF.
+  return { pages, text: pages.join('\n\n'), title: meta?.info?.Title ?? null, bytes: statSync(path).size, sha256: createHash('sha256').update(bytes).digest('hex') }
 }
 
 const months = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 }
@@ -117,7 +121,15 @@ export async function analyzeResume(path = resumePath, { now = new Date() } = {}
 
   const errors = findings.filter((f) => f.severity === 'error').length
   const warnings = findings.filter((f) => f.severity === 'warn').length
-  return { path, exists: true, score: Math.max(0, 100 - errors * 25 - warnings * 5), errors, warnings, pages: pdf.pages.length, bytes: pdf.bytes, title: pdf.title, matchesSite: errors === 0, findings, questions: dataQuestions(now), checkedAt: now.toISOString() }
+  return { path, exists: true, score: Math.max(0, 100 - errors * 25 - warnings * 5), errors, warnings, pages: pdf.pages.length, bytes: pdf.bytes, pdfHash: pdf.sha256.slice(0, 16), title: pdf.title, matchesSite: errors === 0, findings, questions: dataQuestions(now), checkedAt: now.toISOString() }
+}
+
+// The commit the resume was built from, for the score history on /admin: GitHub Actions
+// says which commit it checked out; locally git does. Null when neither is available.
+export const commitInfo = () => {
+  const run = (command) => { try { return execSync(command, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || null } catch { return null } }
+  const commit = process.env.GITHUB_SHA ?? run('git rev-parse HEAD')
+  return { commit, commitMessage: commit ? run(`git log -1 --format=%s ${commit}`) : null }
 }
 
 // The score a change is measured against: a report written earlier (a file) or the
@@ -160,7 +172,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const option = (flag) => { const index = args.indexOf(flag); return index >= 0 ? args.splice(index, 2)[1] : null }
   const jsonPath = option('--json')
   const baselineSource = option('--baseline') ?? process.env.RESUME_BASELINE ?? null
-  const report = await analyzeResume(args[0] ? resolve(args[0]) : resumePath)
+  const report = { ...(await analyzeResume(args[0] ? resolve(args[0]) : resumePath)), ...commitInfo() }
   if (baselineSource) {
     report.baseline = compareScores(report, await readBaseline(baselineSource))
     if (!report.baseline) console.log(`No baseline could be read from ${baselineSource}; the score is not compared.`)

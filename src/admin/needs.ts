@@ -1,0 +1,75 @@
+// What needs Steven, per page, and a line per page for the overview's tiles. Both are
+// derived from the loaded data, so they are pure and tested in needs.test.ts.
+import { formatNumber, formatUsd } from './format'
+import type { PageId } from './pages'
+import type { AdminData } from './types'
+
+export type Need = { key: string; page: PageId; n: number; text: string }
+
+const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
+
+export const computeNeeds = ({ stats, mcp, ask, resume }: AdminData): Need[] => {
+  const needs: Need[] = []
+  const add = (key: string, page: PageId, n: number, text: string) => { if (n > 0) needs.push({ key, page, n, text }) }
+
+  if (resume) {
+    const report = resume.report
+    if (!report) add('resume-missing', 'resume', 1, 'no résumé report in this deployment; deploy main again')
+    else {
+      if (report.matchesSite === false) add('resume-mismatch', 'resume', 1, 'the résumé PDF does not match src/resume.ts: run npm run resume:build')
+      if (report.baseline?.lower) add('resume-lower', 'resume', 1, `the résumé scores lower than the one it replaced (${report.baseline.score} → ${report.score})`)
+      const findings = report.findings.filter((finding) => finding.severity !== 'info').length
+      add('resume-findings', 'resume', findings, plural(findings, 'résumé finding to fix in the data', 'résumé findings to fix in the data'))
+      add('resume-questions', 'resume', report.questions.length, plural(report.questions.length, 'question the résumé data raises for you', 'questions the résumé data raises for you'))
+    }
+  }
+  if (mcp) {
+    const proposed = mcp.proposals.filter((proposal) => proposal.status === 'proposed').length
+    const approved = mcp.proposals.filter((proposal) => proposal.status === 'approved').length
+    add('proposals-waiting', 'resume', proposed, plural(proposed, 'résumé proposal waiting for your decision in Claude', 'résumé proposals waiting for your decision in Claude'))
+    add('proposals-approved', 'resume', approved, plural(approved, 'approved résumé edit not yet on the site', 'approved résumé edits not yet on the site'))
+    if (!mcp.ownerUrl) add('mcp-key', 'mcp', 1, 'the career MCP has no owner key: set the MCP_OWNER_KEY secret and redeploy')
+  }
+  if (ask) {
+    add('ask-gaps', 'assistant', ask.questions.length, plural(ask.questions.length, 'question the assistant could not answer; cover it in your next MCP session', 'questions the assistant could not answer; cover them in your next MCP session'))
+    if (!ask.configured && !ask.mock) add('ask-off', 'assistant', 1, 'the assistant is not live: set the ANTHROPIC_API_KEY secret and redeploy')
+    if (ask.month.costMicro > ask.budgetUsd * 800_000) add('ask-budget', 'assistant', 1, `the assistant has used ${formatUsd(ask.month.costMicro)} of its ${formatUsd(ask.budgetUsd * 1_000_000)} monthly budget`)
+  }
+  if (stats) {
+    const failing = stats.vitals.devices.filter((device) => device.passes === false).length
+    add('vitals', 'speed', failing, plural(failing, 'device type fails Core Web Vitals', 'device types fail Core Web Vitals'))
+    if (stats.crawlTotals.errors > 0) add('crawl-errors', 'crawlers', stats.crawlTotals.errors, plural(stats.crawlTotals.errors, 'crawler request got an error answer', 'crawler requests got error answers'))
+  }
+  return needs
+}
+
+// Badge per page: the sum of what needs Steven there.
+export const badgeCounts = (needs: Need[]) => {
+  const counts: Partial<Record<PageId, number>> = {}
+  for (const need of needs) counts[need.page] = (counts[need.page] ?? 0) + need.n
+  return counts
+}
+
+export const computeSummaries = ({ stats, mcp, ask, resume }: AdminData): Partial<Record<PageId, string>> => {
+  const summaries: Partial<Record<PageId, string>> = {}
+  if (stats) {
+    const { totals } = stats
+    summaries.traffic = `${formatNumber(totals.visitors)} visitors · ${formatNumber(totals.pageviews)} pageviews · ${formatNumber(totals.downloads)} résumé downloads`
+    const channel = stats.channels[0]
+    summaries.sources = channel ? `${channel.name} leads with ${formatNumber(channel.visitors)} visitors · ${stats.channels.length} ${plural(stats.channels.length, 'channel', 'channels')}` : 'No visits in this range yet'
+    const organization = stats.organizations.find((row) => row.name !== 'Unknown')
+    summaries.audience = `${organization ? `${organization.name} is the top organization` : 'No organization known yet'} · ${stats.countries.length} ${plural(stats.countries.length, 'country', 'countries')}`
+    summaries.crawlers = `${formatNumber(stats.crawlTotals.requests)} crawler requests · ${formatNumber(stats.crawlTotals.assistant)} from AI assistants`
+    const devices = stats.vitals.devices.filter((device) => device.passes !== null)
+    summaries.speed = devices.length ? devices.map((device) => `${device.device} ${device.passes ? 'passes' : 'fails'}`).join(' · ') : 'Not enough measurements yet'
+  }
+  if (resume) {
+    const report = resume.report
+    summaries.resume = report
+      ? `Score ${report.score}/100 · ${report.pages ?? '?'} ${plural(report.pages ?? 0, 'page', 'pages')} · ${report.warnings ?? 0} ${plural(report.warnings ?? 0, 'warning', 'warnings')}${report.baseline ? ` · ${report.baseline.verdict === 'unchanged' ? 'unchanged from' : `${report.baseline.verdict} than`} the live résumé before` : ''}`
+      : 'No résumé report in this deployment'
+  }
+  if (ask) summaries.assistant = `${formatUsd(ask.month.costMicro)} of ${formatUsd(ask.budgetUsd * 1_000_000)} this month · ${formatNumber(ask.month.questions)} questions · ${formatNumber(ask.month.gap)} gaps`
+  if (mcp) summaries.mcp = `${formatNumber(mcp.entries.total)} dossier entries across ${mcp.entries.roles} roles · ${formatNumber(mcp.entries.public)} public`
+  return summaries
+}

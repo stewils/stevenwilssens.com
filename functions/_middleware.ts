@@ -1,8 +1,14 @@
 import type { Env } from './_lib/env'
 import { identifyCrawler, isCrawlTarget } from './_lib/crawlers'
 import { redirectTarget } from './_lib/hosts'
+import { ResumeScores } from './_lib/resume-scores'
 
 const retentionMs = 395 * 86_400_000 // 13 months, as stated on /privacy
+
+// A deploy brings a new resume report (/resume-report.json, written by the build with
+// the resume's score). The first page request each isolate serves records it, so the
+// score history on /admin grows with every update without a deploy hook or a secret.
+let resumeRecorded = false
 
 // Every other address of the site (the production pages.dev host, anything under
 // wilssens.net) redirects to its one public address; see _lib/hosts.ts.
@@ -13,6 +19,12 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, next, waitUn
   const target = redirectTarget(url)
   if (target) return Response.redirect(target, 301)
   const response = await next()
+
+  if (!resumeRecorded && !url.hostname.endsWith('.pages.dev') && !url.pathname.startsWith('/api/')) {
+    resumeRecorded = true
+    waitUntil(ResumeScores.currentReport(env.ASSETS, request.url).then((report) => new ResumeScores(env.DB).record(report))
+      .catch((error: unknown) => { resumeRecorded = false; console.error('resume score record failed', error) }))
+  }
 
   // Preview deployments share this database; only production and local dev count.
   const userAgent = request.headers.get('User-Agent') ?? ''

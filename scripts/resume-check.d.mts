@@ -11,15 +11,19 @@ export type Report = {
   warnings?: number
   pages: number
   bytes: number
+  pdfHash?: string
   title: string | null
   matchesSite?: boolean
   findings: Finding[]
   questions: Question[]
   checkedAt?: string
+  commit?: string | null
+  commitMessage?: string | null
   baseline?: Comparison | null
 }
 export const resumePath: string
-export function extractPdf(path: string): Promise<{ pages: string[]; text: string; title: string | null; bytes: number }>
+export function extractPdf(path: string): Promise<{ pages: string[]; text: string; title: string | null; bytes: number; sha256: string }>
+export function commitInfo(): { commit: string | null; commitMessage: string | null }
 export function span(dates: string): { start: number; end: number } | null
 export function dataQuestions(now?: Date): Question[]
 export function analyzeResume(path?: string, options?: { now?: Date }): Promise<Report>
