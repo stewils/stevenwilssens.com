@@ -1,5 +1,6 @@
 // Storage for the career dossier. The D1 store is used in production; the memory
 // store backs the tests and documents the same behaviour without SQL.
+import { questionFromRow, type Resolution, type SavedQuestion } from '../ask/store'
 
 export type Visibility = 'public' | 'private'
 
@@ -22,6 +23,15 @@ export type ProposalStatus = 'proposed' | 'approved' | 'rejected' | 'applied'
 // field: for a role, which part changes (title | company | dates | location | summary | point); null for the headline, summary, skills and education sections.
 export type Proposal = { id: number; createdAt: number; updatedAt: number; role: string; field: string | null; kind: 'replace' | 'add' | 'remove'; currentText: string | null; proposedText: string | null; rationale: string; basedOn: string | null; status: ProposalStatus; decisionNote: string | null }
 export type ProposalInput = Omit<Proposal, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'decisionNote'>
+
+// A question from the site that waits for Steven: what the assistant could not answer
+// (gap), a requirement a pasted job description named that the record does not show
+// (fit), or an answer a reader voted down (unhelpful).
+export type AskGap = { id: number; question: string; when: string; reason: SavedQuestion['reason']; page: string | null; answer: string | null }
+// One call to the public MCP server, kept so /admin shows whether anyone uses it. No IP, no visitor.
+export type ToolCall = { ts: number; tool: string; query: string | null; role: string | null; hits: number | null; country: string | null; asOrg: string | null }
+export type ToolCallRow = ToolCall & { id: number }
+
 export interface DossierStore {
   list(filter: EntryFilter): Promise<DossierEntry[]>
   get(id: number): Promise<DossierEntry | null>
@@ -33,11 +43,17 @@ export interface DossierStore {
   listProposals(status?: ProposalStatus): Promise<Proposal[]>
   insertProposal(input: ProposalInput, now: number): Promise<Proposal>
   decideProposal(id: number, status: ProposalStatus, note: string | null, now: number): Promise<Proposal | null>
-  // Questions the site assistant could not answer from the public dossier (ask_questions), newest first.
-  askGaps(limit: number): Promise<{ question: string; when: string; reason: string }[]>
+  // Open questions from the site assistant (ask_questions, not yet answered or dismissed), newest first.
+  askGaps(limit: number): Promise<AskGap[]>
+  getAskGap(id: number): Promise<AskGap | null>
+  // Closes a question: answered with a dossier entry, or dismissed. False when there is no open question with that id.
+  resolveAskGap(id: number, resolution: Resolution, entryId: number | null, now: number): Promise<boolean>
   // Steven's LinkedIn profile as last imported through save_linkedin_profile (one row, parsed profile as JSON).
   getLinkedIn(): Promise<LinkedInRecord | null>
   saveLinkedIn(json: string, source: string, now: number): Promise<void>
+  // The public server's use.
+  logToolCall(call: ToolCall): Promise<void>
+  toolCalls(since: number, limit: number): Promise<ToolCallRow[]>
 }
 export type LinkedInRecord = { json: string; source: string; importedAt: number }
 
@@ -47,6 +63,8 @@ const proposalFromRow = (row: ProposalRow): Proposal => ({ id: row.id, createdAt
 type Row = { id: number; created_at: number; updated_at: number; role: string; topic: string; title: string; body: string; visibility: Visibility; tags: string | null }
 const fromRow = (row: Row): DossierEntry => ({ id: row.id, createdAt: row.created_at, updatedAt: row.updated_at, role: row.role, topic: row.topic, title: row.title, body: row.body, visibility: row.visibility, tags: row.tags })
 
+export const gapFromQuestion = (q: SavedQuestion): AskGap => ({ id: q.id, question: q.question, when: new Date(q.ts).toISOString().slice(0, 10), reason: q.reason, page: q.page, answer: q.answer })
+
 const filterSql = (filter: EntryFilter) => {
   const where: string[] = []
   const params: unknown[] = []
@@ -55,6 +73,10 @@ const filterSql = (filter: EntryFilter) => {
   if (filter.visibility) { where.push('visibility = ?'); params.push(filter.visibility) }
   return { where, params }
 }
+
+type QuestionDb = Parameters<typeof questionFromRow>[0]
+type ToolCallDb = { id: number; ts: number; tool: string; query: string | null; role: string | null; hits: number | null; country: string | null; as_org: string | null }
+const toolCallRetentionMs = 90 * 86_400_000
 
 export class D1Store implements DossierStore {
   constructor(private db: D1Database) {}
@@ -121,8 +143,18 @@ export class D1Store implements DossierStore {
   }
 
   async askGaps(limit: number) {
-    const { results } = await this.db.prepare('SELECT question, ts, reason FROM ask_questions ORDER BY ts DESC LIMIT ?').bind(limit).all<{ question: string; ts: number; reason: string }>()
-    return results.map((row) => ({ question: row.question, when: new Date(row.ts).toISOString().slice(0, 10), reason: row.reason }))
+    const { results } = await this.db.prepare('SELECT * FROM ask_questions WHERE resolved_at IS NULL ORDER BY ts DESC LIMIT ?').bind(limit).all<QuestionDb>()
+    return results.map((row) => gapFromQuestion(questionFromRow(row)))
+  }
+
+  async getAskGap(id: number) {
+    const row = await this.db.prepare('SELECT * FROM ask_questions WHERE id = ? AND resolved_at IS NULL').bind(id).first<QuestionDb>()
+    return row ? gapFromQuestion(questionFromRow(row)) : null
+  }
+
+  async resolveAskGap(id: number, resolution: Resolution, entryId: number | null, now: number) {
+    const result = await this.db.prepare('UPDATE ask_questions SET resolved_at = ?, resolution = ?, entry_id = ? WHERE id = ? AND resolved_at IS NULL').bind(now, resolution, entryId, id).run()
+    return (result.meta.changes ?? 0) > 0
   }
 
   async getLinkedIn() {
@@ -133,12 +165,24 @@ export class D1Store implements DossierStore {
   async saveLinkedIn(json: string, source: string, now: number) {
     await this.db.prepare('INSERT INTO linkedin_profile (id, imported_at, source, json) VALUES (1, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET imported_at = excluded.imported_at, source = excluded.source, json = excluded.json').bind(now, source, json).run()
   }
+
+  async logToolCall(call: ToolCall) {
+    await this.db.prepare('INSERT INTO mcp_calls (ts, tool, query, role, hits, country, as_org) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(call.ts, call.tool, call.query, call.role, call.hits, call.country, call.asOrg).run()
+    if (Math.random() < 0.05) await this.db.prepare('DELETE FROM mcp_calls WHERE ts < ?').bind(call.ts - toolCallRetentionMs).run()
+  }
+
+  async toolCalls(since: number, limit: number) {
+    const { results } = await this.db.prepare('SELECT * FROM mcp_calls WHERE ts >= ? ORDER BY ts DESC LIMIT ?').bind(since, limit).all<ToolCallDb>()
+    return results.map((row) => ({ id: row.id, ts: row.ts, tool: row.tool, query: row.query, role: row.role, hits: row.hits, country: row.country, asOrg: row.as_org }))
+  }
 }
 
 export class MemoryStore implements DossierStore {
   entries: DossierEntry[] = []
   proposals: Proposal[] = []
-  gaps: { question: string; when: string; reason: string }[] = []
+  gaps: (AskGap & { resolvedAt?: number | null; resolution?: Resolution | null; entryId?: number | null })[] = []
+  calls: ToolCallRow[] = []
   private nextId = 1
 
   private matches = (entry: DossierEntry, filter: EntryFilter) =>
@@ -188,8 +232,37 @@ export class MemoryStore implements DossierStore {
     Object.assign(proposal, { status, decisionNote: note, updatedAt: now })
     return proposal
   }
-  async askGaps(limit: number) { return this.gaps.slice(0, limit) }
+  private shapeGap = ({ id, question, when, reason, page, answer }: AskGap): AskGap => ({ id, question, when, reason, page, answer })
+  async askGaps(limit: number) { return this.gaps.filter((gap) => !gap.resolvedAt).slice(0, limit).map(this.shapeGap) }
+  async getAskGap(id: number) { const gap = this.gaps.find((item) => item.id === id && !item.resolvedAt); return gap ? this.shapeGap(gap) : null }
+  async resolveAskGap(id: number, resolution: Resolution, entryId: number | null, now: number) {
+    const gap = this.gaps.find((item) => item.id === id && !item.resolvedAt)
+    if (!gap) return false
+    Object.assign(gap, { resolvedAt: now, resolution, entryId })
+    return true
+  }
   linkedin: LinkedInRecord | null = null
   async getLinkedIn() { return this.linkedin }
   async saveLinkedIn(json: string, source: string, now: number) { this.linkedin = { json, source, importedAt: now } }
+  async logToolCall(call: ToolCall) { this.calls.push({ id: this.calls.length + 1, ...call }) }
+  async toolCalls(since: number, limit: number) { return this.calls.filter((call) => call.ts >= since).sort((a, b) => b.ts - a.ts).slice(0, limit) }
+}
+
+// The dossier as the public server sees it: public entries only, and nothing can be
+// changed. Writes are refused rather than hidden, so a tool that reaches one by
+// mistake fails loudly.
+export class ReadOnlyError extends Error { constructor() { super('This server is read-only: it serves what Steven published and nothing else.') } }
+export const publicView = (store: DossierStore): DossierStore => {
+  const refuse = () => Promise.reject(new ReadOnlyError())
+  return {
+    list: (filter) => store.list({ ...filter, visibility: 'public' }),
+    get: async (id) => { const entry = await store.get(id); return entry?.visibility === 'public' ? entry : null },
+    search: (terms, filter, limit) => store.search(terms, { ...filter, visibility: 'public' }, limit),
+    insert: refuse, update: refuse, remove: refuse,
+    listProposals: async () => [], insertProposal: refuse, decideProposal: refuse,
+    askGaps: async () => [], getAskGap: async () => null, resolveAskGap: refuse,
+    getLinkedIn: async () => null, saveLinkedIn: refuse,
+    logToolCall: (call) => store.logToolCall(call),
+    toolCalls: async () => [],
+  }
 }

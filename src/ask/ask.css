@@ -120,4 +120,28 @@ html.ask-docked .ask-panel { box-shadow: none; }
   .ask-panel, .ask-backdrop, html.ask-docked body, .ask-fab, .ask-chip, .ask-send { transition: none; }
   .ask-log { scroll-behavior: auto; }
 }
+/* The job-description check: a chip to start it, a bigger box to paste into, and the
+   posting shown back as a compact card in the conversation. */
+.ask-chip-fit { display: inline-flex; align-items: center; gap: 7px; border-color: color-mix(in srgb, var(--green) 45%, transparent); background: color-mix(in srgb, var(--green) 10%, var(--card)); }
+.ask-chip-fit svg { color: var(--green); flex: none; }
+.ask-bubble-jd { display: grid; gap: 4px; max-width: 92%; }
+.ask-jd-label { font: 11px 'DM Mono', monospace; letter-spacing: .4px; text-transform: uppercase; opacity: .85; }
+.ask-jd-excerpt { font-size: 13.5px; line-height: 1.4; opacity: .92; }
+.ask-fit { display: grid; gap: 8px; }
+.ask-fit-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 12px; color: var(--muted); }
+.ask-fit-head strong { font-size: 14px; color: var(--ink); }
+.ask-fit textarea { width: 100%; min-height: 150px; max-height: 40vh; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--ink); font: inherit; font-size: 14px; line-height: 1.45; resize: vertical; outline: none; box-sizing: border-box; transition: border-color 160ms ease, box-shadow 160ms ease; }
+.ask-fit textarea::placeholder { color: var(--muted); }
+.ask-fit textarea:focus { border-color: var(--green); box-shadow: 0 0 0 4px rgba(var(--ring-rgb), .14); }
+.ask-fit-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ask-foot-text { flex: 1; text-align: center; font-size: 11px; color: var(--muted); }
+.ask-fit-send { padding: 10px 16px; border: 0; border-radius: 999px; background: var(--green); color: var(--on-green); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; transition: transform 140ms var(--ask-ease), opacity 160ms ease; }
+.ask-fit-send:hover:not(:disabled) { transform: translateY(-1px); }
+.ask-fit-send:disabled { opacity: .35; cursor: default; }
+.ask-fit-send:focus-visible, .ask-ghost:focus-visible, .ask-foot-link:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+.ask-ghost { padding: 8px 2px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+.ask-ghost:hover { color: var(--ink); }
+.ask-foot-link { padding: 0; border: 0; background: transparent; color: var(--green); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.ask-foot-link:disabled { opacity: .5; cursor: default; }
+
 @media print { .ask-fab, .ask-panel, .ask-backdrop { display: none; } }

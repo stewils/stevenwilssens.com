@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Env } from '../env'
 import { MemoryStore } from '../mcp/store'
-import { answerIsOurs, ask, askStatus, costMicro, feedback, HEADER, parseBody, redact, signAnswer, words, type StreamFactory } from './agent'
+import { answerIsOurs, ask, askStatus, costMicro, feedback, HEADER, MAX_JD, missingRequirements, parseBody, redact, signAnswer, words, type StreamFactory } from './agent'
 import { articlePages, articleText, dossierText, loadArticles, sources, systemPrompt } from './prompt'
 import { MemoryAskStore } from './store'
 
@@ -154,7 +154,7 @@ describe('answering', () => {
 
   it('gives the model the Building write-ups read from the site, and answers without them when they cannot be read', async () => {
     const systems: string[] = []
-    const capture: StreamFactory = (system, context, messages) => { systems.push(system); return scripted('[[in: site:building]]\n\nThe loop.')(system, context, messages) }
+    const capture: StreamFactory = (system, context, messages, options) => { systems.push(system); return scripted('[[in: site:building]]\n\nThe loop.')(system, context, messages, options) }
     const pages = async (path: string) => `# Page ${path}\n\nThe write-up at ${path}.\n\n---\n\nfooter\n`
     await (await ask(post({ messages: [{ role: 'user', content: 'How is the site built?' }], page: 'building-this-site' }), { ...deps(capture), pages })).text()
     expect(systems[0]).toContain('The write-up at /building-this-site.md.')
@@ -225,5 +225,90 @@ describe('answering', () => {
     expect((await vote({ question: 'q' })).status).toBe(400)
     expect(store.voteRows).toEqual([{ day: '2026-10-17', helpful: 1, unhelpful: 1 }])
     expect(store.saved).toEqual([expect.objectContaining({ reason: 'unhelpful', question: 'q', answer: 'a', page: 'home' })])
+  })
+})
+
+describe('the fit check', () => {
+  const posting = 'Director of Product Management, Data Platform\n\nRequirements:\n- Led a product management organization\n- Experimentation at scale\n- Hands-on SQL and Python\n- Consumer subscription products'
+
+  it('accepts a long job description only when the turn says it is one', () => {
+    const long = 'x'.repeat(3000)
+    expect(parseBody({ messages: [{ role: 'user', content: long }] })).toBe('tooLong')
+    expect(parseBody({ messages: [{ role: 'user', content: long, kind: 'fit' }] })).toMatchObject({ messages: [{ role: 'user', content: long, kind: 'fit' }] })
+    expect(parseBody({ messages: [{ role: 'user', content: 'x'.repeat(MAX_JD + 1), kind: 'fit' }] })).toBe('tooLong')
+    expect(parseBody({ messages: [{ role: 'user', content: 'short', kind: 'nonsense' }] })).toMatchObject({ messages: [{ role: 'user', content: 'short' }] })
+  })
+
+  it('compares the posting with the record and saves the requirements it does not show as questions for Steven', async () => {
+    const store = new MemoryAskStore()
+    const answer = "[[in: role:windows-devices-data, role:csx-data, site:recommendations, site:patents]]\n\n**Covered**\n- Led a product management organization: Steven led 10 to 20 PMs (Windows & Devices Data).\n**Partly covered**\n- None\n**Not shown on the site**\n- Hands-on SQL and Python\n- Consumer subscription products\n**Ask Steven**\n1. Which analytics did he build himself?"
+    let seen: { content: unknown }[] = []
+    let options: unknown
+    const stream: StreamFactory = (system, context, messages, opts) => { seen = messages; options = opts; return scripted(answer)(system, context, messages, opts) }
+    const list = await events(await ask(post({ messages: [{ role: 'user', content: posting, kind: 'fit' }], page: 'home' }), deps(stream, store)))
+    // Up to six sources on a fit check, the posting is framed for the model, and the answer gets more room.
+    expect((list[0].data.sources as unknown[]).length).toBe(4)
+    expect(String(seen[0].content)).toMatch(/^Job description to check against Steven's record:\n\nDirector of Product Management/)
+    expect(options).toEqual({ maxTokens: 2200 })
+    expect(answerOf(list)).toContain('**Not shown on the site**')
+    expect(store.saved.map((q) => [q.reason, q.question, q.answer, q.page])).toEqual([['fit', 'Hands-on SQL and Python', null, 'home'], ['fit', 'Consumer subscription products', null, 'home']])
+    expect(store.rows[0]).toMatchObject({ outcome: 'answered', questions: 1 })
+    const done = list[list.length - 1]
+    expect(done.data.id).toBeNull()
+    expect(await answerIsOurs(env, posting, { content: answerOf(list), sources: done.data.sources as string[], id: null, sig: done.data.sig as string })).toBe(true)
+  })
+
+  it('tells the reader when the text is not a posting, and counts a check with no match as a gap', async () => {
+    const store = new MemoryAskStore()
+    const list = await events(await ask(post({ messages: [{ role: 'user', content: 'Roses are red, violets are blue', kind: 'fit' }] }), deps(scripted('[[out]]'), store)))
+    expect(answerOf(list)).toBe(words.notAPosting)
+    expect(store.rows[0]).toMatchObject({ outcome: 'off' })
+    const none = new MemoryAskStore()
+    await events(await ask(post({ messages: [{ role: 'user', content: posting, kind: 'fit' }] }), deps(scripted('[[in: none]]\n\n**Covered**\n- None\n**Partly covered**\n- None\n**Not shown on the site**\n- Everything in the posting\n**Ask Steven**\n1. Anything.'), none)))
+    expect(none.rows[0]).toMatchObject({ outcome: 'gap' })
+    expect(none.saved.map((q) => q.question)).toEqual(['Everything in the posting'])
+  })
+
+  it('reads the requirements under "Not shown on the site" and nothing else', () => {
+    expect(missingRequirements('**Covered**\n- A: fact\n**Partly covered**\n- B\n**Not shown on the site**\n- C: detail.\n- **D**\n- None\n**Ask Steven**\n1. Q')).toEqual(['C: detail', 'D'])
+    expect(missingRequirements('**Covered**\n- A')).toEqual([])
+    expect(missingRequirements('**Not shown on the site**\n- None\n**Ask Steven**\n1. Q')).toEqual([])
+    expect(missingRequirements(`**Not shown on the site**\n${Array.from({ length: 12 }, (_, i) => `- Requirement ${i}`).join('\n')}`)).toHaveLength(8)
+  })
+
+  it('keeps only the size and the first words of a posting when a fit check is voted down', async () => {
+    const store = new MemoryAskStore()
+    const long = `${posting}\n${'More requirements. '.repeat(80)}`
+    const sig = await signAnswer(env, long, 'a', [], null)
+    expect((await feedback(post({ helpful: false, question: long, answer: 'a', sources: [], id: null, sig, page: 'home' }), { env, store, now: () => now })).status).toBe(200)
+    expect(store.saved[0].question).toMatch(/^Job description \(\d+ characters\): Director of Product Management, Data Platform/)
+    expect(store.saved[0].question.length).toBeLessThan(320)
+  })
+})
+
+describe('the report card', () => {
+  it('sums the whole life of the assistant and counts the gaps Steven closed', async () => {
+    const { assistantReport } = await import('./report')
+    const store = new MemoryAskStore()
+    const dossier = new MemoryStore()
+    await store.recordUsage('2026-10-01', 'answered', { input: 100, output: 50, cacheRead: 0, cacheWrite: 0 }, 3000, 800, 2000)
+    await store.recordUsage('2026-10-02', 'answered', { input: 100, output: 50, cacheRead: 0, cacheWrite: 0 }, 3000, 1200, 2000)
+    await store.recordUsage('2026-10-02', 'gap', { input: 100, output: 50, cacheRead: 0, cacheWrite: 0 }, 2000, 1000, 2000)
+    await store.recordUsage('2026-10-03', 'off', { input: 10, output: 0, cacheRead: 0, cacheWrite: 0 }, 100, 0, 100)
+    await store.recordUsage('2026-10-03', 'limited', { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, 0, 0, 0)
+    await store.recordUsage('2026-10-03', 'failed', { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, 0, 0, 0)
+    await store.recordVote('2026-10-02', true)
+    await store.recordVote('2026-10-02', false)
+    const first = await store.saveQuestion({ ts: now, reason: 'gap', page: 'home', question: 'q1', answer: 'a', country: null, asOrg: null }, 86_400_000)
+    await store.saveQuestion({ ts: now, reason: 'fit', page: 'home', question: 'req', answer: null, country: null, asOrg: null }, 86_400_000)
+    await store.saveQuestion({ ts: now, reason: 'unhelpful', page: 'home', question: 'q3', answer: 'a', country: null, asOrg: null }, 86_400_000)
+    store.saved[first - 1].resolvedAt = now
+    store.saved[first - 1].resolution = 'answered'
+    await dossier.insert({ role: 'general', topic: 'now', title: 't', body: 'b', visibility: 'public', tags: null }, now)
+    await dossier.insert({ role: 'general', topic: 'now', title: 't', body: 'b', visibility: 'private', tags: null }, now)
+    const report = await assistantReport(store, dossier, now)
+    expect(report).toMatchObject({ since: '2026-10-01', questions: 4, answered: 2, gaps: 1, offTopic: 1, turnedAway: 1, gapsCovered: 1, gapsOpen: 1, helpful: 1, unhelpful: 1, costMicro: 8100, costPerAnswerMicro: 2700, msFirstAvg: 1000, publicNotes: 1, generatedAt: now })
+    expect(await store.questions(0, 10)).toHaveLength(2)
+    expect(await store.resolvedCounts(0)).toEqual({ answered: 1, dismissed: 0 })
   })
 })

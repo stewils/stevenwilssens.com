@@ -240,6 +240,7 @@ tr.detail p { margin: 0 0 4px; }
 .badge.download, .badge.ai-assistant, .badge.approved, .badge.applied { background: var(--green); color: var(--on-green); }
 .badge.applied { opacity: 0.6; }
 .badge.unhelpful, .badge.error { background: var(--poor-bg); color: var(--bad); }
+.badge.fit { background: var(--warn-bg); color: var(--warn-ink); }
 .badge.warn { background: var(--warn-bg); color: var(--warn-ink); }
 .badge.info { background: var(--series-track); color: var(--muted); }
 
