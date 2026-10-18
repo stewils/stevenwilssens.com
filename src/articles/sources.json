@@ -1,0 +1,35 @@
+{
+  "_comment": "The projects behind the Building write-ups. repository and sources: what the Site update workflow reads after a check-in on the project (its CLAUDE.md first). feed: where the project's site answers its live numbers (own = this site's database, functions/_lib/building.ts); feed.json next to each article holds the numbers as of the last refresh. A project without an article is listed so its check-ins are noticed once the write-up exists.",
+  "wilssens": {
+    "name": "wilssens.com",
+    "repository": "stewils/wilssens.com",
+    "page": "building-wilssens",
+    "article": "src/articles/wilssens/WilssensArticle.tsx",
+    "sources": ["CLAUDE.md", "README.md", "docs"],
+    "feed": "https://www.wilssens.com/api/building"
+  },
+  "aibreaker": {
+    "name": "AI Breaker",
+    "repository": "stewils/ai-breaker",
+    "page": "building-aibreaker",
+    "article": "src/articles/aibreaker/AIBreakerArticle.tsx",
+    "sources": ["CLAUDE.md", "website/CLAUDE.md", "specs", "Docs", "website/functions/_content/how-it-works.html"],
+    "feed": "https://aibreaker.org/api/building"
+  },
+  "site": {
+    "name": "steven.wilssens.com",
+    "repository": "stewils/stevenwilssens.com",
+    "page": "building-this-site",
+    "article": "src/articles/site/SiteArticle.tsx",
+    "sources": ["CLAUDE.md", "README.md"],
+    "feed": "own"
+  },
+  "juniortrackcycling": {
+    "name": "Junior Track Cycling",
+    "repository": "stewils/juniortrackcycling",
+    "page": null,
+    "article": null,
+    "sources": ["CLAUDE.md", "PRODUCT.md", "DESIGN.md", "docs"],
+    "feed": null
+  }
+}

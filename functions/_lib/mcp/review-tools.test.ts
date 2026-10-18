@@ -22,6 +22,7 @@ const fakeGitHub = () => {
     runs: async () => [{ id: 1, status: 'completed', conclusion: 'success', createdAt: '2026-10-17T00:00:00Z', url: 'https://github.com/x/runs/1', branch: 'update/team-size-1', title: 'Team size' }],
     pulls: async () => [pullSeven, pullNine],
     pull: async (number) => number === 7 ? pullSeven : number === 9 ? pullNine : null,
+    mergedPulls: async () => 5,
     merge: async (number) => { calls.merged.push(number); return { merged: true, message: 'Pull Request successfully merged', sha: 'abc' } },
   }
   return { github, calls }

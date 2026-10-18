@@ -7,6 +7,8 @@ import cliOwner from '../../assets/articles/wilssens/cli-owner.jpg'
 import cliAdmin from '../../assets/articles/wilssens/cli-admin.jpg'
 import { ActionCardsDiagram, ArchitectureDiagram, ExperimentLoopDiagram, HelpPathDiagram, LifecycleDiagram, MailBeforeAfterDiagram, PublishGateDiagram, SafetyPillarsDiagram, ThreeWaysDiagram } from './Diagrams'
 import { enhanceArticle } from './article'
+import { Stats, type Stat } from './Stats'
+import feed from './feed.json'
 import './article.css'
 
 // The write-up of how wilssens.com was built, linked from /projects.
@@ -31,8 +33,9 @@ const sections = [
 const articleUrl = 'https://steven.wilssens.com/building-wilssens'
 const linkedInShare = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(articleUrl)}`
 
-// Outcomes, not effort, as of 15 October 2026. [value, prefix, decimals, label]
-const stats: [number, string, number, string][] = [[3, '', 0, 'family mailboxes moved off Microsoft 365'], [5, '', 0, 'websites live on the family domain'], [16, '', 0, 'questions to the help assistant this month'], [1.26, '$', 2, 'AI help cost this month, of a $25 cap']]
+// Outcomes, not effort: the project's live numbers (feed.json as of the last refresh, today's from
+// www.wilssens.com/api/building once the page loads). [key in the feed, prefix, decimals, label]
+const stats: Stat[] = [['mailboxes', '', 0, 'family mailboxes hosted at Zoho'], ['sitesLive', '', 0, 'websites live on the family domain'], ['helpQuestionsThisMonth', '', 0, 'questions to the help assistant this month'], ['helpCostThisMonth', '$', 2, `AI help cost this month, of a $${feed.numbers.helpBudgetUsd} cap`]]
 
 const Figure = ({ children, caption }: { children: ReactNode; caption: string }) => <figure className="wx-figure wx-diagram"><div className="wx-diagram-scroll" role="group" aria-label={caption} tabIndex={0}>{children}</div><figcaption>{caption}</figcaption></figure>
 
@@ -61,7 +64,7 @@ export default function WilssensArticle() {
       <p className="wx-dek">A multi-tenant hosting and email platform built in 16 days: how a search box became mailboxes, isolated websites, MCP-based AI apps and a command line, and the rules that kept it safe.</p>
       <p className="wx-ticker" role="img" aria-label="name@wilssens.com"><span className="wx-ticker-names" aria-hidden="true">{['jan', 'emma', 'lotte', 'marc', 'an'].map((name) => <span key={name}>{name}</span>)}</span><span className="wx-ticker-domain" aria-hidden="true">@wilssens.com</span></p>
       <p className="wx-meta">Steven Wilssens · October 2026 · <span data-read-time>15 min read</span></p>
-      <dl className="wx-stats">{stats.map(([value, prefix, decimals, label]) => <div key={label}><dt>{prefix}<span data-count={value} data-decimals={decimals}>{value.toFixed(decimals)}</span></dt><dd>{label}</dd></div>)}</dl>
+      <Stats project="wilssens" feed={feed} items={stats} />
       <div className="wx-actions">
         <a className="primary-button" href="https://www.wilssens.com" target="_blank" rel="noreferrer">Visit wilssens.com ↗</a>
         <a className="text-link" href={linkedInShare} target="_blank" rel="noreferrer">Share on LinkedIn ↗</a>

@@ -55,6 +55,7 @@ rather than a failure, so the gate still catches the admin, the core pages and a
 | `functions/api/collect.ts` | `POST /api/collect`: validates events, adds location/network/device, writes to D1 |
 | `functions/api/stats.ts` | `GET /api/stats?days=30&tz=<minutes>`: dashboard data, requires `Authorization: Bearer <ADMIN_TOKEN>` |
 | `functions/api/mcp.ts` | `GET /api/mcp`: the owner link, dossier counts and résumé proposals for the dashboard (admin token) |
+| `functions/api/building/[project].ts` | `GET /api/building/<project>`: the live numbers in a Building write-up's header (`src/articles/sources.json`), from this site's database (`site`) or the project's own site; public, cached five minutes |
 | `functions/api/resume.ts` | `GET /api/resume`: this deployment's résumé report and the score of every résumé that went live (admin token); see Updating the resume |
 | `functions/mcp.ts`, `functions/mcp/[[path]].ts` | `/mcp/<owner key>`: the private MCP server, implemented in `functions/_lib/mcp/` |
 | `migrations/` | D1 schema migrations |

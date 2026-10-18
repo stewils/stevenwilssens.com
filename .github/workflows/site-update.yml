@@ -1,12 +1,18 @@
 # Site update: Claude Code changes the site and the resume on a branch and opens a
-# pull request. Started by the private MCP server (request_site_update) or by hand
-# from the Actions tab. The deploy workflow then builds a preview for the branch.
+# pull request. Started by the private MCP server (request_site_update), by hand from
+# the Actions tab, or by a check-in on a project this site has a Building write-up
+# about: the project's "Building write-up" workflow sends a repository_dispatch after
+# every push to its main branch, and scripts/building-brief.mjs turns it into the
+# instruction to refresh the article from the project's CLAUDE.md and the commits.
+# The deploy workflow then builds a preview for the branch.
 #
 # Secrets: ANTHROPIC_API_KEY (or CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`)
-# for Claude Code. Everything else uses the built-in GITHUB_TOKEN: pushes made with
-# it do not start other workflows, so this one dispatches the Deploy workflow for the
-# branch itself to get the preview. The repository must allow Actions to create pull
-# requests (Settings → Actions → General → Workflow permissions).
+# for Claude Code; BUILDING_TOKEN, a fine-grained token that reads the project
+# repositories in src/articles/sources.json, for the write-up refresh. Everything else
+# uses the built-in GITHUB_TOKEN: pushes made with it do not start other workflows, so
+# this one dispatches the Deploy workflow for the branch itself to get the preview. The
+# repository must allow Actions to create pull requests (Settings → Actions → General →
+# Workflow permissions).
 name: Site update
 
 on:
@@ -20,6 +26,8 @@ on:
         description: 'Short title for the branch and the pull request'
         required: true
         type: string
+  repository_dispatch:
+    types: [building-source-changed]
 
 concurrency:
   group: site-update
@@ -32,7 +40,36 @@ permissions:
   id-token: write
 
 jobs:
+  # What Claude Code is asked to do: the inputs as given, or, after a check-in on a
+  # project, the brief to refresh its write-up. A check-in on a project without a
+  # write-up ends here with a warning.
+  brief:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.brief.outputs.skip }}
+      title: ${{ steps.brief.outputs.title }}
+      instruction: ${{ steps.brief.outputs.instruction }}
+      project: ${{ steps.brief.outputs.project }}
+      repository: ${{ steps.brief.outputs.repository }}
+      ref: ${{ steps.brief.outputs.ref }}
+      before: ${{ steps.brief.outputs.before }}
+      sources: ${{ steps.brief.outputs.sources }}
+      origin: ${{ steps.brief.outputs.origin }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - id: brief
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_TITLE: ${{ inputs.title }}
+          INPUT_INSTRUCTION: ${{ inputs.instruction }}
+          PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        run: node scripts/building-brief.mjs
+
   update:
+    needs: brief
+    if: needs.brief.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -53,7 +90,7 @@ jobs:
       - name: Create the branch
         id: branch
         env:
-          TITLE: ${{ inputs.title }}
+          TITLE: ${{ needs.brief.outputs.title }}
         run: |
           slug=$(printf '%s' "$TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]\+/-/g; s/^-//; s/-$//' | cut -c1-40)
           branch="update/${slug:-change}-${GITHUB_RUN_NUMBER}"
@@ -61,6 +98,47 @@ jobs:
           git config user.name "Steven Wilssens (via Claude)"
           git config user.email "steven@wilssens.com"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      # A write-up refresh: the project's repository at the commit that was pushed, so
+      # Claude reads CLAUDE.md and the other sources as they are now (sources/ is ignored
+      # by git); what changed since the push before; and the project's live numbers for
+      # the article's header (feed.json, which is committed with the article).
+      - name: Check out the project
+        if: needs.brief.outputs.project != ''
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ needs.brief.outputs.repository }}
+          ref: ${{ needs.brief.outputs.ref }}
+          token: ${{ secrets.BUILDING_TOKEN }}
+          path: sources/${{ needs.brief.outputs.project }}
+          fetch-depth: 0
+      - name: What changed in the project
+        if: needs.brief.outputs.project != ''
+        env:
+          PROJECT: ${{ needs.brief.outputs.project }}
+          REF: ${{ needs.brief.outputs.ref }}
+          BEFORE: ${{ needs.brief.outputs.before }}
+          SOURCES: ${{ needs.brief.outputs.sources }}
+        run: |
+          cd "sources/$PROJECT"
+          # shellcheck disable=SC2086
+          if [ -n "$BEFORE" ] && git cat-file -e "$BEFORE" 2>/dev/null; then
+            git log --format='%h %ad %s%n%b' --date=short "$BEFORE".."$REF" > "../$PROJECT.log"
+            git diff "$BEFORE" "$REF" -- $SOURCES > "../$PROJECT.diff"
+          else
+            git log -1 --format='%h %ad %s%n%b' --date=short "$REF" > "../$PROJECT.log"
+            git show --stat --format='%h %s' "$REF" > "../$PROJECT.diff"
+          fi
+          cd ../..
+          echo "Commits:"; cat "sources/$PROJECT.log"
+          echo "Changed lines in the sources: $(grep -c '^[-+][^-+]' "sources/$PROJECT.diff" || true)"
+          folder=$(node -e "const s=require('./src/articles/sources.json')[process.argv[1]]; process.stdout.write(s.article.replace(/\/[^/]+$/, ''))" "$PROJECT")
+          if curl -fsS --max-time 20 "https://steven.wilssens.com/api/building/$PROJECT" -o /tmp/feed.json && node -e "const f=JSON.parse(require('fs').readFileSync('/tmp/feed.json','utf8')); if (!f.numbers) process.exit(1); require('fs').writeFileSync(process.argv[1], JSON.stringify({ project: f.project, asOf: f.asOf, numbers: f.numbers }, null, 2) + '\n')" "$folder/feed.json"; then
+            echo "Live numbers:"; cat "$folder/feed.json"
+          else
+            echo "::warning::The live numbers for $PROJECT could not be fetched; the article keeps the ones from the last refresh."
+            git checkout -- "$folder/feed.json" || true
+          fi
 
       # The score the change is measured against: main's resume, scored against main's data,
       # before anything is touched. The pull request and the email say whether the update
@@ -83,7 +161,7 @@ jobs:
             You are updating steven.wilssens.com, Steven Wilssens's resume site. Read CLAUDE.md first and follow it.
 
             Steven's instruction:
-            ${{ inputs.instruction }}
+            ${{ needs.brief.outputs.instruction }}
 
             Rules for this change:
             - Facts about Steven (roles, bullets, headline, summary, skills, impact numbers, selected work, location, authorization) live in src/resume.ts. Change them there, not in App.tsx.
@@ -99,8 +177,9 @@ jobs:
         id: commit
         env:
           BRANCH: ${{ steps.branch.outputs.branch }}
-          TITLE: ${{ inputs.title }}
-          INSTRUCTION: ${{ inputs.instruction }}
+          TITLE: ${{ needs.brief.outputs.title }}
+          INSTRUCTION: ${{ needs.brief.outputs.instruction }}
+          ORIGIN: ${{ needs.brief.outputs.origin }}
         run: |
           set -e
           if git diff --quiet && [ -z "$(git status --porcelain)" ]; then
@@ -111,7 +190,7 @@ jobs:
           status=passed
           (npm run lint && npm test && npm run build) || status=failed
           git add -A
-          git commit -m "$TITLE" -m "$INSTRUCTION" -m "Requested through the MCP server; made by Claude Code in the Site update workflow (run ${GITHUB_RUN_ID})." -m "Co-Authored-By: Claude <noreply@anthropic.com>"
+          git commit -m "$TITLE" -m "$INSTRUCTION" -m "Requested through $ORIGIN; made by Claude Code in the Site update workflow (run ${GITHUB_RUN_ID})." -m "Co-Authored-By: Claude <noreply@anthropic.com>"
           git push -u origin "$BRANCH"
           echo "changed=true" >> "$GITHUB_OUTPUT"
           echo "checks=$status" >> "$GITHUB_OUTPUT"
@@ -152,8 +231,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ steps.branch.outputs.branch }}
-          TITLE: ${{ inputs.title }}
-          INSTRUCTION: ${{ inputs.instruction }}
+          TITLE: ${{ needs.brief.outputs.title }}
+          INSTRUCTION: ${{ needs.brief.outputs.instruction }}
+          ORIGIN: ${{ needs.brief.outputs.origin }}
           CHECKS: ${{ steps.commit.outputs.checks }}
           SCORE_LINE: ${{ steps.score.outputs.line }}
           SCORE_LOWER: ${{ steps.score.outputs.lower }}
@@ -174,7 +254,7 @@ jobs:
             "**Resume score:** ${SCORE_LINE:-unknown} (100 is the best a recruiter, an ATS and an editor would score it; see scripts/resume-check.mjs)" \
             "**Checks in this run:** $CHECKS (lint, tests, build). Preview, once the Deploy workflow for this branch finishes: https://$alias.stevenwilssens.pages.dev" \
             "Merging deploys to production. Review the resume PDF in the branch before merging." \
-            "🤖 Generated with [Claude Code](https://claude.com/claude-code) from a request made through the MCP server." \
+            "🤖 Generated with [Claude Code](https://claude.com/claude-code) from $ORIGIN." \
             "$marker")
           url=$(gh pr create --base main --head "$BRANCH" --title "$TITLE" --body "$body")
           # A push made with the built-in token starts no workflow, so start the preview build explicitly.
@@ -198,6 +278,6 @@ jobs:
           ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
           PR_URL: ${{ steps.pr.outputs.url }}
           PREVIEW: ${{ steps.pr.outputs.preview }}
-          TITLE: ${{ inputs.title }}
-          INSTRUCTION: ${{ inputs.instruction }}
+          TITLE: ${{ needs.brief.outputs.title }}
+          INSTRUCTION: ${{ needs.brief.outputs.instruction }}
         run: node scripts/resume-mail.mjs review --before origin/main --after HEAD --report /tmp/resume-after.json --new-findings /tmp/resume-new-findings.txt --title "$TITLE" --instruction "$INSTRUCTION" --pr "$PR_URL" --preview "$PREVIEW" --run-url "https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

@@ -1,0 +1,33 @@
+# Tells steven.wilssens.com that this project changed, so its "Building steven.wilssens.com"
+# write-up can be refreshed from CLAUDE.md: the Site update workflow there reads the pushed
+# commits and the files, and opens a pull request when the write-up needs a change.
+# Secret: BUILDING_TOKEN, a fine-grained token with Contents: read and write on
+# stewils/stevenwilssens.com (repository_dispatch needs write). Without it, nothing happens.
+name: Building write-up
+
+on:
+  push:
+    branches: [main]
+    paths: ['CLAUDE.md', 'README.md']
+
+permissions: {}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tell steven.wilssens.com
+        env:
+          TOKEN: ${{ secrets.BUILDING_TOKEN }}
+          PROJECT: site
+          BEFORE: ${{ github.event.before }}
+          COMPARE: ${{ github.event.compare }}
+          SUBJECT: ${{ github.event.head_commit.message }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "::warning::BUILDING_TOKEN is not set; steven.wilssens.com was not told about this push."; exit 0; fi
+          payload=$(jq -cn --arg project "$PROJECT" --arg repository "$GITHUB_REPOSITORY" --arg before "$BEFORE" --arg sha "$GITHUB_SHA" --arg compare "$COMPARE" --arg subject "$(printf '%s' "$SUBJECT" | head -n 1)" \
+            '{event_type: "building-source-changed", client_payload: {project: $project, repository: $repository, before: $before, sha: $sha, compare: $compare, subject: $subject}}')
+          curl -fsS -X POST "https://api.github.com/repos/stewils/stevenwilssens.com/dispatches" \
+            -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" \
+            -d "$payload"
+          echo "steven.wilssens.com was told: $PROJECT changed in ${GITHUB_SHA::7}."

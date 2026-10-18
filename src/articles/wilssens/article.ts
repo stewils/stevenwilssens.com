@@ -4,6 +4,21 @@
 
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 
+// The day a feed's numbers were read, as a date (in UTC, the same on the server and in every browser).
+export const feedDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+
+// Counts a headline number from one value to another over about a second.
+const countTo = (element: HTMLElement, target: number, from: number) => {
+  const decimals = Number(element.dataset.decimals ?? 0)
+  const start = performance.now(), duration = 1100
+  const tick = (now: number) => {
+    const t = Math.min(1, (now - start) / duration)
+    element.textContent = (from + (target - from) * (1 - Math.pow(1 - t, 3))).toFixed(decimals)
+    if (t < 1) requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+}
+
 export function enhanceArticle(root: HTMLElement): () => void {
   const cleanups: (() => void)[] = []
   const motion = !reducedMotion() && 'IntersectionObserver' in window
@@ -71,19 +86,35 @@ export function enhanceArticle(root: HTMLElement): () => void {
       entries.filter((entry) => entry.isIntersecting).forEach((entry) => {
         const element = entry.target as HTMLElement
         counters.unobserve(element)
-        const target = Number(element.dataset.count)
-        const decimals = Number(element.dataset.decimals ?? 0)
-        const start = performance.now(), duration = 1100
-        const tick = (now: number) => {
-          const t = Math.min(1, (now - start) / duration)
-          element.textContent = (target * (1 - Math.pow(1 - t, 3))).toFixed(decimals)
-          if (t < 1) requestAnimationFrame(tick)
-        }
-        requestAnimationFrame(tick)
+        element.dataset.counted = ''
+        countTo(element, Number(element.dataset.count), 0)
       })
     })
     root.querySelectorAll('[data-count]').forEach((element) => counters.observe(element))
     cleanups.push(() => counters.disconnect())
+  }
+
+  // The headline numbers are the project's as of the last refresh (feed.json, written into the
+  // page); the live ones come from the project's own database through /api/building/<project>.
+  // A figure already on screen counts on to today's value; one not yet shown starts from it.
+  const stats = root.querySelector<HTMLElement>('[data-feed]')
+  if (stats?.dataset.feed && typeof fetch === 'function') {
+    const controller = new AbortController()
+    cleanups.push(() => controller.abort())
+    fetch(stats.dataset.feed, { headers: { Accept: 'application/json' }, signal: controller.signal }).then((response) => response.ok ? response.json() : null).then((feed: { asOf?: string; numbers?: Record<string, unknown> } | null) => {
+      if (!feed?.numbers) return
+      stats.querySelectorAll<HTMLElement>('[data-stat]').forEach((element) => {
+        const value = feed.numbers![element.dataset.stat!]
+        if (typeof value !== 'number' || !Number.isFinite(value) || value === Number(element.dataset.count)) return
+        const shown = Number(element.dataset.count)
+        element.dataset.count = String(value)
+        if (!motion) element.textContent = value.toFixed(Number(element.dataset.decimals ?? 0))
+        else if ('counted' in element.dataset) countTo(element, value, shown)
+      })
+      // The sentence's full stop sits inside the span, so the Markdown copy reads as one sentence.
+      const date = root.querySelector('[data-feed-date]')
+      if (date && feed.asOf && !Number.isNaN(Date.parse(feed.asOf))) date.textContent = `${feedDate(feed.asOf)}.`
+    }).catch(() => undefined)
   }
 
   // Screenshots open full size in a dialog.

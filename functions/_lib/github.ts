@@ -17,6 +17,8 @@ export type GitHub = {
   runs(workflow: string, limit: number): Promise<WorkflowRun[]>
   pulls(state?: 'open' | 'closed' | 'all'): Promise<PullRequest[]>
   pull(number: number): Promise<PullRequest | null>
+  // How many closed pull requests from branches with this prefix were merged (the site's own Building feed).
+  mergedPulls(branchPrefix: string): Promise<number>
   merge(number: number): Promise<{ merged: boolean; message: string; sha?: string }>
 }
 
@@ -58,6 +60,10 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
     },
     pulls: async (state = 'open') => ((await api(`/pulls?state=${state}&per_page=20&sort=created&direction=desc`)) as unknown as Record<string, unknown>[]).map(shapePull),
     pull: async (number) => { try { return shapePull((await api(`/pulls/${number}`)) as Record<string, unknown>) } catch (error) { if (String(error).includes(' 404 ')) return null; throw error } },
+    mergedPulls: async (branchPrefix) => {
+      const closed = (await api(`/pulls?state=closed&per_page=100&sort=created&direction=desc`)) as unknown as Record<string, unknown>[]
+      return closed.filter((pull) => pull.merged_at && String((pull.head as Record<string, unknown>)?.ref ?? '').startsWith(branchPrefix)).length
+    },
     merge: async (number) => {
       const body = await api(`/pulls/${number}/merge`, { method: 'PUT', body: JSON.stringify({ merge_method: 'merge' }) }) as { merged: boolean; message: string; sha?: string }
       return { merged: body.merged, message: body.message, sha: body.sha }

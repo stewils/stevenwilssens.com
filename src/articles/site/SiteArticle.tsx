@@ -5,7 +5,9 @@ import { openAsk } from '../../ask/open'
 import { LoopDiagram, ResumeGateDiagram, SourceOfTruthDiagram } from './Diagrams'
 // The reading tools (progress bar, contents, counters, lightbox) and the styles are
 // shared with the wilssens.com write-up; both articles use the same .wx classes.
-import { enhanceArticle } from '../wilssens/article'
+import { enhanceArticle, feedDate } from '../wilssens/article'
+import { Stats, type Stat } from '../wilssens/Stats'
+import feed from './feed.json'
 import '../wilssens/article.css'
 
 // The write-up of how this site is built and run, linked from /projects. Numbers come
@@ -26,8 +28,9 @@ const sections = [
 const articleUrl = 'https://steven.wilssens.com/building-this-site'
 const linkedInShare = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(articleUrl)}`
 
-// Outcomes, not effort, as of 18 October 2026. [value, prefix, decimals, label]
-const stats: [number, string, number, string][] = [[10, '', 0, 'countries visitors came from in the first three weeks'], [100, '', 0, 'percent of loading, response and stability measurements rated good'], [18, '', 0, 'résumé changes approved through the interview loop'], [5, '', 0, 'pull requests opened by Claude Code from a conversation, all merged']]
+// Outcomes, not effort: the site's live numbers (feed.json as of the last refresh, today's from
+// /api/building/site once the page loads). [key in the feed, prefix, decimals, label]
+const stats: Stat[] = [['countries', '', 0, 'countries visitors have come from'], ['vitalsGoodPercent', '', 0, 'percent of loading, response and stability measurements rated good'], ['proposalsApproved', '', 0, 'résumé changes approved through the interview loop'], ['pullRequestsMerged', '', 0, 'pull requests opened by Claude Code from a conversation and merged']]
 
 const Figure = ({ children, caption }: { children: ReactNode; caption: string }) => <figure className="wx-figure wx-diagram"><div className="wx-diagram-scroll" role="group" aria-label={caption} tabIndex={0}>{children}</div><figcaption>{caption}</figcaption></figure>
 
@@ -55,7 +58,7 @@ export default function SiteArticle() {
       <h1 className="is-long">Building steven.wilssens.com</h1>
       <p className="wx-dek">A résumé run like a product: one source of truth for the pages, the PDF and the AI; a scored gate on the résumé; readers counted, machines included; and a loop that turns a recruiter’s unanswered question into a pull request.</p>
       <p className="wx-meta">Steven Wilssens · October 2026 · <span data-read-time>12 min read</span></p>
-      <dl className="wx-stats">{stats.map(([value, prefix, decimals, label]) => <div key={label}><dt>{prefix}<span data-count={value} data-decimals={decimals}>{value.toFixed(decimals)}</span></dt><dd>{label}</dd></div>)}</dl>
+      <Stats project="site" feed={feed} items={stats} />
       <div className="wx-actions">
         <button className="primary-button" type="button" onClick={() => openAsk()}>Ask the assistant about my work</button>
         <a className="text-link" href={linkedInShare} target="_blank" rel="noreferrer">Share on LinkedIn ↗</a>
@@ -179,7 +182,7 @@ export default function SiteArticle() {
         <section aria-labelledby="next">
           <H2 id="next" kicker="08">What’s next</H2>
           <p>Three batches of approved résumé changes have landed through the loop, including a role that closes a gap recruiters used to ask about. Next, LinkedIn gets compared against the site after every batch, so the three tell one story, and the assistant’s unanswered questions, once there are some, set the agenda for the next interview.</p>
-          <p>The numbers in this write-up are from 18 October 2026. The dashboard will tell me when they are worth updating.</p>
+          <p>The numbers in the header are live, from the site’s own database, as of <span data-feed-date="">{feedDate(feed.asOf)}.</span> The write-up itself is refreshed from the repository after every check-in, by the same loop.</p>
           <div className="wx-end">
             <p>Ask the assistant something a recruiter would ask.</p>
             <div className="wx-actions">
