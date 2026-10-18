@@ -34,9 +34,10 @@ npm run check:site -- --token local-test-token
 layout (no sideways scroll; the admin has a single scroll container, its page pane), no
 console errors or failed requests, the head tags search engines read, accessibility with
 axe-core (serious and critical violations fail), and Lighthouse's accessibility, best-practices
-and SEO scores (90 or more). It exits non-zero on a failure. The Deploy workflow runs it after
-the build and before the deploy, so a regression blocks the deploy; `--lighthouse none` skips
-the Lighthouse pass, `--json <file>` writes the full report.
+and SEO scores (90 or more). It exits non-zero on a failure. The Deploy workflow runs it after the
+deploy, time-boxed, so it never blocks or hangs the deploy; a regression turns the run red and
+emails, to be fixed forward. `--lighthouse none` skips the Lighthouse pass, `--json <file>` writes
+the full report.
 
 ## Project layout
 
