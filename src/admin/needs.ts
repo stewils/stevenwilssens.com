@@ -1,6 +1,6 @@
 // What needs Steven, per page, and a line per page for the overview's tiles. Both are
 // derived from the loaded data, so they are pure and tested in needs.test.ts.
-import { formatNumber, formatUsd } from './format'
+import { formatNumber, formatUsd, projectMonth } from './format'
 import type { PageId } from './pages'
 import type { AdminData } from './types'
 
@@ -8,7 +8,7 @@ export type Need = { key: string; page: PageId; n: number; text: string }
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
 
-export const computeNeeds = ({ stats, mcp, ask, resume }: AdminData): Need[] => {
+export const computeNeeds = ({ stats, mcp, ask, resume }: AdminData, now = new Date()): Need[] => {
   const needs: Need[] = []
   const add = (key: string, page: PageId, n: number, text: string) => { if (n > 0) needs.push({ key, page, n, text }) }
 
@@ -33,7 +33,11 @@ export const computeNeeds = ({ stats, mcp, ask, resume }: AdminData): Need[] => 
   if (ask) {
     add('ask-gaps', 'assistant', ask.questions.length, plural(ask.questions.length, 'question the assistant could not answer; cover it in your next MCP session', 'questions the assistant could not answer; cover them in your next MCP session'))
     if (!ask.configured && !ask.mock) add('ask-off', 'assistant', 1, 'the assistant is not live: set the ANTHROPIC_API_KEY secret and redeploy')
-    if (ask.month.costMicro > ask.budgetUsd * 800_000) add('ask-budget', 'assistant', 1, `the assistant has used ${formatUsd(ask.month.costMicro)} of its ${formatUsd(ask.budgetUsd * 1_000_000)} monthly budget`)
+    const budget = ask.budgetUsd * 1_000_000
+    const projected = projectMonth(ask.month.costMicro, now)
+    if (ask.month.costMicro > budget * 0.8) add('ask-budget', 'assistant', 1, `the assistant has used ${formatUsd(ask.month.costMicro)} of its ${formatUsd(budget)} monthly budget`)
+    // The pace only means something once a few days are in; day one would multiply a single question by thirty.
+    else if (now.getUTCDate() >= 3 && projected > budget) add('ask-pace', 'assistant', 1, `at this pace the assistant's budget runs out before the month ends (about ${formatUsd(projected)} of ${formatUsd(budget)})`)
   }
   if (stats) {
     const failing = stats.vitals.devices.filter((device) => device.passes === false).length

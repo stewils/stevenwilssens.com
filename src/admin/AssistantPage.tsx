@@ -1,6 +1,6 @@
-import { BarChart } from './Charts'
+import { TrendChart } from './Charts'
 import { DataTable, type Column } from './DataTable'
-import { dayAxis, dayLabel, fillDays, formatDuration, formatNumber, formatTime, formatUsd } from './format'
+import { dayLabel, fillDays, formatDuration, formatNumber, formatTime, formatUsd, monthName, projectMonth } from './format'
 import type { AskInfo } from './types'
 
 type Question = AskInfo['questions'][number]
@@ -13,13 +13,38 @@ const questionColumns: Column<Question>[] = [
   { key: 'network', label: 'Network', value: (row) => [row.asOrg, row.country].filter(Boolean).join(', ') },
 ]
 
+type Day = { day: string; questions: number; costMicro: number; off: number; gap: number }
+
+// The month's spend against the budget, and where the month ends at this pace.
+function BudgetMeter({ spent, budgetUsd, now = new Date() }: { spent: number; budgetUsd: number; now?: Date }) {
+  const budget = budgetUsd * 1_000_000
+  const projected = projectMonth(spent, now)
+  const scale = Math.max(budget, projected, spent, 1)
+  const at = (value: number) => `${Math.min(100, (value / scale) * 100)}%`
+  const over = projected > budget
+  return (
+    <div className="meter">
+      <span className="meter-label">Budget this month</span>
+      <div className="meter-track" role="img" aria-label={`${formatUsd(spent)} of ${formatUsd(budget)} spent; about ${formatUsd(projected)} by month end at this pace`}>
+        <div className="meter-room" style={{ width: at(budget) }} />
+        {projected > spent && <div className="meter-proj" style={{ width: at(projected) }} />}
+        <div className="meter-used" style={{ width: spent ? `max(2px, ${at(spent)})` : 0 }} />
+      </div>
+      <p className="meter-text">
+        {monthName(now)}: {formatUsd(spent)} of the {formatUsd(budget)} budget ({Math.round((spent / budget) * 100)}%) · month end ≈ {formatUsd(projected)} at this pace
+        {over && <> <strong className="meter-over">· the budget would run out before the month ends</strong></>}
+      </p>
+    </div>
+  )
+}
+
 // "Ask about Steven", the assistant on the site: this month against its budget,
-// questions per day, votes, and the questions it could not answer (the gaps to
-// fill in the next MCP session).
+// questions and cost per day, votes, and the questions it could not answer (the gaps
+// to fill in the next MCP session).
 export function AssistantPage({ info, days }: { info: AskInfo; days: number }) {
-  const perDay = new Map<string, { questions: number; costMicro: number; off: number; gap: number }>()
+  const perDay = new Map<string, Day>()
   for (const row of info.daily) {
-    const entry = perDay.get(row.day) ?? { questions: 0, costMicro: 0, off: 0, gap: 0 }
+    const entry = perDay.get(row.day) ?? { day: row.day, questions: 0, costMicro: 0, off: 0, gap: 0 }
     entry.questions += row.questions; entry.costMicro += row.costMicro
     if (row.outcome === 'off') entry.off += row.questions
     if (row.outcome === 'gap') entry.gap += row.questions
@@ -29,7 +54,7 @@ export function AssistantPage({ info, days }: { info: AskInfo; days: number }) {
   const asked = answered.reduce((sum, row) => sum + row.questions, 0)
   const avgFirst = asked ? answered.reduce((sum, row) => sum + row.msFirst, 0) / asked : null
   const votes = info.votes.reduce((sum, row) => ({ helpful: sum.helpful + row.helpful, unhelpful: sum.unhelpful + row.unhelpful }), { helpful: 0, unhelpful: 0 })
-  const bars = fillDays([...perDay.entries()].map(([day, entry]) => ({ day, pageviews: entry.questions, visitors: entry.questions })), days)
+  const series = fillDays([...perDay.values()], days, new Date(), (day): Day => ({ day, questions: 0, costMicro: 0, off: 0, gap: 0 }))
   const cacheShare = info.month.cacheReadTokens + info.month.inputTokens ? Math.round((info.month.cacheReadTokens / (info.month.cacheReadTokens + info.month.inputTokens)) * 100) : 0
   return (
     <>
@@ -44,7 +69,11 @@ export function AssistantPage({ info, days }: { info: AskInfo; days: number }) {
           <div><span>Time to first word</span><strong>{avgFirst === null ? '—' : formatDuration(avgFirst)}</strong><small>average, last {days} days</small></div>
           <div><span>Cache</span><strong>{cacheShare}%</strong><small>of input tokens read from cache</small></div>
         </div>
-        <BarChart title={`Questions per day (${days} days)`} bars={bars.map((row) => ({ key: row.day, label: dayLabel(row.day), value: row.pageviews, detail: `${formatNumber(row.pageviews)} questions · ${formatUsd(perDay.get(row.day)?.costMicro ?? 0)} · ${perDay.get(row.day)?.off ?? 0} off topic` }))} axisLabels={dayAxis(bars)} />
+        <BudgetMeter spent={info.month.costMicro} budgetUsd={info.budgetUsd} />
+        <div className="trends">
+          <TrendChart title={`Questions per day (${days} days)`} unit="questions" points={series.map((row) => ({ key: row.day, label: dayLabel(row.day), value: row.questions, detail: `${formatNumber(row.questions)} questions · ${row.gap} gaps · ${row.off} off topic` }))} />
+          <TrendChart title={`Cost per day (${days} days)`} unit="spent" format={formatUsd} points={series.map((row) => ({ key: row.day, label: dayLabel(row.day), value: row.costMicro, detail: `${formatUsd(row.costMicro)} · ${formatNumber(row.questions)} questions` }))} />
+        </div>
       </section>
 
       <section className="card" data-part="Unanswered">
