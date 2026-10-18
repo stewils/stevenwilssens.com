@@ -49,6 +49,8 @@ const llms = [
   '',
   `AI assistants can also connect to ${siteUrl}/mcp, a read-only Model Context Protocol server (Streamable HTTP) with the résumé, every role, the recommendations, the patents, Steven's public notes and a fit check against a job description.`,
   '',
+  'In a browser with WebMCP, every page registers tools with the browser (about_steven, get_experience, get_selected_work, get_recommendations, get_patents_and_press, read_site_page, and ask_about_steven for a question in plain words), so an agent can read the same facts and ask the site assistant instead of scraping the page.',
+  '',
   '## Pages',
   '',
   ...linked.filter((page) => page !== 'privacy').map(entry),

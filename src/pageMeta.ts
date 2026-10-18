@@ -4,6 +4,16 @@
 
 export const siteUrl = 'https://steven.wilssens.com'
 
+// Origin trial tokens, served as Origin-Trial headers on every page (vite.config.ts),
+// so visitors on a stable browser get WebMCP (src/webmcp.ts) without a flag. Tokens are
+// public and bound to the origin, so a preview deployment ignores them. Chrome: the
+// "WebMCP" trial at https://developer.chrome.com/origintrials (Chrome 149 to 162, ends
+// 2027-03-30). Edge: https://developer.microsoft.com/en-us/microsoft-edge/origin-trials.
+// TODO(steven): register https://steven.wilssens.com for the Edge trial and add its token.
+export const originTrialTokens: { browser: 'chrome' | 'edge'; token: string; expires: string }[] = [
+  { browser: 'chrome', expires: '2027-03-30', token: 'AkF6hLB0qxT91nNcIOH8Qfy2bcXftAKFO6qQy0OVScIDkyZcISZydHWD88eSkiAoNwFlHAZ+KtdFGQ3CmoovrwkAAABTeyJvcmlnaW4iOiJodHRwczovL3N0ZXZlbi53aWxzc2Vucy5jb206NDQzIiwiZmVhdHVyZSI6IldlYk1DUCIsImV4cGlyeSI6MTgwNjM2NDgwMH0=' },
+]
+
 export const routes = ['about', 'experience', 'work', 'recommendations', 'patents', 'honors', 'news', 'projects', 'building-wilssens', 'building-aibreaker', 'building-this-site', 'privacy'] as const
 
 export type Page = 'home' | (typeof routes)[number] | 'notFound'
@@ -18,7 +28,7 @@ export const pageMeta: Record<Page, { title: string; description: string }> = {
   honors: { title: 'Honors & awards | Steven Wilssens', description: 'Recognition for teamwork, individual excellence, and technical leadership.' },
   news: { title: 'In the News | Steven Wilssens', description: 'Coverage of Steven Wilssens and spatial audio work across Windows and Xbox.' },
   projects: { title: 'Projects & interests | Steven Wilssens', description: 'Projects where product thinking meets family, community, and the joy of making things useful.' },
-  'building-wilssens': { title: 'Building wilssens.com | Steven Wilssens', description: 'How wilssens.com was designed and built: a family domain with automated Zoho mailboxes, five ways to build a website, AI apps over MCP, two command lines, a restricted AI help assistant, and the rules that keep a family safe.' },
+  'building-wilssens': { title: 'Building wilssens.com | Steven Wilssens', description: 'How wilssens.com, a multi-tenant hosting and email platform, was designed and built in 16 days: automated Zoho mailboxes, five ways to build a website with isolated server code per site, AI apps over MCP, two command lines, a restricted AI help assistant, and the rules that keep its users safe.' },
   'building-aibreaker': { title: 'Building AI Breaker | Steven Wilssens', description: 'Why and how AI Breaker, the off switch for AI on Windows, was built: the research on how many people are wary of AI and why holding the switch calms, four levels, a service that writes every change down before making it, proof from Windows’ own logs, undo built first, and AI-assisted development run like a team.' },
   'building-this-site': { title: 'Building steven.wilssens.com | Steven Wilssens', description: 'How steven.wilssens.com is built and run like a product: one data file behind the pages, the résumé PDF, the Markdown for AI and the assistant; a scored quality gate on the résumé; cookie-free analytics that count people, search engines and AI crawlers apart; an assistant that knows only what is published; and a loop where Claude interviews Steven, reviews the site like a recruiter and opens pull requests.' },
   privacy: { title: 'Privacy | Steven Wilssens', description: 'What steven.wilssens.com records about visits and what it does not: first-party, cookie-free analytics hosted on Cloudflare.' },

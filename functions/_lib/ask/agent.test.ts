@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Env } from '../env'
 import { MemoryStore } from '../mcp/store'
 import { answerIsOurs, ask, askStatus, costMicro, feedback, HEADER, MAX_JD, missingRequirements, parseBody, redact, signAnswer, words, type StreamFactory } from './agent'
-import { dossierText, sources, systemPrompt } from './prompt'
+import { articlePages, articleText, dossierText, loadArticles, sources, systemPrompt } from './prompt'
 import { MemoryAskStore } from './store'
 
 const env = { HASH_SALT: 'salt', ANTHROPIC_API_KEY: 'sk-test' } as unknown as Env
@@ -44,6 +44,52 @@ describe('the prompt', () => {
     // Stable between calls, so the API can cache it.
     expect(systemPrompt(await dossier.list({ visibility: 'public' }))).toBe(text)
     expect(dossierText([])).not.toContain("Steven's own notes")
+  })
+
+  it('reads the Building write-ups in full from the Markdown copies, without the footer and the navigation', async () => {
+    const page = `Project write-up · steven.wilssens.com
+
+# Building steven.wilssens.com
+
+Steven Wilssens · October 2026 · 12 min read
+
+[Share on LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=x)
+
+On this page
+
+- The loop
+- What’s next
+
+## The loop
+
+Every question the assistant cannot answer is saved as a gap.
+
+[Download the résumé](https://steven.wilssens.com/r.pdf) · [Share on LinkedIn](https://www.linkedin.com/sharing/x) · [More projects](https://steven.wilssens.com/projects)
+
+---
+
+Steven Wilssens · 2026 · [LinkedIn](https://www.linkedin.com/in/x) · steven@wilssens.com
+`
+    const text = articleText(page)
+    expect(text).toContain('## The loop\n\nEvery question the assistant cannot answer is saved as a gap.')
+    expect(text).toContain('Steven Wilssens · October 2026 · 12 min read')
+    expect(text).not.toContain('Share on LinkedIn')
+    expect(text).not.toContain('On this page')
+    expect(text).not.toContain('Download the résumé')
+    expect(text).not.toContain('steven@wilssens.com')
+    expect(text.endsWith('saved as a gap.')).toBe(true)
+
+    const read = async (path: string) => path === '/building-aibreaker.md' ? null : `# ${path}\n\nBody of ${path}\n`
+    const articles = await loadArticles(read)
+    expect(Object.keys(articles).sort()).toEqual(['site:article', 'site:building'])
+    const prompt = systemPrompt([], articles)
+    expect(prompt).toContain("# [site:building] Building steven.wilssens.com, his write-up in full (page https://steven.wilssens.com/building-this-site)")
+    expect(prompt).toContain('Body of /building-this-site.md')
+    expect(prompt).toContain('# [site:article] Building wilssens.com, his write-up in full')
+    expect(prompt).not.toContain('# [site:aibreaker] Building AI Breaker, his write-up in full')
+    expect(prompt.indexOf('[site:recommendations]')).toBeLessThan(prompt.indexOf('[site:article] Building wilssens.com, his write-up'))
+    // Every write-up has a citable id that links to its page.
+    for (const { id } of articlePages) expect(sources().get(id)?.href).toMatch(/^https:\/\/steven\.wilssens\.com\/building-/)
   })
 
   it('maps every citable id to a page', () => {
@@ -104,6 +150,23 @@ describe('answering', () => {
     expect(await answerIsOurs(env, 'What did he do most recently?', { content: answerOf(list), sources: ['role:windows-devices-data', 'site:resume'], id: null, sig: done.data.sig as string })).toBe(true)
     expect(store.rows).toEqual([expect.objectContaining({ day: '2026-10-17', outcome: 'answered', questions: 1, costMicro: 3400, cacheReadTokens: 10_000 })])
     expect(store.saved).toEqual([])
+  })
+
+  it('gives the model the Building write-ups read from the site, and answers without them when they cannot be read', async () => {
+    const systems: string[] = []
+    const capture: StreamFactory = (system, context, messages, options) => { systems.push(system); return scripted('[[in: site:building]]\n\nThe loop.')(system, context, messages, options) }
+    const pages = async (path: string) => `# Page ${path}\n\nThe write-up at ${path}.\n\n---\n\nfooter\n`
+    await (await ask(post({ messages: [{ role: 'user', content: 'How is the site built?' }], page: 'building-this-site' }), { ...deps(capture), pages })).text()
+    expect(systems[0]).toContain('The write-up at /building-this-site.md.')
+    expect(systems[0]).toContain('The write-up at /building-wilssens.md.')
+    expect(systems[0]).toContain('The write-up at /building-aibreaker.md.')
+    expect(systems[0]).not.toContain('footer')
+    // Without a page reader (tests, a misconfigured deploy) the prompt still has the projects section.
+    const response = await ask(post({ messages: [{ role: 'user', content: 'How is the site built?' }] }), deps(capture))
+    expect(response.status).toBe(200)
+    await response.text()
+    expect(systems[1]).toContain('[site:projects]')
+    expect(systems[1]).not.toContain('his write-up in full')
   })
 
   it('replaces off-topic answers with its own words and never shows the model text', async () => {

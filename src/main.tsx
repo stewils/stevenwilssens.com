@@ -7,6 +7,7 @@ import '@fontsource/dm-mono/500.css'
 import './index.css'
 import App from './App.tsx'
 import { startAnalytics } from './analytics'
+import { startWebMcp } from './webmcp'
 
 const root = document.getElementById('root')!
 const app = <StrictMode><App /></StrictMode>
@@ -15,3 +16,5 @@ if (root.hasChildNodes()) hydrateRoot(root, app)
 else createRoot(root).render(app)
 
 startAnalytics()
+// Browsers with WebMCP get the pages' data as tools for the agent they run (src/webmcp.ts).
+startWebMcp()

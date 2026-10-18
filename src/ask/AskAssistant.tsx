@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type Keyboard
 import profileImage from '../assets/profile.jpg'
 import { renderMarkdown } from './markdown'
 import { pickSuggestions } from './suggestions'
+import { registerTool } from '../webmcp'
 import './ask.css'
 
 export type Source = { id: string; title: string; href: string | null }
@@ -24,6 +25,7 @@ export type Turn =
   | { role: 'user'; content: string; kind?: 'fit' }
   | { role: 'assistant'; content: string; sources: Source[]; id: number | null; sig: string; scope: 'in' | 'out'; error?: boolean; vote?: 'up' | 'down' }
 type Mode = 'ask' | 'fit'
+type Answer = Extract<Turn, { role: 'assistant' }>
 
 const storeKey = 'sw-ask'
 const openKey = 'sw-ask-open'
@@ -81,6 +83,7 @@ export default function AskAssistant({ page }: { page: string }) {
   const pending = useRef('')
   const paint = useRef(0)
   const loaded = useRef(false)
+  const sendRef = useRef<(question: string) => Promise<Answer | null>>(async () => null)
 
   // Mount: is the assistant on, what was said earlier in this tab, and the screen size.
   useEffect(() => {
@@ -159,10 +162,11 @@ export default function AskAssistant({ page }: { page: string }) {
     })
   }, [])
 
-  // A question, or (kind 'fit') a pasted job description.
-  const send = async (input: string, kind?: 'fit') => {
+  // A question, or (kind 'fit') a pasted job description. Resolves to the answer once
+  // it has streamed in, for the WebMCP tool below; null when busy or empty.
+  const send = async (input: string, kind?: 'fit'): Promise<Answer | null> => {
     const text = input.trim().slice(0, kind === 'fit' ? maxJobDescription : maxQuestion)
-    if (!text || busy) return
+    if (!text || busy) return null
     setNotice('')
     if (kind === 'fit') { setPosting(''); setMode('ask') } else { setDraft(''); if (inputRef.current) inputRef.current.style.height = '' }
     const history = turns.filter((turn) => turn.role === 'user' || !turn.error)
@@ -224,7 +228,35 @@ export default function AskAssistant({ page }: { page: string }) {
     controller.current = null
     setBusy(false)
     if (turnstileId.current && window.turnstile) { window.turnstile.reset(turnstileId.current); turnstileToken.current = '' }
+    return result
   }
+
+  // WebMCP (src/webmcp.ts): an agent in the visitor's browser asks through this same
+  // panel, so the visitor sees the question and the answer, the limits and the
+  // human check apply as they do to a typed question, and the vote buttons work.
+  useEffect(() => { sendRef.current = send })
+  useEffect(() => {
+    if (!ready) return
+    return registerTool({
+      name: 'ask_about_steven',
+      description: 'Ask the "Ask about Steven" assistant a question in plain words: his roles, results, leadership, teams, patents, projects, what he is looking for, how to reach him. It answers from what Steven published and says when his notes do not cover something. One question per call; a follow-up continues the conversation. The exchange is shown to the visitor in the panel.',
+      inputSchema: { type: 'object', properties: { question: { type: 'string', description: 'The question, under 1000 characters' } }, required: ['question'], additionalProperties: false },
+      annotations: { readOnlyHint: true },
+      execute: async (input) => {
+        const question = typeof input.question === 'string' ? input.question.trim() : ''
+        if (!question) return 'Give a question to ask.'
+        setOpen(true)
+        const answer = await sendRef.current(question)
+        if (!answer) return 'The assistant is answering another question right now. Ask again in a moment.'
+        if (answer.error) return `The assistant could not answer: ${answer.content}`
+        return JSON.stringify({
+          answer: answer.content,
+          scope: answer.scope === 'out' ? 'out of scope: the assistant only answers questions about Steven' : 'in scope',
+          sources: answer.sources.map((source) => ({ title: source.title, href: source.href })),
+        }, null, 1)
+      },
+    })
+  }, [ready])
 
   const stop = () => { controller.current?.abort() }
   const submit = (event: FormEvent) => { event.preventDefault(); if (mode === 'fit') void send(posting, 'fit'); else void send(draft) }

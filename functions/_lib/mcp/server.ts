@@ -12,6 +12,8 @@
 import type { Env } from '../env'
 import { bearerToken, sameSecret } from '../auth'
 import { gitHubClient, type GitHub } from '../github'
+import { ipHash } from '../ask/agent'
+import { D1AskStore } from '../ask/store'
 import { D1Store, publicView, ReadOnlyError, type DossierStore } from './store'
 import { instructionsFor, publicToolNames, siteUrl, ToolError, tools, type Mode, type ToolContext } from './tools'
 
@@ -48,7 +50,12 @@ export type McpRequest = {
   now?: number
   // Where the caller is, for the public server's log (from request.cf in production).
   place?: { country: string | null; asOrg: string | null }
+  // Public mode: resolves false when this caller has made too many requests in the last hour.
+  limiter?: () => Promise<boolean>
 }
+
+/** Public calls per IP per hour, counted in ask_hits under a salted hash like the assistant's questions. */
+export const PUBLIC_CALLS_PER_HOUR = 120
 
 const toolResult = (value: unknown, isError = false) => ({ content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }], isError })
 
@@ -117,6 +124,10 @@ const handleMessage = async (message: JsonRpcRequest, ctx: ToolContext, place: M
   }
 }
 
+// The address is echoed into the explainer pages; URL serialisation already encodes < > and ",
+// but escaping is what makes that a fact about this file rather than about the URL spec.
+export const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!)
+
 const page = (title: string, body: string) => `<!doctype html>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title}</title>
@@ -154,15 +165,18 @@ export const resolveMode = (segment: string | undefined, request: Request, env: 
   return 'public'
 }
 
-export const handleMcp = async ({ request, store, fetchPage, mode = 'owner', github = null, now = Date.now(), place }: McpRequest): Promise<Response> => {
+export const handleMcp = async ({ request, store, fetchPage, mode = 'owner', github = null, now = Date.now(), place, limiter }: McpRequest): Promise<Response> => {
   if (request.method === 'OPTIONS') return respond(null, 204)
   if (request.method === 'GET') {
     // A GET with Accept: text/event-stream asks for a server-to-client stream; this server never sends one.
     if ((request.headers.get('Accept') ?? '').includes('text/event-stream')) return respond('Method Not Allowed: this server does not open server-to-client streams.', 405, { Allow: 'POST, OPTIONS' })
-    const url = new URL(request.url).toString()
+    const url = escapeHtml(new URL(request.url).toString())
     return respond(mode === 'owner' ? ownerExplainer(url) : publicExplainer(url), 200, { 'Content-Type': 'text/html; charset=utf-8', ...(mode === 'public' ? { 'Cache-Control': 'public, max-age=3600' } : {}) })
   }
   if (request.method !== 'POST') return respond(null, 405, { Allow: 'POST, OPTIONS' })
+  // The public server has no model behind it, so a flood costs requests and log rows, not money;
+  // the limit keeps one caller from filling the log or the request quota on their own.
+  if (mode === 'public' && limiter && !(await limiter())) return jsonResponse(error(null, -32000, 'Too many requests from this connection; try again in an hour.'), 429)
 
   const body = await request.text()
   if (body.length > 200_000) return jsonResponse(error(null, -32600, 'Request too large'), 413)
@@ -194,5 +208,13 @@ export const onMcpRequest: PagesFunction<Env> = async ({ request, env, params })
   }
   const github = mode === 'owner' && env.GITHUB_TOKEN ? gitHubClient(env.GITHUB_TOKEN, env.GITHUB_REPO || defaultRepo) : null
   const cf = (request.cf ?? {}) as Partial<IncomingRequestCfProperties>
-  return handleMcp({ request, store: new D1Store(env.DB), fetchPage, mode, github, place: { country: (cf.country as string | undefined) ?? null, asOrg: (cf.asOrganization as string | undefined) ?? null } })
+  const limiter = async () => {
+    const hits = new D1AskStore(env.DB)
+    const key = `${await ipHash(request, env)}:mcp`
+    const now = Date.now()
+    if (await hits.countHits(key, now - 3_600_000) >= PUBLIC_CALLS_PER_HOUR) return false
+    await hits.addHit(key, now)
+    return true
+  }
+  return handleMcp({ request, store: new D1Store(env.DB), fetchPage, mode, github, limiter, place: { country: (cf.country as string | undefined) ?? null, asOrg: (cf.asOrganization as string | undefined) ?? null } })
 }
