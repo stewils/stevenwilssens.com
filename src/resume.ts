@@ -109,6 +109,8 @@ export const profile = {
   phone: '425.533.7722',
   linkedin: 'https://www.linkedin.com/in/steven-wilssens-59495889/',
   site: 'https://steven.wilssens.com',
+  // The public read-only MCP server (functions/_lib/mcp/): recruiters' AI assistants read the resume, roles, recommendations, patents and public notes as tools.
+  mcp: 'https://steven.wilssens.com/mcp',
   resumePdf: '/steven-wilssens-resume-2026.pdf',
   resumeFileName: 'Steven Wilssens Resume 2026.pdf',
 }

@@ -115,7 +115,8 @@ body.compact .foot { font-size: 8.7pt; }
   <div class="contact">
     <strong>${esc(profile.location)}</strong> · ${esc(profile.workAuthorization)}<br>
     <a href="mailto:${esc(profile.email)}">${esc(profile.email)}</a> · ${esc(profile.phone)}<br>
-    <a href="${esc(profile.linkedin)}">${esc(profile.linkedin.replace(/^https:\/\/www\.|\/$/g, ''))}</a> · <a href="${esc(profile.site)}">${esc(profile.site.replace(/^https:\/\//, ''))}</a>
+    <a href="${esc(profile.linkedin)}">${esc(profile.linkedin.replace(/^https:\/\/www\.|\/$/g, ''))}</a> · <a href="${esc(profile.site)}">${esc(profile.site.replace(/^https:\/\//, ''))}</a><br>
+    For AI assistants: <a href="${esc(profile.mcp)}">${esc(profile.mcp.replace(/^https:\/\//, ''))}</a> (read-only MCP)
   </div>
 </header>
 <div class="facts">
