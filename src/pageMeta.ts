@@ -4,6 +4,14 @@
 
 export const siteUrl = 'https://steven.wilssens.com'
 
+// Origin trial tokens, served as Origin-Trial headers on every page (vite.config.ts),
+// so visitors on a stable browser get WebMCP (src/webmcp.ts) without a flag. Tokens are
+// public and bound to the origin, so a preview deployment ignores them. Chrome: the
+// "WebMCP" trial at https://developer.chrome.com/origintrials (Chrome 149 to 162, ends
+// 2027-03-30). Edge: https://developer.microsoft.com/en-us/microsoft-edge/origin-trials.
+// TODO(steven): register https://steven.wilssens.com for both and paste the tokens here.
+export const originTrialTokens: { browser: 'chrome' | 'edge'; token: string; expires: string }[] = []
+
 export const routes = ['about', 'experience', 'work', 'recommendations', 'patents', 'honors', 'news', 'projects', 'building-wilssens', 'building-aibreaker', 'building-this-site', 'privacy'] as const
 
 export type Page = 'home' | (typeof routes)[number] | 'notFound'
