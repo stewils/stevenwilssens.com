@@ -30,6 +30,8 @@ export type Stats = Crawls & {
   days: number
   generatedAt: number
   totals: { pageviews: number; visitors: number; avgDurationMs: number | null; avgScrollPct: number | null; bounceRate: number | null; downloads: number; downloaders: number; contactClicks: number }
+  // The same counts for the period before this one, for the "vs the 30 days before" lines.
+  previous: { pageviews: number; visitors: number; downloads: number; contactClicks: number }
   daily: { day: string; pageviews: number; visitors: number }[]
   hours: { hour: number; pageviews: number }[]
   pages: PageRow[]

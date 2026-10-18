@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { BarChart } from './Charts'
+import { TrendChart } from './Charts'
 import { DataTable, type Column } from './DataTable'
 import { formatBytes, formatDay, formatNumber, formatTime } from './format'
 import type { Finding, Proposal, ResumeInfo, ScoreRow } from './types'
@@ -96,7 +96,7 @@ export function ResumePage({ resume, proposals }: { resume: ResumeInfo; proposal
         <p className="note">One row per résumé PDF that went live, recorded the first time a deploy served it. The change column is the commit it was built from.</p>
         {history.length === 0 ? <p className="empty">Nothing recorded yet. The first deploy of this version of the site records the résumé that is live.</p> : (
           <>
-            {history.length > 1 && <BarChart title="Score per update" max={100} bars={oldestFirst.map((row) => ({ key: row.pdfHash, label: formatDay(row.firstSeen), value: row.score, detail: `${row.score}/100 · ${formatNumber(row.warnings)} warnings${row.commitMessage ? ` · ${row.commitMessage}` : ''}` }))} axisLabels={oldestFirst.length > 1 ? [formatDay(oldestFirst[0].firstSeen), formatDay(oldestFirst[oldestFirst.length - 1].firstSeen)] : [formatDay(oldestFirst[0].firstSeen)]} />}
+            {history.length > 1 && <TrendChart title="Score per update" unit="points" max={100} format={String} readout={`Now ${oldestFirst[oldestFirst.length - 1].score} · best ${Math.max(...oldestFirst.map((row) => row.score))}`} points={oldestFirst.map((row) => ({ key: row.pdfHash, label: formatDay(row.firstSeen), value: row.score, detail: `${row.score}/100 · ${formatNumber(row.warnings)} warnings${row.commitMessage ? ` · ${row.commitMessage}` : ''}` }))} />}
             <DataTable columns={historyColumns} rows={history} rowKey={(row) => row.pdfHash} label="Résumé score history" expand={(row) => (row.findings.length ? <ul className="plain">{row.findings.map((finding) => <li key={finding.id}><span className={`badge ${finding.severity}`}>{severityLabel[finding.severity as keyof typeof severityLabel] ?? finding.severity}</span> {finding.message}</li>)}</ul> : <p className="muted">No findings for this résumé.</p>)} />
           </>
         )}

@@ -3,13 +3,14 @@ import { ignoreKey } from '../analytics'
 import { AssistantPage } from './AssistantPage'
 import { AudiencePage } from './AudiencePage'
 import { CrawlersPage } from './CrawlersPage'
-import { formatTime } from './format'
+import { formatAgo, formatTime } from './format'
 import { LinksPage } from './LinksPage'
 import { McpPage } from './McpPage'
 import { badgeCounts, computeNeeds, computeSummaries } from './needs'
 import { Overview } from './Overview'
 import { pageById, pages, type PageDef } from './pages'
 import { ResumePage } from './ResumePage'
+import { PageSkeleton } from './Skeleton'
 import { SourcesPage } from './SourcesPage'
 import { SpeedPage } from './SpeedPage'
 import { SubNav } from './SubNav'
@@ -22,7 +23,13 @@ import type { AdminData, AskInfo, McpInfo, ResumeInfo, Stats } from './types'
 // localStorage, sent as Authorization: Bearer; a 401 clears it.
 
 const tokenKey = 'sw-admin-token'
+const themeKey = 'sw-admin-theme'
 const ranges = [[1, 'Today'], [7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '1 year']] as const
+// Light, dark, or whatever the system says; admin.html applies the choice before the first paint.
+type Theme = 'system' | 'light' | 'dark'
+const themes: [Theme, string][] = [['system', 'Auto'], ['light', 'Light'], ['dark', 'Dark']]
+// Numbers older than this are fetched again when the tab comes back into view.
+const STALE_MS = 5 * 60_000
 
 const storage = {
   get: (key: string) => { try { return localStorage.getItem(key) } catch { return null } },
@@ -75,7 +82,9 @@ export default function Admin() {
   const [refreshCount, setRefreshCount] = useState(0)
   const [loginError, setLoginError] = useState('')
   const [ignored, setIgnored] = useState(() => storage.get(ignoreKey) === '1')
+  const [theme, setTheme] = useState<Theme>(() => (themes.some(([value]) => value === storage.get(themeKey)) ? (storage.get(themeKey) as Theme) : 'system'))
   const [hash, setHash] = useState(readHash)
+  const [now, setNow] = useState(() => Date.now())
   const scroller = useRef<HTMLDivElement>(null)
 
   const signOut = (message = '') => { storage.set(tokenKey, null); setToken(''); setLoginError(message) }
@@ -96,6 +105,23 @@ export default function Admin() {
     document.title = `${page.title} · Admin · steven.wilssens.com`
     scroller.current?.scrollTo({ top: 0 })
   }, [page])
+  useEffect(() => {
+    if (theme === 'system') delete document.documentElement.dataset.theme
+    else document.documentElement.dataset.theme = theme
+    storage.set(themeKey, theme === 'system' ? null : theme)
+  }, [theme])
+  // "Updated 4 min ago" keeps counting, and numbers that went stale while the tab was
+  // in the background are fetched again as soon as it is looked at.
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(tick)
+  }, [])
+  const generatedAt = stats.data?.generatedAt
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible' && generatedAt && Date.now() - generatedAt > STALE_MS) setRefreshCount((count) => count + 1) }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [generatedAt])
 
   if (!token) return <Login onSubmit={(value) => { storage.set(tokenKey, value); storage.set(ignoreKey, '1'); setIgnored(true); setLoginError(''); setToken(value) }} error={loginError} />
 
@@ -106,18 +132,18 @@ export default function Admin() {
   const loading = stats.loading || ask.loading || mcp.loading || resume.loading
   const errors = [['visitor data', stats.error], ['the assistant', ask.error], ['the MCP', mcp.error], ['the résumé', resume.error]].filter(([, error]) => error).map(([what, error]) => `Could not load ${what} (${error}).`)
   const version = `${Boolean(stats.data)}${Boolean(ask.data)}${Boolean(mcp.data)}${Boolean(resume.data)}|${days}|${refreshCount}`
-  const waiting = (what: string) => <p className="status">Loading {what}…</p>
+  const waiting = (what: string, chart = true) => <PageSkeleton what={what} chart={chart} />
 
   const content = () => {
     switch (page.id) {
       case 'traffic': return stats.data ? <TrafficPage stats={stats.data} /> : waiting('visitor data')
-      case 'sources': return stats.data ? <SourcesPage stats={stats.data} /> : waiting('visitor data')
-      case 'audience': return stats.data ? <AudiencePage stats={stats.data} /> : waiting('visitor data')
+      case 'sources': return stats.data ? <SourcesPage stats={stats.data} /> : waiting('visitor data', false)
+      case 'audience': return stats.data ? <AudiencePage stats={stats.data} /> : waiting('visitor data', false)
       case 'crawlers': return stats.data ? <CrawlersPage stats={stats.data} /> : waiting('crawler data')
-      case 'speed': return stats.data ? <SpeedPage vitals={stats.data.vitals} /> : waiting('page speed data')
-      case 'resume': return resume.data ? <ResumePage resume={resume.data} proposals={mcp.data?.proposals ?? null} /> : waiting('the résumé report')
+      case 'speed': return stats.data ? <SpeedPage vitals={stats.data.vitals} /> : waiting('page speed data', false)
+      case 'resume': return resume.data ? <ResumePage resume={resume.data} proposals={mcp.data?.proposals ?? null} /> : waiting('the résumé report', false)
       case 'assistant': return ask.data ? <AssistantPage info={ask.data} days={days} /> : waiting("the assistant's numbers")
-      case 'mcp': return mcp.data ? <McpPage info={mcp.data} /> : waiting('the MCP details')
+      case 'mcp': return mcp.data ? <McpPage info={mcp.data} /> : waiting('the MCP details', false)
       case 'links': return <LinksPage />
       default: return <Overview data={data} needs={needs} summaries={summaries} />
     }
@@ -138,6 +164,9 @@ export default function Admin() {
         <div className="side-foot">
           <a className="site-link" href="/">Open the site ↗</a>
           <label><input type="checkbox" checked={ignored} onChange={() => { storage.set(ignoreKey, ignored ? null : '1'); setIgnored(!ignored) }} /> Don't track this browser</label>
+          <div className="theme" role="group" aria-label="Theme">
+            {themes.map(([value, label]) => <button type="button" key={value} className={theme === value ? 'active' : ''} aria-pressed={theme === value} onClick={() => setTheme(value)}>{label}</button>)}
+          </div>
           <button type="button" onClick={() => signOut()}>Sign out</button>
         </div>
       </aside>
@@ -156,7 +185,7 @@ export default function Admin() {
                 </div>
               )}
               <button type="button" className="ghost" onClick={() => setRefreshCount((count) => count + 1)} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
-              {stats.data && <span className="updated">Updated {formatTime(stats.data.generatedAt)}</span>}
+              {generatedAt && <span className="updated" title={formatTime(generatedAt)}>Updated {formatAgo(generatedAt, now)}</span>}
             </div>
           </header>
           {errors.map((error) => <p key={error} className="banner" role="alert">{error}</p>)}

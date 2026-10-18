@@ -1,6 +1,6 @@
-import { BarChart } from './Charts'
+import { TrendChart } from './Charts'
 import { DataTable, type Column } from './DataTable'
-import { dayAxis, dayLabel, fillDays, formatNumber, formatTime } from './format'
+import { dayLabel, fillDays, formatNumber, formatTime } from './format'
 import type { CrawlBot, CrawlCategory, CrawlHit, CrawlPage, Stats } from './types'
 
 const crawlCategories: Record<CrawlCategory, string> = {
@@ -62,7 +62,7 @@ export function CrawlersPage({ stats }: { stats: Stats }) {
           <div><span>Probes</span><strong>{formatNumber(totals.probes)}</strong><small>unknown bots asking for pages that never existed</small></div>
         </div>
         {totals.requests === 0 ? <p className="empty">No crawler requests in this range yet</p> : (
-          <BarChart title="Crawler requests per day" bars={daily.map((row) => ({ key: row.day, label: dayLabel(row.day), value: row.requests, detail: `${formatNumber(row.requests)} requests · ${formatNumber(row.search)} search · ${formatNumber(row.ai)} AI` }))} axisLabels={dayAxis(daily)} />
+          <TrendChart title="Crawler requests per day" unit="requests" points={daily.map((row) => ({ key: row.day, label: dayLabel(row.day), value: row.requests, detail: `${formatNumber(row.requests)} requests · ${formatNumber(row.search)} search · ${formatNumber(row.ai)} AI` }))} />
         )}
       </section>
 

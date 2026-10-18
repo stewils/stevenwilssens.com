@@ -59,3 +59,43 @@ export const dayLabel = (day: string) => new Date(`${day}T12:00:00`).toLocaleDat
 export const dayAxis = (rows: { day: string }[]) => (rows.length > 1 ? [dayLabel(rows[0].day), dayLabel(rows[Math.floor(rows.length / 2)].day), dayLabel(rows[rows.length - 1].day)] : rows.map((row) => dayLabel(row.day)))
 
 export const place = (row: { city: string | null; region?: string | null; country: string | null }) => [row.city, row.region, row.country].filter(Boolean).join(', ') || 'Unknown'
+
+// A round axis maximum (4, 5, 10, 20, 25, 50, 100, …) so the gridlines read as whole numbers.
+export const niceMax = (value: number) => {
+  if (value <= 4) return 4
+  const power = 10 ** Math.floor(Math.log10(value))
+  for (const step of [1, 2, 2.5, 5, 10]) if (value <= step * power) return step * power
+  return 10 * power
+}
+
+// This period against the one before it: "+12%", "−8%", "same", or "new" when the
+// period before had nothing. Null when there is nothing to compare with.
+export type Trend = { text: string; dir: 'up' | 'down' | 'flat' }
+export const trendOf = (current: number, previous: number | null | undefined): Trend | null => {
+  if (previous === null || previous === undefined) return null
+  if (previous === 0) return current === 0 ? { text: 'same', dir: 'flat' } : { text: 'new', dir: 'up' }
+  const pct = Math.round(((current - previous) / previous) * 100)
+  if (pct === 0) return { text: 'same', dir: 'flat' }
+  return { text: `${pct > 0 ? '+' : '−'}${Math.abs(pct)}%`, dir: pct > 0 ? 'up' : 'down' }
+}
+// The name of the period a range is compared with.
+export const periodBefore = (days: number) => (days === 1 ? 'yesterday' : days === 365 ? 'the year before' : `the ${days} days before`)
+
+// Where this month's spend ends at its pace so far (UTC, as the server counts the month).
+export const projectMonth = (spentMicro: number, now = new Date()) => {
+  const day = now.getUTCDate()
+  const daysInMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate()
+  return Math.round((spentMicro / day) * daysInMonth)
+}
+export const monthName = (now = new Date()) => now.toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' })
+
+// "just now", "4 min ago", "2 h ago", then the date.
+export const formatAgo = (ts: number, now = Date.now()) => {
+  const seconds = Math.max(0, Math.round((now - ts) / 1000))
+  if (seconds < 45) return 'just now'
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes} min ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours} h ago`
+  return formatTime(ts)
+}

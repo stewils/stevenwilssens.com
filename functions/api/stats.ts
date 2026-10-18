@@ -94,10 +94,18 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
       WHERE type = 'pageview' AND ts >= ?1 GROUP BY name ORDER BY visitors DESC, pageviews DESC LIMIT 50`
   }
 
+  // The same headline counts for the period before this one, so the dashboard can say "+12% vs the 30 days before".
+  const previous = `SELECT
+    (SELECT COUNT(*) FROM events WHERE type = 'pageview' AND ts >= ?1 AND ts < ?2) AS pageviews,
+    (SELECT COUNT(DISTINCT visitor) FROM events WHERE type = 'pageview' AND ts >= ?1 AND ts < ?2) AS visitors,
+    (SELECT COUNT(*) FROM events WHERE type = 'click' AND category = 'download' AND ts >= ?1 AND ts < ?2) AS downloads,
+    (SELECT COUNT(*) FROM events WHERE type = 'click' AND category IN ('email', 'outbound') AND ts >= ?1 AND ts < ?2) AS contactClicks`
+
   const keys = Object.keys(queries)
-  const results = await env.DB.batch(keys.map((key) => env.DB.prepare(queries[key]).bind(since)))
+  const results = await env.DB.batch([...keys.map((key) => env.DB.prepare(queries[key]).bind(since)), env.DB.prepare(previous).bind(since - days * 86_400_000, since)])
   const data: Record<string, unknown> = { days, generatedAt: Date.now() }
   keys.forEach((key, index) => { data[key] = key === 'totals' || key === 'crawlTotals' ? results[index].results[0] : results[index].results })
+  data.previous = results[keys.length].results[0]
   data.vitals = summarizeVitals(data.vitals as VitalRow[])
 
   // Channels need pattern matching, so they are grouped here rather than in SQL.
