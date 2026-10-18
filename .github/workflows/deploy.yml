@@ -53,9 +53,7 @@ jobs:
       - name: Check the built site against web best practices
         run: |
           npx wrangler d1 migrations apply stevenwilssens-analytics --local
-          printf 'ADMIN_TOKEN=ci-check-token
-HASH_SALT=ci-check-salt
-' > .dev.vars
+          { echo 'ADMIN_TOKEN=ci-check-token'; echo 'HASH_SALT=ci-check-salt'; } > .dev.vars
           node scripts/site-check.mjs --token ci-check-token --lighthouse sample --summary "$GITHUB_STEP_SUMMARY" --json dist/site-check.json
 
       - name: Deploy to Cloudflare
