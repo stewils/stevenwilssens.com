@@ -12,7 +12,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { Env } from '../env'
 import type { DossierStore } from '../mcp/store'
-import { contact, sources as allSources, systemPrompt, type Source } from './prompt'
+import { contact, loadArticles, sources as allSources, systemPrompt, type Articles, type Source } from './prompt'
 import { dayOf, monthStart, type AskStore, type Outcome, type Usage } from './store'
 
 export const MODEL = 'claude-opus-5-5'
@@ -172,13 +172,25 @@ const verifyTurnstile = async (secret: string, token: string, ip: string | null,
   return Boolean(result?.success) && (!result?.hostname || result.hostname === host)
 }
 
-export type AskDeps = { env: Env; store: AskStore; dossier: DossierStore; waitUntil: (promise: Promise<unknown>) => void; stream?: StreamFactory; now?: () => number }
+/** `pages` reads one of the site's own static files by path (the Markdown copies of the Building write-ups); without it the assistant knows the write-ups only from the projects section. */
+export type AskDeps = { env: Env; store: AskStore; dossier: DossierStore; waitUntil: (promise: Promise<unknown>) => void; pages?: (path: string) => Promise<string | null>; stream?: StreamFactory; now?: () => number }
+
+// The write-ups change only with a deploy, which starts new isolates, so one read per isolate is enough.
+let articleCache: Promise<Articles> | null = null
+const articles = (pages: AskDeps['pages']): Promise<Articles> => {
+  if (!pages) return Promise.resolve({})
+  articleCache ??= loadArticles(pages).then((loaded) => {
+    if (Object.keys(loaded).length < 3) articleCache = null // a page did not load: read again next time
+    return loaded
+  })
+  return articleCache
+}
 
 /** GET /api/ask: whether the assistant is on, and the Turnstile site key when a human check is wanted. */
 export const askStatus = (env: Env) => json({ ready: Boolean(env.ANTHROPIC_API_KEY) || env.ASK_MOCK === '1', siteKey: env.TURNSTILE_SECRET_KEY && env.TURNSTILE_SITE_KEY ? env.TURNSTILE_SITE_KEY : null }, 200)
 
 /** POST /api/ask: the answer as Server-Sent Events, or a JSON error { error, message }. */
-export async function ask(request: Request, { env, store, dossier, waitUntil, stream, now = Date.now }: AskDeps): Promise<Response> {
+export async function ask(request: Request, { env, store, dossier, waitUntil, pages, stream, now = Date.now }: AskDeps): Promise<Response> {
   const fail = (error: keyof typeof words, status: number) => json({ error, message: words[error] }, status)
   if (!env.ANTHROPIC_API_KEY && env.ASK_MOCK !== '1') return fail('unavailable', 503)
   const parsed = parseBody(await request.json().catch(() => null))
@@ -199,8 +211,8 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, st
   if (await store.spentMicroSince(monthStart(started)) >= budgetMicro(env)) return turnedAway('budget', 503)
 
   const titles = allSources()
-  const entries = await dossier.list({ visibility: 'public' })
-  const system = systemPrompt(entries)
+  const [entries, writeUps] = await Promise.all([dossier.list({ visibility: 'public' }), articles(pages)])
+  const system = systemPrompt(entries, writeUps)
   const context = `The reader is on the ${parsed.page === 'home' ? 'home' : parsed.page} page of steven.wilssens.com.`
   const messages: Anthropic.Beta.BetaMessageParam[] = parsed.messages.map((turn) => turn.role === 'assistant'
     ? { role: 'assistant', content: `[[in: ${turn.sources.length ? turn.sources.join(', ') : 'none'}]]\n\n${turn.content}` }

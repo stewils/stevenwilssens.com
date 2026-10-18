@@ -1,7 +1,9 @@
 // What the site assistant knows and how it behaves. The system prompt is built
-// from the same data as the site (src/resume.ts, src/patents.ts) plus the public
-// entries of the dossier, so the assistant never knows more than Steven chose
-// to publish. It is byte-stable between requests, so the API caches it.
+// from the same data as the site (src/resume.ts, src/patents.ts), the public
+// entries of the dossier and the Markdown copies of the three Building write-ups
+// that the build publishes next to the pages, so the assistant never knows more
+// than Steven chose to publish. It is byte-stable between requests (the write-ups
+// change only with a deploy), so the API caches it.
 import { education, experiences, honors, languages, news, recommendations } from '../../../src/resume'
 import { grantedPatents, patentApplications } from '../../../src/patents'
 import type { DossierEntry } from '../mcp/store'
@@ -42,9 +44,47 @@ const projects = `- wilssens.com: a family platform he built and runs: email and
 - leo.wilssens.com: a race journal and results site for Leo Wilssens, a junior track cyclist racing with Jerry Baker Juniors.
 - steven.wilssens.com: this site, built and run like a product: React pages prerendered to static HTML on Cloudflare Pages, first-party cookie-free analytics in D1 that count people, search engines and AI crawlers apart, Markdown copies of every page for LLMs, a résumé PDF generated from the same data and held to a quality score, this assistant, and a private MCP server where Claude interviews Steven, reviews the site like a recruiter and opens pull requests that Steven merges. The write-up [site:building] at ${siteUrl}/building-this-site explains how it is built and run.`
 
+const productThinking = `When asked what makes Steven's product thinking different, answer the way his write-up does: the "Ask about Steven" button is table stakes (an AI assistant on a résumé site is common by now); what is his is the closed loop behind it, plus the four habits below. Lead with the loop in one or two sentences, then the habits as a short list, and point to the write-up once.
+- The loop: every question this assistant cannot answer is saved as a gap. In his private MCP workspace Claude turns those gaps into the next interview questions, asked like a sceptical recruiter; his answers become dossier entries; Claude then proposes exact résumé changes (current text, new text, the notes behind it) that he approves or rejects one by one; an approved batch becomes a pull request that Claude Code opens on a branch, through the same scored gate and tests he works under, and he reads the preview and merges. The site measures what readers could not find out and fixes itself, with a person deciding twice. By 18 October 2026: 20 proposals, 18 approved, 2 rejected for overstating; three merged batches, including a role that closed a gap recruiters used to ask about.
+- One source of truth, enforced by tests: every fact about him lives in one file; the pages, the PDF, the Markdown for AI and this assistant are built from it, and the build fails when they drift.
+- Quality as a score, not an opinion: a checker reads the résumé as a recruiter, an applicant tracking system and an editor would, and a new version has to score at least as well as the old one; the first batch of loop changes pushed the PDF to a third page and the gate stopped the deploy.
+- Measure the readers before deciding: people, search engines and AI crawlers are counted apart, without cookies, and the AI readers get their own format.
+- AI with guardrails, and a person deciding: this assistant knows only what he published, hides any answer it cannot source, and disappears when its monthly budget is spent while the site keeps working; the agent that edits the site works on a branch with a tool allowlist and a turn limit, under the same checks as him, and never pushes to production.
+He says he ran it the way he ran data products at Microsoft, and applies the same habits in wilssens.com (its help assistant acts only through cards the person confirms) and AI Breaker (it proves from Windows' own logs that it did what it said).`
+
+// The write-ups the assistant reads in full: the Markdown copy of each page, by the id an answer cites.
+export const articlePages = [
+  { id: 'site:article', path: '/building-wilssens.md' },
+  { id: 'site:aibreaker', path: '/building-aibreaker.md' },
+  { id: 'site:building', path: '/building-this-site.md' },
+] as const
+export type Articles = Partial<Record<(typeof articlePages)[number]['id'], string>>
+
+/** A Markdown page copy without the site footer, the share and navigation links and the "On this page" list, which say nothing about Steven. */
+export const articleText = (markdown: string) => {
+  const footer = markdown.lastIndexOf('\n---\n')
+  const body = footer === -1 ? markdown : markdown.slice(0, footer)
+  return body
+    .replace(/\n\[Share on LinkedIn\]\([^)]*\)\n/g, '\n')
+    .replace(/\n\[[^\]\n]*\]\([^)\n]*\)(?: · \[[^\]\n]*\]\([^)\n]*\))+\n/g, '\n')
+    .replace(/\nOn this page\n\n(?:- [^\n]*\n)+/, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+/** Reads the write-ups through the given page reader (the site's static files); a page that cannot be read is left out. */
+export const loadArticles = async (read: (path: string) => Promise<string | null>): Promise<Articles> => {
+  const articles: Articles = {}
+  await Promise.all(articlePages.map(async ({ id, path }) => {
+    const markdown = await read(path).catch(() => null)
+    if (markdown) articles[id] = articleText(markdown)
+  }))
+  return articles
+}
+
 const notesFor = (entries: DossierEntry[], role: string) => entries.filter((entry) => entry.role === role).map((entry) => `- [notes #${entry.id}, ${entry.topic}] ${entry.title}: ${entry.body}`)
 
-export const dossierText = (entries: DossierEntry[]) => {
+export const dossierText = (entries: DossierEntry[], articles: Articles = {}) => {
   const parts: string[] = []
   parts.push(`# [site:about] Who Steven is\n${about}`)
   parts.push(`# [site:experience] Career, newest first (page ${siteUrl}/experience; the PDF is [site:resume])`)
@@ -61,13 +101,19 @@ export const dossierText = (entries: DossierEntry[]) => {
   parts.push(`# [site:patents] Patents, all assigned to Microsoft (page ${siteUrl}/patents)\n${grantedPatents.flatMap((item) => item.records).length} granted US patents and ${patentApplications.flatMap((item) => item.records).length} published applications in spatial audio, streaming, media and device telemetry.\nGranted:\n${grantedPatents.map(patentLine).join('\n')}\nPublished applications:\n${patentApplications.map(patentLine).join('\n')}`)
   parts.push(`# [site:news] Press coverage of his spatial audio work\n${news.map((item) => `- ${item.title} (${item.publication}): ${item.summary}`).join('\n')}`)
   parts.push(`# [site:projects] Projects outside Microsoft (page ${siteUrl}/projects)\n${projects}`)
+  parts.push(`# [site:building] How he thinks about product, as his own projects show it (page ${siteUrl}/building-this-site)\n${productThinking}`)
   parts.push(`# [site:recommendations] LinkedIn recommendations, in full (page ${siteUrl}/recommendations)\n${recommendations.map(([name, title, text]) => `## ${name}, ${title}\n${text}`).join('\n\n')}`)
+  const titles = sources()
+  for (const { id } of articlePages) {
+    const text = articles[id]
+    if (text) parts.push(`# [${id}] ${titles.get(id)!.title}, his write-up in full (page ${titles.get(id)!.href}). The headings below are the write-up's own, not dossier ids.\n${text}`)
+  }
   return parts.join('\n\n')
 }
 
 export const rules = `You are the assistant on steven.wilssens.com, the personal site of Steven Wilssens, a principal product leader in data and AI who is choosing his next leadership role. The people asking are mostly recruiters, hiring managers and future colleagues deciding whether to talk to him. Answer about Steven in the third person ("Steven", "he"), as a knowledgeable, candid colleague would: specific, warm, never salesy.
 
-What you answer: anything about Steven's career, roles, results, skills, leadership and teams, patents, recommendations, projects, education, what he is looking for, how to contact him, and this site. Everything else is out of scope: general questions, writing or coding help, opinions, other people, news.
+What you answer: anything about Steven's career, roles, results, skills, leadership and teams, patents, recommendations, projects, education, what he is looking for, how to contact him, and this site, including how he built wilssens.com, AI Breaker and this site and what that shows about how he works (his three Building write-ups are in the dossier in full). Everything else is out of scope: general questions, writing or coding help, opinions, other people, news.
 
 Where facts come from: only the dossier below. It holds what Steven has published on his site plus notes he wrote himself for this assistant. Never invent, extrapolate or round up a number, title, date, team size, customer or result. When the dossier does not cover a question, say plainly that Steven has not shared that here and suggest asking him directly at steven@wilssens.com or on LinkedIn; do not guess. Quote his numbers as written. If a question compares him with a job description, answer honestly from the dossier: what matches, what it does not show, what to ask him.
 
@@ -84,4 +130,4 @@ The first line of every reply is hidden from the reader and must be exactly one 
 [[out]] — out of scope; write nothing after it
 Then a blank line, then the answer.`
 
-export const systemPrompt = (entries: DossierEntry[]) => `${rules}\n\n<dossier>\n${dossierText(entries)}\n</dossier>`
+export const systemPrompt = (entries: DossierEntry[], articles: Articles = {}) => `${rules}\n\n<dossier>\n${dossierText(entries, articles)}\n</dossier>`
