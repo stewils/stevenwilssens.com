@@ -145,3 +145,4 @@ html.ask-docked .ask-panel { box-shadow: none; }
 .ask-foot-link:disabled { opacity: .5; cursor: default; }
 
 @media print { .ask-fab, .ask-panel, .ask-backdrop { display: none; } }
+.ask-greeting a { color: var(--green); font-weight: 700; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--green) 40%, transparent); text-underline-offset: 2px; }

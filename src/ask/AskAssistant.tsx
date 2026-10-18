@@ -307,7 +307,7 @@ export default function AskAssistant({ page }: { page: string }) {
         <div className="ask-log" ref={logRef} aria-live="polite">
           {turns.length === 0 && (
             <div className="ask-welcome">
-              <p className="ask-greeting">Hi. I know Steven's roles, results, patents, recommendations and what he is looking for. Ask me anything, or paste a job description and I'll say what his record covers, what it doesn't, and what to ask him.</p>
+              <p className="ask-greeting">Hi. I know Steven's roles, results, patents, recommendations and what he is looking for. Ask me anything, or paste a job description and I'll say what his record covers, what it doesn't, and what to ask him. Your own AI assistant can read the same record through <a href="/mcp">steven.wilssens.com/mcp</a>.</p>
               <div className="ask-chips">
                 <button type="button" className="ask-chip ask-chip-fit" style={{ '--i': 0 } as React.CSSProperties} onClick={startFit}><Clipboard />{fitChip}</button>
                 {suggestions.map((text, index) => <button type="button" key={text} className="ask-chip" style={{ '--i': index + 1 } as React.CSSProperties} onClick={() => void send(text)}>{text}</button>)}
