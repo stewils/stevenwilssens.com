@@ -97,10 +97,10 @@ export const recommendationLinks: Record<string, string> = {
 // the PDF no longer matches it, so a change here always comes with a new resume.
 export const profile = {
   name: 'Steven Wilssens',
-  headline: 'Principal product leader for data and AI',
-  resumeHeadline: 'Principal product leader: data, experimentation and AI',
-  summary: 'Principal product leader with nearly 20 years at Microsoft building the data products, metrics, experimentation platforms and ML-powered insights that decide what ships across more than 1.6 billion Windows devices. I led teams of 10 to 20 product managers, turned telemetry and customer signals into decision systems used by engineers and product leaders, and kept building myself, most recently in AI.',
-  lookingFor: 'Product leadership roles in data, experimentation and AI',
+  headline: 'Product leader who invents new products, using data, experimentation and AI as tools',
+  resumeHeadline: 'Product leader who invents new products, using data, experimentation and AI as tools',
+  summary: 'Product leader with nearly 20 years at Microsoft, inventing products in areas I was new to: spatial audio for Windows and Xbox, the low-latency approach behind xCloud game streaming, casting, and the data and experimentation systems that decide what ships on more than 1.6 billion Windows devices. I lead teams of 10 to 20 product managers, use data, experimentation and AI to find what works, and keep building products myself.',
+  lookingFor: 'Product leadership roles building new products, where data, experimentation and AI are tools rather than the job',
   location: 'Seattle, Washington',
   workAuthorization: 'US permanent resident (green card)',
   availability: 'Available now',
