@@ -81,6 +81,7 @@ const recruiterAngles: Record<string, string[]> = {
   'info-support': ['Developer and trainer: what did you teach, to whom, and does any of it matter for a product leadership role today?'],
   general: [
     'The one-line pitch: who you are, what you want, why now. Say it without the word "passionate".',
+    'What makes your product thinking different, in one example? An AI assistant on a résumé site is table stakes; the loop behind yours (a gap becomes an interview question, a dossier entry, a proposal you approve, a pull request through the résumé gate, a merge) is not. Say which part is common, which part is yours, and what it changed on the résumé.',
     'Why leave Microsoft after almost 18 years, and why is this the moment? What have you built since September 2026?',
     'Level and scope you are actually a fit for: Director, Senior Director, VP? What evidence supports that, and what would make a hiring manager say "too narrow" (Windows only, Microsoft only)?',
     'Weaknesses a reference would mention unprompted. What did you get wrong as a manager and change?',

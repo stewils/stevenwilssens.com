@@ -225,6 +225,35 @@ describe('resume site', () => {
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
   })
 
+  it('overlays a scroll arrow on the graph only toward roles that are out of view', () => {
+    setPath('/experience')
+    const scrollBy = vi.fn()
+    window.HTMLElement.prototype.scrollBy = scrollBy
+    Object.defineProperty(window.HTMLElement.prototype, 'scrollWidth', { configurable: true, get: () => 1180 })
+    Object.defineProperty(window.HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 600 })
+    render(<App />)
+
+    // The hidden arrow has no accessible name while it is aria-hidden, so it is found by its class.
+    const back = document.querySelector('.graph-arrow-back') as HTMLElement
+    const forward = screen.getByRole('button', { name: 'Earlier roles' })
+    expect(back).toHaveAttribute('aria-label', 'More recent roles')
+    expect(back).toHaveAttribute('aria-hidden', 'true')
+    expect(back).not.toHaveClass('is-shown')
+    expect(forward).toHaveClass('is-shown')
+
+    fireEvent.click(forward)
+    expect(scrollBy).toHaveBeenCalledWith({ left: 480, behavior: 'smooth' })
+
+    const scroller = document.querySelector('.graph-scroll') as HTMLElement
+    Object.defineProperty(scroller, 'scrollLeft', { configurable: true, value: 580 })
+    fireEvent.scroll(scroller)
+    expect(back).toHaveClass('is-shown')
+    expect(forward).not.toHaveClass('is-shown')
+
+    delete (window.HTMLElement.prototype as { scrollWidth?: unknown }).scrollWidth
+    delete (window.HTMLElement.prototype as { clientWidth?: unknown }).clientWidth
+  })
+
   it('exposes all news article links', () => {
     setPath('/news')
     render(<App />)

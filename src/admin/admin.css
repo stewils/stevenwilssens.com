@@ -1,29 +1,30 @@
 /* The admin dashboard: a menu on the left and the page on the right, one page per area.
-   The site's own palette; dark when the system is, or when the switch in the menu says so
-   (html[data-theme], set by admin.html before the first paint and by the switch after). */
+   The site's own palette, dark like the site unless the switch in the menu says light, or
+   says auto and the system is light (html[data-theme], set by admin.html before the first
+   paint and by the switch after). */
 :root {
-  color-scheme: light;
-  --ink: #172121; --muted: #586360; --paper: #f4f6f1; --card: #ffffff; --line: #d7dfd8;
-  --green: #096b50; --on-green: #ffffff; --accent: #6fd1a6; --series: #0b8a5f; --series-track: #e3ece6; --yellow: #e8b84a; --warn-ink: #8a5a00;
-  --bad: #b3261e; --bad-bg: #fdecea; --good-bg: #d8f0d8; --warn-bg: #fdecc4; --poor-bg: #f6d6d6;
-  --side-bg: #13211d; --side-text: rgba(255, 255, 255, 0.74); --side-hover: rgba(255, 255, 255, 0.08); --side-active: rgba(255, 255, 255, 0.14);
-  --gutter: clamp(16px, 3.5vw, 44px);
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    color-scheme: dark;
-    --ink: #e4ebe6; --muted: #98a6a0; --paper: #0f1916; --card: #15221e; --line: #25352f;
-    --green: #6fd1a6; --on-green: #0b1a15; --series: #3fb98a; --series-track: #1f3a30; --warn-ink: #f2c66d;
-    --bad: #ff9b93; --bad-bg: #3a1a17; --good-bg: #1c3a2a; --warn-bg: #3d3115; --poor-bg: #3f1f1f;
-    --side-bg: #0a120f;
-  }
-}
-:root[data-theme='dark'] {
   color-scheme: dark;
   --ink: #e4ebe6; --muted: #98a6a0; --paper: #0f1916; --card: #15221e; --line: #25352f;
-  --green: #6fd1a6; --on-green: #0b1a15; --series: #3fb98a; --series-track: #1f3a30; --warn-ink: #f2c66d;
+  --green: #6fd1a6; --on-green: #0b1a15; --accent: #6fd1a6; --series: #3fb98a; --series-track: #1f3a30; --yellow: #e8b84a; --warn-ink: #f2c66d;
   --bad: #ff9b93; --bad-bg: #3a1a17; --good-bg: #1c3a2a; --warn-bg: #3d3115; --poor-bg: #3f1f1f;
-  --side-bg: #0a120f;
+  --side-bg: #0a120f; --side-text: rgba(255, 255, 255, 0.74); --side-hover: rgba(255, 255, 255, 0.08); --side-active: rgba(255, 255, 255, 0.14);
+  --gutter: clamp(16px, 3.5vw, 44px);
+}
+:root[data-theme='light'] {
+  color-scheme: light;
+  --ink: #172121; --muted: #586360; --paper: #f4f6f1; --card: #ffffff; --line: #d7dfd8;
+  --green: #096b50; --on-green: #ffffff; --series: #0b8a5f; --series-track: #e3ece6; --warn-ink: #8a5a00;
+  --bad: #b3261e; --bad-bg: #fdecea; --good-bg: #d8f0d8; --warn-bg: #fdecc4; --poor-bg: #f6d6d6;
+  --side-bg: #13211d;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme='system'] {
+    color-scheme: light;
+    --ink: #172121; --muted: #586360; --paper: #f4f6f1; --card: #ffffff; --line: #d7dfd8;
+    --green: #096b50; --on-green: #ffffff; --series: #0b8a5f; --series-track: #e3ece6; --warn-ink: #8a5a00;
+    --bad: #b3261e; --bad-bg: #fdecea; --good-bg: #d8f0d8; --warn-bg: #fdecc4; --poor-bg: #f6d6d6;
+    --side-bg: #13211d;
+  }
 }
 *, *::before, *::after { box-sizing: border-box; }
 html, body, #root { height: 100%; }
@@ -62,7 +63,7 @@ button { cursor: pointer; }
 .side-foot a, .side-foot button, .side-foot label { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 12px; border-radius: 10px; border: 0; background: transparent; color: var(--side-text); font: inherit; font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; text-align: left; }
 .side-foot a:hover, .side-foot button:hover, .side-foot label:hover { background: var(--side-hover); color: #fff; }
 .side-foot input { accent-color: var(--accent); margin: 0; }
-/* The theme switch: auto (the system), light, dark. */
+/* The theme switch: dark (the default), light, auto (the system). */
 .side-foot .theme { display: flex; gap: 4px; padding: 4px 12px; }
 .side-foot .theme button { flex: 1; justify-content: center; min-height: 32px; padding: 0 6px; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 8px; font-size: 12px; }
 .side-foot .theme button.active { background: var(--side-active); border-color: transparent; color: #fff; }
