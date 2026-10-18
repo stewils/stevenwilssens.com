@@ -14,14 +14,14 @@ import { pathToFileURL } from 'node:url'
 const { _comment, ...projects } = JSON.parse(readFileSync(resolve('src/articles/sources.json'), 'utf8'))
 void _comment
 
-export const brief = ({ event, title, instruction, payload, today = new Date() }) => {
+export const brief = ({ event, title, instruction, payload, today = new Date(), projects: map = projects }) => {
   if (event !== 'repository_dispatch') {
     if (!title?.trim() || !instruction?.trim()) return { skip: 'The title and the instruction are both needed.' }
     return { title: title.trim(), instruction: instruction.trim(), project: '', repository: '', ref: '', before: '', sources: '', origin: 'a request made through the MCP server' }
   }
   const key = String(payload?.project ?? '')
-  const project = projects[key]
-  if (!project) return { skip: `Unknown project "${key}"; src/articles/sources.json lists ${Object.keys(projects).join(', ')}.` }
+  const project = map[key]
+  if (!project) return { skip: `Unknown project "${key}"; src/articles/sources.json lists ${Object.keys(map).join(', ')}.` }
   if (!project.article) return { skip: `${project.name} has no Building write-up yet (src/articles/sources.json); nothing to refresh.` }
   const sha = String(payload.sha ?? '')
   if (!/^[0-9a-f]{7,40}$/.test(sha)) return { skip: 'The payload names no commit (sha).' }

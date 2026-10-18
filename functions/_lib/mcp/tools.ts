@@ -254,7 +254,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'read_site_page',
-    description: 'Read one of the published pages of steven.wilssens.com as Markdown: home, about, experience, recommendations, patents, honors, news, projects, building-wilssens (the write-up on building wilssens.com), building-aibreaker (the write-up on building AI Breaker), or llms-full for every page in one go. What is here, Steven has already said publicly; build on it rather than asking again.',
+    description: 'Read one of the published pages of steven.wilssens.com as Markdown: home, about, experience, recommendations, patents, honors, news, projects, building-wilssens (the write-up on building wilssens.com), building-aibreaker (the write-up on building AI Breaker), building-this-site (the write-up on building this site), building-juniortrackcycling (the write-up on building juniortrackcycling.com), building-leo (the write-up on building leo.wilssens.com), or llms-full for every page in one go. What is here, Steven has already said publicly; build on it rather than asking again.',
     inputSchema: { type: 'object', properties: { page: { type: 'string', enum: sitePages } }, required: ['page'], additionalProperties: false },
     readOnly: true,
     run: async (args, ctx) => {

@@ -12,7 +12,7 @@ export const pool: Suggestion[] = [
   { text: 'What are his biggest results, with numbers?', pages: ['experience', 'home'] },
   { text: 'What do people who reported to him say?', pages: ['recommendations'] },
   { text: 'What are his patents about?', pages: ['patents'] },
-  { text: 'How does he use AI in his own work?', pages: ['projects', 'building-wilssens', 'building-aibreaker', 'building-this-site', 'about'] },
+  { text: 'How does he use AI in his own work?', pages: ['projects', 'building-wilssens', 'building-aibreaker', 'building-this-site', 'building-juniortrackcycling', 'building-leo', 'about'] },
   { text: 'What is wilssens.com and why did he build it?', pages: ['projects', 'building-wilssens'] },
   { text: 'What is AI Breaker and why did he build it?', pages: ['projects', 'building-aibreaker'] },
   { text: 'Which awards has he received?', pages: ['honors'] },

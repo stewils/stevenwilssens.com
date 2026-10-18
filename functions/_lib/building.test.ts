@@ -22,10 +22,12 @@ const fakeGitHub = (merged: number | Error): GitHub => ({
 
 describe('the projects', () => {
   it('lists each write-up with its repository, sources and feed, without the comment', () => {
-    expect(Object.keys(projects)).toEqual(['wilssens', 'aibreaker', 'site', 'juniortrackcycling'])
+    expect(Object.keys(projects)).toEqual(['wilssens', 'aibreaker', 'site', 'juniortrackcycling', 'leo'])
     expect(projects.site).toMatchObject({ repository: 'stewils/stevenwilssens.com', page: 'building-this-site', article: 'src/articles/site/SiteArticle.tsx', feed: 'own' })
     expect(projects.wilssens.sources[0]).toBe('CLAUDE.md')
-    expect(projects.juniortrackcycling.article).toBeNull()
+    expect(projects.juniortrackcycling).toMatchObject({ page: 'building-juniortrackcycling', article: 'src/articles/juniortrackcycling/JuniorTrackCyclingArticle.tsx', feed: null })
+    expect(projects.leo).toMatchObject({ repository: 'stewils/leo-wilssens', page: 'building-leo', feed: null })
+    for (const project of Object.values(projects)) expect(project.sources[0]).toBe('CLAUDE.md')
   })
 })
 

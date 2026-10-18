@@ -46,7 +46,8 @@ describe('the Site update brief', () => {
   })
 
   it('skips a project without a write-up, an unknown project and a payload without a commit', () => {
-    expect(brief({ event: 'repository_dispatch', payload: { project: 'juniortrackcycling', sha: 'abcdef1' }, today }).skip).toMatch(/no Building write-up yet/)
+    const noArticle = { later: { name: 'Later', repository: 'stewils/later', page: null, article: null, sources: ['CLAUDE.md'], feed: null } }
+    expect(brief({ event: 'repository_dispatch', payload: { project: 'later', sha: 'abcdef1' }, today, projects: noArticle }).skip).toMatch(/no Building write-up yet/)
     expect(brief({ event: 'repository_dispatch', payload: { project: 'nope', sha: 'abcdef1' }, today }).skip).toMatch(/Unknown project/)
     expect(brief({ event: 'repository_dispatch', payload: { project: 'wilssens' }, today }).skip).toMatch(/no commit/)
   })

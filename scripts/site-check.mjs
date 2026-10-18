@@ -41,7 +41,7 @@ const lighthouseSample = ['/', '/experience', '/about']
 const minScore = { accessibility: 90, 'best-practices': 90, seo: 90 }
 // Pages with a known accessibility backlog (the write-ups' SVG diagrams): their axe
 // violations are reported as warnings, not failures, until that backlog is worked off.
-const knownBacklog = new Set(['/building-wilssens', '/building-aibreaker', '/building-this-site'])
+const knownBacklog = new Set(['/building-wilssens', '/building-aibreaker', '/building-this-site', '/building-juniortrackcycling', '/building-leo'])
 
 const readDevVars = () => {
   if (!existsSync('.dev.vars')) return {}

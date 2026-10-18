@@ -68,7 +68,29 @@ describe('resume site', () => {
     render(<App />)
 
     expect(screen.getByRole('heading', { name: 'AI Breaker' })).toBeInTheDocument()
-    expect(screen.getAllByRole('link', { name: /Read how it was built/ }).map((link) => link.getAttribute('href'))).toEqual(['/building-wilssens', '/building-aibreaker', '/building-this-site'])
+    expect(screen.getAllByRole('link', { name: /Read how it was built/ }).map((link) => link.getAttribute('href'))).toEqual(['/building-wilssens', '/building-aibreaker', '/building-juniortrackcycling', '/building-leo', '/building-this-site'])
+  })
+
+  it('renders the Junior Track Cycling write-up with its gates and its local-build screenshots', () => {
+    setPath('/building-juniortrackcycling')
+    render(<App />)
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Building juniortrackcycling.com' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Built for minors/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /You catch it, not me/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Visit juniortrackcycling.com ↗' })).toHaveAttribute('href', 'https://juniortrackcycling.com')
+    expect(screen.getByRole('link', { name: 'a separate project' })).toHaveAttribute('href', '/building-leo')
+  })
+
+  it('renders the leo.wilssens.com write-up with its rules first', () => {
+    setPath('/building-leo')
+    render(<App />)
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Building leo.wilssens.com' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /The rules came first/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Four games/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Visit leo.wilssens.com ↗' })).toHaveAttribute('href', 'https://leo.wilssens.com')
+    expect(document.querySelector('.wx-stats')).not.toHaveAttribute('data-feed')
   })
 
   it('renders the AI Breaker write-up with its research and sections', () => {
