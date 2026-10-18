@@ -58,7 +58,7 @@ export default function WilssensArticle() {
       <a className="back-link" href="/projects">← Projects</a>
       <p className="wx-eyebrow">Project write-up · wilssens.com</p>
       <h1>Building wilssens.com</h1>
-      <p className="wx-dek">A family name, turned into a platform: how a search box became mailboxes, websites, AI apps and a command line, and the rules that kept it safe.</p>
+      <p className="wx-dek">A multi-tenant hosting and email platform built in 16 days: how a search box became mailboxes, isolated websites, MCP-based AI apps and a command line, and the rules that kept it safe.</p>
       <p className="wx-ticker" role="img" aria-label="name@wilssens.com"><span className="wx-ticker-names" aria-hidden="true">{['jan', 'emma', 'lotte', 'marc', 'an'].map((name) => <span key={name}>{name}</span>)}</span><span className="wx-ticker-domain" aria-hidden="true">@wilssens.com</span></p>
       <p className="wx-meta">Steven Wilssens · October 2026 · <span data-read-time>15 min read</span></p>
       <dl className="wx-stats">{stats.map(([value, prefix, decimals, label]) => <div key={label}><dt>{prefix}<span data-count={value} data-decimals={decimals}>{value.toFixed(decimals)}</span></dt><dd>{label}</dd></div>)}</dl>
