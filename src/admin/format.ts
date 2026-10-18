@@ -47,3 +47,15 @@ export function fillDays(rows: { day: string }[], days: number, now = new Date()
     return byDay.get(day) ?? blank(day)
   })
 }
+
+export const formatUsd = (micro: number) => `$${(micro / 1_000_000).toFixed(2)}`
+
+export const formatBytes = (bytes: number) => (bytes >= 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`)
+
+export const formatDay = (ts: number) => new Date(ts).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+
+export const dayLabel = (day: string) => new Date(`${day}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+// First, middle and last day under a chart of days.
+export const dayAxis = (rows: { day: string }[]) => (rows.length > 1 ? [dayLabel(rows[0].day), dayLabel(rows[Math.floor(rows.length / 2)].day), dayLabel(rows[rows.length - 1].day)] : rows.map((row) => dayLabel(row.day)))
+
+export const place = (row: { city: string | null; region?: string | null; country: string | null }) => [row.city, row.region, row.country].filter(Boolean).join(', ') || 'Unknown'
