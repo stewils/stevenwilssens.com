@@ -10,7 +10,7 @@ import '../wilssens/article.css'
 
 // The write-up of how this site is built and run, linked from /projects. Numbers come
 // from the site's own analytics database, the résumé checker and the MCP server as of
-// 17 October 2026; update them together with the date in the closing section.
+// 18 October 2026; update them together with the date in the closing section.
 
 const sections = [
   ['source', 'One file, five outputs'],
@@ -26,7 +26,7 @@ const sections = [
 const articleUrl = 'https://steven.wilssens.com/building-this-site'
 const linkedInShare = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(articleUrl)}`
 
-// Outcomes, not effort, as of 17 October 2026. [value, prefix, decimals, label]
+// Outcomes, not effort, as of 18 October 2026. [value, prefix, decimals, label]
 const stats: [number, string, number, string][] = [[10, '', 0, 'countries visitors came from in the first three weeks'], [100, '', 0, 'percent of loading, response and stability measurements rated good'], [18, '', 0, 'résumé changes approved through the interview loop'], [5, '', 0, 'pull requests opened by Claude Code from a conversation, all merged']]
 
 const Figure = ({ children, caption }: { children: ReactNode; caption: string }) => <figure className="wx-figure wx-diagram"><div className="wx-diagram-scroll">{children}</div><figcaption>{caption}</figcaption></figure>
@@ -106,7 +106,7 @@ export default function SiteArticle() {
           <p>It checks that the text is extractable without icon-font glyphs, that the file is two pages or fewer, that the contact details, headline, every role, company and date match the site, that the bullets of the two latest roles match word for word, that past roles are in the past tense, that a team size and the keywords recruiters search for appear, and that every number on the home page has a bullet behind it. Errors cost 25 points and warnings 5. A new PDF only replaces the current one when its score does not drop, and overriding that needs a reason in the commit message.</p>
           <p>The gate earned its keep on its first day. The first batch of résumé changes from the loop described below added scope and outcomes to my latest role, and the PDF ran one line onto a third page. The checker scored it 65 out of 100, the test went red, and main stopped deploying:</p>
           <pre className="wx-pre" aria-label="Output of the résumé checker"><span className="is-quiet">$ npm run resume:check</span>{'\n'}public/steven-wilssens-resume-2026.pdf: score 65/100, 3 pages, 346 KB, 1 error, 2 warnings{'\n'}  <span className="is-bad">[error]</span> 3 pages; a resume for a principal role is two at most.{'\n'}  <span className="is-warn">[warn]</span> "15% increase in Windows adoption" has no role bullet behind it in src/resume.ts; a hiring manager will ask what it measures.{'\n'}  <span className="is-warn">[warn]</span> "30% reduction in customer issues" has no role bullet behind it in src/resume.ts; a hiring manager will ask what it measures.</pre>
-          <p>The fix was a layout one, an hour later: a compact honors line, a shorter patents note and a smaller bottom margin brought the PDF back to two pages at a score of 90. The checker was not touched. The two warnings are fair too: those numbers have been on my résumé for years, and I owe them a bullet or a deletion.</p>
+          <p>The fix was a layout one, an hour later: a compact honors line, a shorter patents note and a smaller bottom margin brought the PDF back to two pages at a score of 90. The checker was not touched, and since then the score of every résumé that goes live is kept, so the dashboard shows whether a change made it better or worse. The two warnings are fair too: those numbers have been on my résumé for years, and I owe them a bullet or a deletion.</p>
         </section>
 
         <section aria-labelledby="readers">
@@ -116,10 +116,10 @@ export default function SiteArticle() {
           <div className="wx-table-wrap"><table className="wx-table">
             <thead><tr><th scope="col">Readers</th><th scope="col">Since</th><th scope="col">Count</th><th scope="col">What they went for</th></tr></thead>
             <tbody>
-              <tr><th scope="row">People</th><td data-label="Since" className="is-nowrap">27 Sep</td><td data-label="Count">61 visitors, 134 page views, 10 countries</td><td data-label="What they went for">Two thirds of views on the home page, then Experience, Recommendations and Patents. Desktop first, phones close behind.</td></tr>
-              <tr><th scope="row">Search engines</th><td data-label="Since" className="is-nowrap">12 Oct</td><td data-label="Count">108 requests</td><td data-label="What they went for">Bing most of all, then Google and Apple. The sitemap, then every page.</td></tr>
-              <tr><th scope="row">AI crawlers</th><td data-label="Since" className="is-nowrap">12 Oct</td><td data-label="Count">52 requests</td><td data-label="What they went for">OpenAI’s search bot, Anthropic’s Claude for users and for training, Amazon. The robots file and sitemap first, then the home page and the Markdown copies.</td></tr>
-              <tr><th scope="row">Scripts and probes</th><td data-label="Since" className="is-nowrap">12 Oct</td><td data-label="Count">348 requests</td><td data-label="What they went for">No user agent, curl, or a bare “Mozilla”. Kept apart so they never count as readers.</td></tr>
+              <tr><th scope="row">People</th><td data-label="Since" className="is-nowrap">27 Sep</td><td data-label="Count">62 visitors, 135 page views, 10 countries</td><td data-label="What they went for">Two thirds of views on the home page, then Experience, Recommendations and Patents. Desktop first, phones close behind.</td></tr>
+              <tr><th scope="row">Search engines</th><td data-label="Since" className="is-nowrap">12 Oct</td><td data-label="Count">113 requests</td><td data-label="What they went for">Bing most of all, then Google and Apple. The sitemap, then every page.</td></tr>
+              <tr><th scope="row">AI crawlers</th><td data-label="Since" className="is-nowrap">12 Oct</td><td data-label="Count">68 requests</td><td data-label="What they went for">Anthropic’s Claude for users and for training, OpenAI’s search bot and GPTBot, Amazon. The robots file and sitemap first, then the home page and the Markdown copies.</td></tr>
+              <tr><th scope="row">Scripts and probes</th><td data-label="Since" className="is-nowrap">12 Oct</td><td data-label="Count">391 requests</td><td data-label="What they went for">No user agent, curl, or a bare “Mozilla”. Kept apart so they never count as readers.</td></tr>
             </tbody>
           </table></div>
           <p>Three weeks is too early for conclusions, but two things already changed what I did. AI crawlers fetch the Markdown copies of the pages, which told me the next section was worth doing. And every loading, responsiveness and stability measurement so far is rated good, on phones as well as desktops, so performance work can wait. The numbers are read on a private dashboard, behind a token: the decision and the number behind it on one screen, the same habit as at Microsoft.</p>
@@ -145,7 +145,7 @@ export default function SiteArticle() {
             <li><strong>Every answer starts with a hidden line</strong> the server strips: the sections it rests on, shown to the reader as links; “none”, when my notes do not cover the question, which saves it as a gap; or “out”, for anything off topic, where the reader sees a fixed sentence and the model’s text is never shown.</li>
             <li><strong>Answers are signed,</strong> so nobody can send the assistant an earlier answer it did not give. <strong>Limits are in the code:</strong> thirty questions an hour per visitor, twelve turns, a thousand characters, an optional human check, and a monthly budget counted from the provider’s own token usage. When the budget is spent the button disappears and the site keeps working.</li>
           </ul>
-          <p>Questions, cost, votes and the unanswered questions go to the dashboard. The assistant is a day old as I write this, so the only honest number is the cost: four questions, nineteen cents. The interesting number will be the gaps, because of what happens to them next.</p>
+          <p>Questions, cost, votes and the unanswered questions go to the dashboard. The assistant is two days old as I write this: ten questions, forty-nine cents, and one gap. A visitor asked whether I would be a good fit for a role at a company my notes say nothing about. The assistant said so, and that question is now first on the list for the next interview. That is the loop below, starting on its own.</p>
         </section>
 
         <section aria-labelledby="loop">
@@ -155,7 +155,7 @@ export default function SiteArticle() {
             <li><strong>Interview me like a sceptical recruiter.</strong> It reads what is already published, so it never asks what the site answers. It knows which roles have no numbers, which stints are short and where dates overlap, and asks one question at a time. Every answer becomes a dossier entry, private by default. Questions the site’s assistant could not answer go to the top of the list.</li>
             <li><strong>Review the site from a recruiter’s seat.</strong> A review tool reads the published pages, the résumé report and an import of my LinkedIn profile, and returns findings with why a recruiter cares and what fixes it: a leadership role with no team size, an unexplained number, a gap, a LinkedIn headline that says something else. It scores the whole, and the score is what I work against.</li>
             <li><strong>Propose résumé changes and record my decisions.</strong> At the end of a session Claude compares the dossier with the résumé and proposes concrete edits: the current text, the new text, the notes it rests on. I approve or reject each one. So far: 20 proposals, 18 approved, 2 rejected because they overstated.</li>
-            <li><strong>Change the site, through a pull request.</strong> An approved batch goes to GitHub Actions, where Claude Code edits the data file on a branch, rebuilds the résumé through the gate, runs the lint, tests and build, opens a pull request, starts the preview and emails me. I read the preview and merge, from the same conversation if I like.</li>
+            <li><strong>Change the site, through a pull request.</strong> An approved batch goes to GitHub Actions, where Claude Code edits the data file on a branch, rebuilds the résumé through the gate, runs the lint, tests and build, opens a pull request, starts the preview and emails me what changed, in plain words. I read the preview and merge, from the same conversation if I like.</li>
           </ul>
           <Figure caption="A question the assistant could not answer becomes an interview question, a dossier entry, a proposal, a pull request and a change on the site. I decide twice."><LoopDiagram /></Figure>
           <Shot src={pullRequest} width={1440} height={900} host="github.com" alt="A merged pull request on GitHub titled Résumé batch 1, opened by the github-actions bot, with the instruction listing the approved changes" caption="The first batch of résumé changes, as the workflow opened it: the instruction, the approved wording, the checks, and a preview link. Five files changed, seven lines each way." />
@@ -178,7 +178,7 @@ export default function SiteArticle() {
         <section aria-labelledby="next">
           <H2 id="next" kicker="08">What’s next</H2>
           <p>Three batches of approved résumé changes have landed through the loop, including a role that closes a gap recruiters used to ask about. Next, LinkedIn gets compared against the site after every batch, so the three tell one story, and the assistant’s unanswered questions, once there are some, set the agenda for the next interview.</p>
-          <p>The numbers in this write-up are from 17 October 2026. The dashboard will tell me when they are worth updating.</p>
+          <p>The numbers in this write-up are from 18 October 2026. The dashboard will tell me when they are worth updating.</p>
           <div className="wx-end">
             <p>Ask the assistant something a recruiter would ask.</p>
             <div className="wx-actions">
