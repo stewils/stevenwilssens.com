@@ -145,7 +145,7 @@ export default function SiteArticle() {
             <li><strong>Every answer starts with a hidden line</strong> the server strips: the sections it rests on, shown to the reader as links; “none”, when my notes do not cover the question, which saves it as a gap; or “out”, for anything off topic, where the reader sees a fixed sentence and the model’s text is never shown.</li>
             <li><strong>Answers are signed,</strong> so nobody can send the assistant an earlier answer it did not give. <strong>Limits are in the code:</strong> thirty questions an hour per visitor, twelve turns, a thousand characters, an optional human check, and a monthly budget counted from the provider’s own token usage. When the budget is spent the button disappears and the site keeps working.</li>
           </ul>
-          <p>Questions, cost, votes and the unanswered questions go to the dashboard. The assistant is two days old as I write this: ten questions, forty-nine cents, and one gap. A visitor asked whether I would be a good fit for a role at a company my notes say nothing about. The assistant said so, and that question is now first on the list for the next interview. That is the loop below, starting on its own.</p>
+          <p>Questions, cost, votes and the unanswered questions go to the dashboard. The assistant is two days old as I write this, so the only honest number is the cost: ten questions, forty-nine cents. The interesting number will be the gaps, because of what happens to them next.</p>
         </section>
 
         <section aria-labelledby="loop">
