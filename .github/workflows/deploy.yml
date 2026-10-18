@@ -56,21 +56,6 @@ jobs:
             alias=$(printf '%s' "$GITHUB_REF_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | cut -c1-28)
             echo "### Preview: https://$alias.stevenwilssens.pages.dev" >> "$GITHUB_STEP_SUMMARY"
           fi
-      # Best practices, checked in a real browser after the deploy so it never blocks or hangs it:
-      # every public page and every admin page, desktop and phone, for layout (no sideways scroll;
-      # the admin has one scroll container, its page pane), console errors, the head tags search
-      # engines read, accessibility (axe-core), and Lighthouse's accessibility, best-practices and
-      # SEO scores. A failure turns the run red (and emails) so a regression is fixed forward.
-      # scripts/site-check.mjs; run it locally with `npm run check:site`.
-      - name: Check the built site against web best practices
-        if: always()
-        timeout-minutes: 12
-        run: |
-          npx playwright-core install chromium
-          npx wrangler d1 migrations apply stevenwilssens-analytics --local
-          { echo 'ADMIN_TOKEN=ci-check-token'; echo 'HASH_SALT=ci-check-salt'; } > .dev.vars
-          node scripts/site-check.mjs --token ci-check-token --lighthouse sample --summary "$GITHUB_STEP_SUMMARY" --json dist/site-check.json
-
       - name: Notify search engines (IndexNow)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.CLOUDFLARE_API_TOKEN != ''
         continue-on-error: true

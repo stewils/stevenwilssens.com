@@ -1,0 +1,44 @@
+name: Site checks
+
+# Best practices in a real browser, separate from Deploy so it never blocks or
+# hangs a deploy: every public page and every admin page, desktop and phone, for
+# layout, console errors, the head tags search engines read, accessibility
+# (axe-core) and Lighthouse's accessibility, best-practices and SEO scores. The
+# three write-ups' diagram accessibility backlog is reported as a warning, not a
+# failure (see scripts/site-check.mjs). Fails the run on anything else.
+on:
+  push:
+    branches: ['**', '!dependabot/**']
+    paths-ignore: ['public/steven-wilssens-resume-2026.pdf']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: site-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright-core install chromium
+      - name: Check the built site
+        run: |
+          npx wrangler d1 migrations apply stevenwilssens-analytics --local
+          { echo 'ADMIN_TOKEN=ci-check-token'; echo 'HASH_SALT=ci-check-salt'; } > .dev.vars
+          node scripts/site-check.mjs --token ci-check-token --lighthouse sample --summary "$GITHUB_STEP_SUMMARY" --json site-check.json
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-check-report
+          path: site-check.json
+          if-no-files-found: ignore
