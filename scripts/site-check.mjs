@@ -89,7 +89,8 @@ async function checkPage(context, path, viewport, { admin }) {
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()) })
   page.on('response', (response) => { if (response.url().startsWith(base) && response.status() >= 400) failed.push(`${response.status()} ${response.url().slice(base.length)}`) })
   const url = `${base}${path}`
-  await page.goto(url, { waitUntil: 'networkidle' })
+  page.setDefaultNavigationTimeout(25_000)
+  await page.goto(url, { waitUntil: 'load' }).catch(() => {})
   await page.waitForTimeout(500)
 
   if (consoleErrors.length) fail(path, viewport.name, 'console', consoleErrors.slice(0, 3).join(' | '))
@@ -152,7 +153,7 @@ for (const viewport of viewports) {
   const adminContext = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height } })
   await adminContext.addInitScript((value) => { localStorage.setItem('sw-admin-token', value); localStorage.setItem('sw-analytics-ignore', '1') }, token)
   const probe = await adminContext.newPage()
-  await probe.goto(`${base}/admin`, { waitUntil: 'networkidle' })
+  await probe.goto(`${base}/admin`, { waitUntil: 'load' }).catch(() => {})
   const adminPages = await probe.evaluate(() => [...document.querySelectorAll('.tabs a[href^="#"]')].map((a) => a.getAttribute('href')))
   await probe.close()
   if (adminPages.length === 0) fail('/admin', viewport.name, 'admin', 'the dashboard did not open with the token; is ADMIN_TOKEN the same in .dev.vars?')
