@@ -142,7 +142,7 @@ export default function Admin() {
         </div>
       </aside>
 
-      <div className="main" id="scroller" ref={scroller}>
+      <main className="main" id="scroller" ref={scroller}>
         <div className="main-in">
           <header className="page-head">
             <div>
@@ -167,7 +167,7 @@ export default function Admin() {
             {content()}
           </div>
         </div>
-      </div>
+      </main>
     </div>
   )
 }

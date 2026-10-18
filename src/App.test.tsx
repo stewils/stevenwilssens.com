@@ -137,7 +137,7 @@ describe('resume site', () => {
     setPath('/experience')
     render(<App />)
 
-    const nodes = screen.getAllByRole('button', { name: /^Scroll to / })
+    const nodes = screen.getAllByRole('button', { name: /^Go to/ })
     fireEvent.click(nodes[3])
     expect(nodes[3]).toHaveAttribute('aria-pressed', 'true')
     expect(nodes[0]).toHaveAttribute('aria-pressed', 'false')
@@ -220,7 +220,7 @@ describe('resume site', () => {
     window.HTMLElement.prototype.scrollIntoView = scrollIntoView
     render(<App />)
 
-    fireEvent.click(screen.getByRole('button', { name: /Scroll to Lead Developer and Team Lead/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Go to.*Lead Developer and Team Lead/ }))
 
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
   })

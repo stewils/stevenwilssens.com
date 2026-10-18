@@ -45,7 +45,7 @@ export function SpeedPage({ vitals }: { vitals: Stats['vitals'] }) {
                     <span className="vital-name" title={vitalInfo[row.metric]?.name}>{row.metric} <small>{vitalInfo[row.metric]?.name}</small></span>
                     <strong>{formatVital(row.metric, row.p75)}</strong>
                     <span className={`status ${rating}`}>{ratingLabel[rating]}</span>
-                    <span className="vital-share" aria-label={`${formatPercent(row.good, true)} good, ${formatPercent(row.needsImprovement, true)} needs work, ${formatPercent(row.poor, true)} poor`}>
+                    <span className="vital-share" role="img" aria-label={`${formatPercent(row.good, true)} good, ${formatPercent(row.needsImprovement, true)} needs work, ${formatPercent(row.poor, true)} poor`}>
                       <span className="good" style={{ flexGrow: row.good }} />
                       <span className="needs-improvement" style={{ flexGrow: row.needsImprovement }} />
                       <span className="poor" style={{ flexGrow: row.poor }} />

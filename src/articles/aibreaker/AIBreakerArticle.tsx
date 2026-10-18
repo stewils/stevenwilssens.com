@@ -34,7 +34,7 @@ const linkedInShare = `https://www.linkedin.com/sharing/share-offsite/?url=${enc
 // What is built and proven, not effort, as of 17 October 2026. [value, prefix, decimals, label]
 const stats: [number, string, number, string][] = [[4, '', 0, 'levels, from nothing blocked to full lockdown'], [36, '', 0, 'of 37 documented AI settings in Windows, Office and browsers covered'], [26, '', 0, 'chatbot domains blocked in three browsers, proven on Windows Home and Pro'], [1, '', 0, 'click to undo everything, even when the app won’t open']]
 
-const Figure = ({ children, caption }: { children: ReactNode; caption: string }) => <figure className="wx-figure wx-diagram"><div className="wx-diagram-scroll">{children}</div><figcaption>{caption}</figcaption></figure>
+const Figure = ({ children, caption }: { children: ReactNode; caption: string }) => <figure className="wx-figure wx-diagram"><div className="wx-diagram-scroll" role="group" aria-label={caption} tabIndex={0}>{children}</div><figcaption>{caption}</figcaption></figure>
 
 const Shot = ({ src, alt, caption, host, width, height }: { src: string; alt: string; caption: string; host: string; width: number; height: number }) => <figure className="wx-figure wx-shot">
   <button className="wx-shot-frame" type="button" data-zoom={src} data-zoom-alt={alt} aria-label={`Enlarge: ${alt}`}>

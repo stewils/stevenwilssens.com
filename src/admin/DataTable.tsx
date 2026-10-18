@@ -62,7 +62,7 @@ export function DataTable<T>({ columns, rows, rowKey, empty = 'No data yet', lab
               const isOpen = open === key
               return (
                 <Fragment key={key}>
-                  <tr className={classes(expand && 'clickable')} onClick={expand ? () => setOpen(isOpen ? null : key) : undefined} aria-expanded={expand ? isOpen : undefined}>
+                  <tr className={classes(expand && 'clickable')} onClick={expand ? () => setOpen(isOpen ? null : key) : undefined}>
                     {columns.map((column) => {
                       const value = column.value(row)
                       return (
