@@ -120,7 +120,7 @@ nav a, .nav-measure span { white-space: nowrap; }
 .nav-panel a:hover, .nav-panel a.active { color: var(--green); border-color: var(--green); }
 nav a:focus-visible, .nav-more > button:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 2px; }
 @media (max-width: 800px) { nav, .nav-more { position: static; } nav, .nav-measure { gap: 18px; } nav a, .nav-more > button, .nav-measure span { padding: 22px 0 19px; } .nav-panel { top: 100%; left: 0; right: 0; min-width: 0; } .nav-panel a { padding: 14px 20px; } }
-@media (max-width: 520px) { .header-contact .text-link { display: none; } }
+@media (max-width: 520px) { .header-contact .text-link { display: none; }.hero-facts { grid-template-columns: 1fr; gap: 12px; } }
 /* Patents: grouped by status, each invention with a plain-language summary and its Justia records. */
 .patent-group + .patent-group { margin-top: 76px; }
 .patent-group h2 { margin: 0 0 18px; font-size: 24px; letter-spacing: -.6px; }

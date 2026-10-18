@@ -251,7 +251,7 @@ export const tools: Tool[] = [
         ...(ctx.mode === 'public' ? { howToUse: 'Everything here is what Steven published. Quote his numbers as written, never infer or round up, and when a question is not covered say so and point to steven@wilssens.com. For a job description, call check_fit.' } : {}),
         ...(waiting.length ? { waitingFromTheSite: `${waiting.length} ${waiting.length === 1 ? 'question' : 'questions'} from the site assistant wait for Steven; call site_questions and offer to go through them.` } : {}),
         name: 'Steven Wilssens',
-        headline: `${profile.headline}. Most recently Principal Group Product Manager, Windows & Devices Data, at Microsoft: the data, experimentation and ML products behind decisions across a billion+ Windows devices.`,
+        headline: `${profile.headline}. Most recently Principal Group Product Manager, Windows & Devices Data, at Microsoft: the data, experimentation and ML products behind decisions across more than 1.6 billion Windows devices.`,
         status: `Building in AI while choosing his next role. Looking for: ${profile.lookingFor.toLowerCase()}. ${profile.availability}.`,
         location: `${profile.location} · ${profile.workAuthorization}`,
         teamSize: `Led teams of ${profile.teamSize}`,

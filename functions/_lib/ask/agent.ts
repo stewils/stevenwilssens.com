@@ -185,7 +185,7 @@ export const mockStream: StreamFactory = (_system, _context, messages) => {
 The record covers the leadership and experimentation asks well; the hands-on and consumer-subscription asks are open.`
       : `[[in: role:windows-devices-data, site:recommendations]]
 
-Steven most recently led the **Windows & Devices Data** PM team at Microsoft (Dec 2024 to Sep 2026): the data, insights, experimentation and ML products that Windows engineers and PMs use to decide what ships, built on telemetry from more than a billion devices.
+Steven most recently led the **Windows & Devices Data** PM team at Microsoft (Dec 2024 to Sep 2026): the data, insights, experimentation and ML products that Windows engineers and PMs use to decide what ships, built on telemetry from more than 1.6 billion devices.
 
 - He owned the strategy and roadmap for the data platform and insights products.
 - Several recommendations come from people who reported to him for years; see [Recommendations](https://steven.wilssens.com/recommendations).
