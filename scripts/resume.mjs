@@ -60,7 +60,8 @@ html, body { margin: 0; }
 body { font-family: 'Manrope', 'Segoe UI', sans-serif; color: var(--ink); font-size: 9.2pt; line-height: 1.28; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 a { color: inherit; text-decoration: none; }
 p, ul { margin: 0; }
-.mono { font-family: 'DM Mono', monospace; font-size: 7.4pt; letter-spacing: 1.1px; text-transform: uppercase; color: var(--green); }
+/* No letter-spacing on the uppercase labels and headings: PDF parsers (applicant tracking systems) read spaced capitals letter by letter, "E X P E R I E N C E", and lose the section. */
+.mono { font-family: 'DM Mono', monospace; font-size: 7.4pt; text-transform: uppercase; color: var(--green); }
 header { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: end; padding-bottom: 11px; border-bottom: 2px solid var(--ink); }
 header h1 { margin: 0 0 3px; font-size: 25pt; font-weight: 800; letter-spacing: -0.8pt; line-height: 1; }
 header .headline { font-size: 11.6pt; font-weight: 700; color: var(--green); letter-spacing: -0.2pt; }
@@ -69,7 +70,7 @@ header .contact strong { color: var(--ink); font-weight: 600; }
 .facts { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 16px; padding: 9px 0 4px; font-size: 9.2pt; line-height: 1.35; }
 .facts .mono { display: block; margin-bottom: 2px; }
 section { margin-top: 8px; break-inside: auto; }
-h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; font-family: 'DM Mono', monospace; font-size: 7.6pt; font-weight: 500; letter-spacing: 1.4px; text-transform: uppercase; color: var(--green); }
+h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; font-family: 'DM Mono', monospace; font-size: 7.6pt; font-weight: 500; text-transform: uppercase; color: var(--green); }
 h2::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .summary-text { font-size: 9.9pt; line-height: 1.45; }
 .impact { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }

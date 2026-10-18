@@ -70,7 +70,7 @@ export const computeSummaries = ({ stats, mcp, ask, resume }: AdminData): Partia
   if (resume) {
     const report = resume.report
     summaries.resume = report
-      ? `Score ${report.score}/100 · ${report.pages ?? '?'} ${plural(report.pages ?? 0, 'page', 'pages')} · ${report.warnings ?? 0} ${plural(report.warnings ?? 0, 'warning', 'warnings')}${report.baseline ? ` · ${report.baseline.verdict === 'unchanged' ? 'unchanged from' : `${report.baseline.verdict} than`} the live résumé before` : ''}`
+      ? `ATS score ${report.score}/100 · ${report.pages ?? '?'} ${plural(report.pages ?? 0, 'page', 'pages')} · ${report.ats?.warnings ?? report.warnings ?? 0} ${plural(report.ats?.warnings ?? report.warnings ?? 0, 'warning', 'warnings')}${report.baseline ? ` · ${report.baseline.verdict === 'unchanged' ? 'unchanged from' : `${report.baseline.verdict} than`} the live résumé before` : ''}`
       : 'No résumé report in this deployment'
   }
   if (ask) summaries.assistant = `${formatUsd(ask.month.costMicro)} of ${formatUsd(ask.budgetUsd * 1_000_000)} this month · ${formatNumber(ask.month.questions)} questions · ${formatNumber(ask.month.gap)} gaps`

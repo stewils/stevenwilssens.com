@@ -1,5 +1,7 @@
-// Reads a resume PDF the way a recruiter, an applicant tracking system and a careful
-// editor would, and scores it. Three callers: scripts/resume.mjs (a new PDF only
+// Reads a resume PDF the way an applicant tracking system, a recruiter and a careful
+// editor would. The score is the ATS score: what the applicant tracking system makes of
+// the PDF (see lenses below); what a recruiter would say and where the PDF differs from
+// the site are findings listed beside it. Three callers: scripts/resume.mjs (a new PDF only
 // replaces the current one when it scores at least as well), src/resume.test.ts (the
 // PDF must match src/resume.ts, so a content change always comes with a new resume)
 // and the build (dist/resume-report.json, which the MCP server's check_resume reads).
@@ -70,58 +72,98 @@ export const dataQuestions = (now = new Date()) => {
   return questions
 }
 
-// The analysis. Findings carry a severity: error (the PDF is wrong or unusable),
-// warn (weaker than it should be), info (worth knowing). Score: 100 minus 25 per
-// error and 5 per warning, floored at 0.
+// Who trips over a finding. Only the ATS lens makes the score: the score is what an
+// applicant tracking system makes of the PDF. The other two are listed with it.
+export const lenses = {
+  ats: 'What an applicant tracking system parses: the text, the contact details, the section headings, the work history (title, company and dates together), education, keywords.',
+  site: 'Where the PDF says something else than src/resume.ts, so the site and the resume disagree. Fails the tests; does not change the score.',
+  recruiter: 'What a recruiter or an editor would still say: tense, scope, numbers without a bullet behind them. Does not change the score.',
+}
+const count = (list) => ({ errors: list.filter((f) => f.severity === 'error').length, warnings: list.filter((f) => f.severity === 'warn').length })
+// The ATS score: 100 minus 25 per ATS error and 5 per ATS warning, floored at 0.
+export const atsScore = (findings) => { const ats = count(findings.filter((f) => f.lens === 'ats')); return Math.max(0, 100 - ats.errors * 25 - ats.warnings * 5) }
+
+// The headings an applicant tracking system files sections under; the first name is
+// the one the resume template uses.
+const sectionHeadings = { summary: ['summary', 'profile', 'professional summary'], skills: ['skills', 'core skills', 'key skills'], experience: ['experience', 'work experience', 'professional experience', 'employment'], education: ['education'] }
+const monthYear = /^[A-Z][a-z]{2}[a-z]* \d{4}$/
+// "Dec 2024 - Sep 2026" or "Oct 2026 - Present": the form parsers recognise.
+const parseableDates = (dates) => { const parts = dates.split(/\s*-\s*/).map((part) => part.trim()); return parts.length === 2 && monthYear.test(parts[0]) && (monthYear.test(parts[1]) || /^present$/i.test(parts[1])) }
+// "E X P E R I E N C E": what letter-spaced capitals become when the PDF is parsed.
+const letterByLetter = (line) => /^\S( \S)+$/.test(line)
+const squeeze = (line) => line.replace(/ /g, '')
+
+// The analysis. Findings carry a severity (error: the PDF is wrong or unusable; warn:
+// weaker than it should be; info: worth knowing) and a lens (above).
 export async function analyzeResume(path = resumePath, { now = new Date() } = {}) {
-  if (!existsSync(path)) return { path, exists: false, score: 0, pages: 0, bytes: 0, title: null, findings: [{ severity: 'error', id: 'missing', message: `No resume at ${path}. Run: npm run resume:build` }], questions: dataQuestions(now) }
+  if (!existsSync(path)) return { path, exists: false, score: 0, errors: 1, warnings: 0, ats: { errors: 1, warnings: 0 }, pages: 0, bytes: 0, title: null, matchesSite: false, findings: [{ severity: 'error', lens: 'ats', id: 'missing', message: `No resume at ${path}. Run: npm run resume:build` }], questions: dataQuestions(now) }
   const pdf = await extractPdf(path)
   const text = normalize(pdf.text)
+  const lines = pdf.text.split('\n').map((line) => line.replace(/\s+/g, ' ').trim().toLowerCase()).filter(Boolean)
   const has = (needle) => text.includes(normalize(needle))
   const findings = []
-  const add = (severity, id, message) => findings.push({ severity, id, message })
+  const add = (severity, lens, id, message) => findings.push({ severity, lens, id, message })
 
   // Usable by machines: text extractable, no broken glyphs, not too long, not too heavy.
-  if (pdf.pages.length > 2) add('error', 'pages', `${pdf.pages.length} pages; a resume for a principal role is two at most.`)
-  if (text.length < 1500) add('error', 'text', `Only ${text.length} characters of text could be extracted; applicant tracking systems will see little or nothing.`)
-  if (/[�-]/.test(pdf.text)) add('error', 'glyphs', 'The text contains replacement or private-use characters (often bullets drawn with icon fonts); parsers turn these into garbage.')
-  if (pdf.pages.length === 2 && pdf.pages[1].length < pdf.pages[0].length * 0.3) add('warn', 'sparse-page', 'The second page is mostly empty; tighten to one page or give it real content.')
-  if (pdf.bytes > 1_500_000) add('warn', 'size', `${(pdf.bytes / 1e6).toFixed(1)} MB; keep the file under 1.5 MB for email and upload limits.`)
-  if (!pdf.title || !pdf.title.includes(profile.name)) add('info', 'title', `The PDF's title metadata is "${pdf.title ?? ''}"; the person's name there helps when the file is renamed.`)
+  if (pdf.pages.length > 2) add('error', 'ats', 'pages', `${pdf.pages.length} pages; a resume for a principal role is two at most.`)
+  if (text.length < 1500) add('error', 'ats', 'text', `Only ${text.length} characters of text could be extracted; applicant tracking systems will see little or nothing.`)
+  if (/[�-]/.test(pdf.text)) add('error', 'ats', 'glyphs', 'The text contains replacement or private-use characters (often bullets drawn with icon fonts); parsers turn these into garbage.')
+  if (pdf.pages.length === 2 && pdf.pages[1].length < pdf.pages[0].length * 0.3) add('warn', 'recruiter', 'sparse-page', 'The second page is mostly empty; tighten to one page or give it real content.')
+  if (pdf.bytes > 1_500_000) add('warn', 'ats', 'size', `${(pdf.bytes / 1e6).toFixed(1)} MB; keep the file under 1.5 MB for email and upload limits.`)
+  if (!pdf.title || !pdf.title.includes(profile.name)) add('info', 'ats', 'title', `The PDF's title metadata is "${pdf.title ?? ''}"; the person's name there helps when the file is renamed.`)
+
+  // Parsed into the right fields: the name on the first line, the sections under
+  // headings a parser recognises, nothing spelled out letter by letter.
+  if (!lines[0]?.includes(profile.name.toLowerCase())) add('warn', 'ats', 'name-first', `The first line of the text is "${lines[0] ?? ''}", not the name; parsers take the first line as the candidate's name.`)
+  for (const [section, names] of Object.entries(sectionHeadings)) {
+    if (lines.some((line) => names.includes(line))) continue
+    const spaced = lines.find((line) => letterByLetter(line) && names.map(squeeze).includes(squeeze(line)))
+    add('warn', 'ats', `heading-${section}`, spaced ? `The "${names[0]}" heading comes out letter by letter ("${spaced}"); letter-spaced capitals are parsed as single letters, so the section is not recognised.` : `No "${names[0]}" heading as a line of its own; parsers file the sections under standard headings (${names.join(', ')}).`)
+  }
+  const spacedLines = lines.filter((line) => letterByLetter(line) && squeeze(line).length > 2 && !Object.values(sectionHeadings).flat().map(squeeze).includes(squeeze(line)))
+  if (spacedLines.length) add('warn', 'ats', 'letter-spaced', `${spacedLines.length} ${spacedLines.length === 1 ? 'line comes' : 'lines come'} out letter by letter ("${spacedLines[0]}"); drop the letter-spacing so parsers read words.`)
 
   // Says who he is and how to reach him.
-  for (const [id, value, severity] of [['email', profile.email, 'error'], ['phone', profile.phone, 'warn'], ['linkedin', 'linkedin.com/in/steven-wilssens', 'error'], ['location', profile.location, 'warn'], ['site', 'steven.wilssens.com', 'warn'], ['authorization', profile.workAuthorization.replace(/ \(.*\)$/, ''), 'warn']]) if (!has(value)) add(severity, `contact-${id}`, `Missing from the PDF: ${value}.`)
-  if (!has(profile.resumeHeadline) && !has(profile.headline)) add('error', 'headline', `The headline "${profile.resumeHeadline}" is not in the PDF; the site and the resume must say the same thing.`)
-  if (!has(profile.summary.slice(0, 80))) add('warn', 'summary', 'The summary in the PDF differs from profile.summary in src/resume.ts.')
+  for (const [id, value, severity] of [['email', profile.email, 'error'], ['phone', profile.phone, 'warn'], ['linkedin', 'linkedin.com/in/steven-wilssens', 'error'], ['location', profile.location, 'warn'], ['site', 'steven.wilssens.com', 'warn'], ['authorization', profile.workAuthorization.replace(/ \(.*\)$/, ''), 'warn']]) if (!has(value)) add(severity, 'ats', `contact-${id}`, `Missing from the PDF: ${value}.`)
+  if (!has(profile.resumeHeadline) && !has(profile.headline)) add('error', 'site', 'headline', `The headline "${profile.resumeHeadline}" is not in the PDF; the site and the resume must say the same thing.`)
+  if (!has(profile.summary.slice(0, 80))) add('warn', 'site', 'summary', 'The summary in the PDF differs from profile.summary in src/resume.ts.')
 
-  // Matches the site: every role, its dates, and the bullets of the two most recent roles.
+  // The work history: every role with its title, company and dates, in a form parsers
+  // read and close enough together to be one entry; the bullets of the two most recent
+  // roles and the summaries of the others as the site has them.
   experiences.forEach((item, index) => {
-    if (!has(item.role)) add('error', `role-${item.key}`, `Role title missing: ${item.role}.`)
-    if (!has(item.company)) add('error', `company-${item.key}`, `Company missing for ${item.role}: ${item.company}.`)
-    if (!has(item.dates)) add('warn', `dates-${item.key}`, `Dates "${item.dates}" not found for ${item.role}; the site and the PDF should agree to the month.`)
-    if (index < 2) for (const point of item.points) if (!has(point.slice(0, 60))) add('error', `point-${item.key}`, `A bullet of ${item.role} is missing or reworded: "${point.slice(0, 60)}…"`)
-    else if (!has(item.summary.slice(0, 50))) add('warn', `summary-${item.key}`, `The summary of ${item.role} is missing or reworded.`)
+    if (!has(item.role)) add('error', 'ats', `role-${item.key}`, `Role title missing: ${item.role}.`)
+    if (!has(item.company)) add('error', 'ats', `company-${item.key}`, `Company missing for ${item.role}: ${item.company}.`)
+    if (!parseableDates(item.dates)) add('warn', 'ats', `dateformat-${item.key}`, `Dates "${item.dates}" for ${item.role} are not in the "Mon YYYY - Mon YYYY" (or "- Present") form parsers read.`)
+    const at = text.indexOf(normalize(item.dates))
+    if (at < 0) add('warn', 'ats', `dates-${item.key}`, `Dates "${item.dates}" not found for ${item.role}; the site and the PDF should agree to the month.`)
+    else {
+      const title = text.indexOf(normalize(item.role), at)
+      if (title < 0 || title - at > 160) add('warn', 'ats', `order-${item.key}`, `"${item.dates}" and "${item.role}" are far apart in the extracted text; the dates and the title of a role must read together or the work history comes out wrong.`)
+    }
+    if (index < 2) for (const point of item.points) if (!has(point.slice(0, 60))) add('error', 'site', `point-${item.key}`, `A bullet of ${item.role} is missing or reworded: "${point.slice(0, 60)}…"`)
+    else if (!has(item.summary.slice(0, 50))) add('warn', 'site', `summary-${item.key}`, `The summary of ${item.role} is missing or reworded.`)
     // Past roles in the past tense.
     const mine = span(item.dates)
     const current = now.getFullYear() * 12 + now.getMonth()
-    if (mine && mine.end < current) for (const point of [item.summary, ...item.points]) if (presentTense.test(point)) add('warn', `tense-${item.key}`, `${item.role} ended ${monthName(mine.end)} but a line starts in the present tense: "${point.slice(0, 50)}…"`)
+    if (mine && mine.end < current) for (const point of [item.summary, ...item.points]) if (presentTense.test(point)) add('warn', 'recruiter', `tense-${item.key}`, `${item.role} ended ${monthName(mine.end)} but a line starts in the present tense: "${point.slice(0, 50)}…"`)
   })
-  if (!has(education.degree.split(',')[0])) add('warn', 'education', 'Education missing.')
+  if (!has(education.degree.split(',')[0]) || !has(education.school)) add('warn', 'ats', 'education', `Education missing or incomplete: parsers want the degree (${education.degree}) and the school (${education.school}).`)
 
   // Reads like a principal's resume: scope, numbers with context, keywords.
-  if (!/\b\d+ to \d+ product managers\b|\bteam of \d+/.test(text)) add('warn', 'scope', 'No team size anywhere; recruiters screen principal and director candidates on scope first.')
+  if (!/\b\d+ to \d+ product managers\b|\bteam of \d+/.test(text)) add('warn', 'recruiter', 'scope', 'No team size anywhere; recruiters screen principal and director candidates on scope first.')
   for (const { value, label, backing } of impact) {
-    if (!has(value)) add('warn', `impact-${value}`, `The site shows "${value} ${label}" but the PDF does not.`)
-    if (!backing) add('warn', `unbacked-${value}`, `"${value} ${label}" has no role bullet behind it in src/resume.ts; a hiring manager will ask what it measures.`)
+    if (!has(value)) add('warn', 'site', `impact-${value}`, `The site shows "${value} ${label}" but the PDF does not.`)
+    if (!backing) add('warn', 'recruiter', `unbacked-${value}`, `"${value} ${label}" has no role bullet behind it in src/resume.ts; a hiring manager will ask what it measures.`)
   }
-  for (const keyword of ['experimentation', 'machine learning', 'telemetry', 'roadmap', 'strategy', 'product manager', 'data platform', 'a/b']) if (!has(keyword)) add('warn', `keyword-${keyword}`, `Keyword missing for searches and ATS filters: "${keyword}".`)
-  if (!/\bai\b/.test(text)) add('warn', 'keyword-ai', 'Keyword missing for searches and ATS filters: "AI".')
-  for (const skill of skills) if (!has(skill.split(' (')[0])) add('info', `skill-${skill}`, `Skill from src/resume.ts not in the PDF: ${skill}.`)
-  if (!/\d+%|\d+ ?(million|billion|b\+)|\d+x\b/.test(text)) add('warn', 'numbers', 'No percentages or scale numbers; outcomes read as duties.')
+  for (const keyword of ['experimentation', 'machine learning', 'telemetry', 'roadmap', 'strategy', 'product manager', 'data platform', 'a/b']) if (!has(keyword)) add('warn', 'ats', `keyword-${keyword}`, `Keyword missing for searches and ATS filters: "${keyword}".`)
+  if (!/\bai\b/.test(text)) add('warn', 'ats', 'keyword-ai', 'Keyword missing for searches and ATS filters: "AI".')
+  for (const skill of skills) if (!has(skill.split(' (')[0])) add('info', 'ats', `skill-${skill}`, `Skill from src/resume.ts not in the PDF: ${skill}.`)
+  if (!/\d+%|\d+ ?(million|billion|b\+)|\d+x\b/.test(text)) add('warn', 'recruiter', 'numbers', 'No percentages or scale numbers; outcomes read as duties.')
 
-  const errors = findings.filter((f) => f.severity === 'error').length
-  const warnings = findings.filter((f) => f.severity === 'warn').length
-  return { path, exists: true, score: Math.max(0, 100 - errors * 25 - warnings * 5), errors, warnings, pages: pdf.pages.length, bytes: pdf.bytes, pdfHash: pdf.sha256.slice(0, 16), title: pdf.title, matchesSite: errors === 0, findings, questions: dataQuestions(now), checkedAt: now.toISOString() }
+  const { errors, warnings } = count(findings)
+  // errors and warnings count every finding; ats counts the ones that make the score.
+  return { path, exists: true, score: atsScore(findings), errors, warnings, ats: count(findings.filter((f) => f.lens === 'ats')), pages: pdf.pages.length, bytes: pdf.bytes, pdfHash: pdf.sha256.slice(0, 16), title: pdf.title, matchesSite: errors === 0, findings, questions: dataQuestions(now), checkedAt: now.toISOString() }
 }
 
 // The commit the resume was built from, for the score history on /admin: GitHub Actions
@@ -155,15 +197,15 @@ export const compareScores = (report, baseline) => {
 
 export const formatComparison = (report) => {
   const b = report.baseline
-  if (!b) return `Score ${report.score}/100; no baseline to compare with.`
+  if (!b) return `ATS score ${report.score}/100; no baseline to compare with.`
   const from = /^https?:\/\//.test(b.source) ? 'the live site' : b.source
-  if (b.lower) return `Score ${b.score} → ${report.score}: LOWER than ${from}. Fix the findings above before this goes live, or accept the trade-off knowingly.`
-  return `Score ${b.score} → ${report.score}: ${b.verdict === 'higher' ? 'higher than' : 'the same as'} ${from}.`
+  if (b.lower) return `ATS score ${b.score} → ${report.score}: LOWER than ${from}. Fix the findings above before this goes live, or accept the trade-off knowingly.`
+  return `ATS score ${b.score} → ${report.score}: ${b.verdict === 'higher' ? 'higher than' : 'the same as'} ${from}.`
 }
 
 export const formatReport = (report) => [
-  `${report.path}: score ${report.score}/100${report.exists ? `, ${report.pages} page${report.pages === 1 ? '' : 's'}, ${(report.bytes / 1024).toFixed(0)} KB, ${report.errors} error${report.errors === 1 ? '' : 's'}, ${report.warnings} warning${report.warnings === 1 ? '' : 's'}` : ''}`,
-  ...report.findings.map((f) => `  [${f.severity}] ${f.message}`),
+  `${report.path}: ATS score ${report.score}/100${report.exists ? `, ${report.pages} page${report.pages === 1 ? '' : 's'}, ${(report.bytes / 1024).toFixed(0)} KB, ${report.errors} error${report.errors === 1 ? '' : 's'}, ${report.warnings} warning${report.warnings === 1 ? '' : 's'} (${report.ats.errors} and ${report.ats.warnings} of them from the applicant tracking system's reading, which make the score)` : ''}`,
+  ...report.findings.map((f) => `  [${f.severity}, ${f.lens}] ${f.message}`),
   ...(report.questions.length ? ['  Questions for Steven:', ...report.questions.map((q) => `  - (${q.about}) ${q.question}`)] : []),
 ].join('\n')
 

@@ -7,8 +7,10 @@ import type { Finding, Proposal, ResumeInfo, ScoreRow } from './types'
 export const resumePdf = '/steven-wilssens-resume-2026.pdf'
 
 const severityLabel = { error: 'Error', warn: 'Warning', info: 'Note' } as const
+const lensLabel = { ats: 'ATS', site: 'Site', recruiter: 'Recruiter' } as const
 const findingColumns: Column<Finding>[] = [
   { key: 'severity', label: 'Severity', value: (row) => (row.severity === 'error' ? 1 : 2), render: (row) => <span className={`badge ${row.severity}`}>{severityLabel[row.severity]}</span> },
+  { key: 'lens', label: 'Who trips', value: (row) => (row.lens === 'ats' ? 1 : 2), render: (row) => (row.lens ? <span className={`badge ${row.lens === 'ats' ? '' : 'info'}`} title={row.lens === 'ats' ? 'Counts for the ATS score' : 'Does not change the score'}>{lensLabel[row.lens]}</span> : <span className="muted">—</span>) },
   { key: 'message', label: 'Finding', value: (row) => row.message },
   { key: 'id', label: 'Check', value: (row) => row.id, className: 'muted' },
 ]
@@ -33,25 +35,30 @@ const historyColumns: Column<HistoryRow>[] = [
   { key: 'commit', label: 'Change', value: (row) => `${row.commitMessage ?? ''} ${row.commit ?? ''}`, render: (row) => <>{row.commitMessage ?? <span className="muted">—</span>}{row.commit && <small className="muted"> · {row.commit.slice(0, 7)}</small>}</> },
 ]
 
-// The résumé: its recruiter score for this deployment, what to fix, the questions the
-// data raises, the proposals Claude made in the MCP, and the score of every résumé
-// that went live (recorded by functions/_lib/resume-scores.ts).
+// The résumé: its ATS score for this deployment (what an applicant tracking system
+// makes of the PDF), what to fix, the questions the data raises, the proposals Claude
+// made in the MCP, and the score of every résumé that went live (recorded by
+// functions/_lib/resume-scores.ts).
 export function ResumePage({ resume, proposals }: { resume: ResumeInfo; proposals: Proposal[] | null }) {
   const report = resume.report
   const findings = report?.findings.filter((finding) => finding.severity !== 'info') ?? []
   const notes = report?.findings.filter((finding) => finding.severity === 'info') ?? []
+  // Reports from before the lenses have no ats counts; then every finding counted.
+  const ats = report?.ats ?? { errors: report?.errors ?? 0, warnings: report?.warnings ?? 0 }
+  const others = findings.filter((finding) => finding.lens && finding.lens !== 'ats').length
   const oldestFirst = [...resume.history].sort((a, b) => a.firstSeen - b.firstSeen)
   const history: HistoryRow[] = oldestFirst.map((row, index) => ({ ...row, change: index ? row.score - oldestFirst[index - 1].score : null })).reverse()
   const baseline = report?.baseline
   return (
     <>
       <section className="card" data-part="Score">
-        <div className="card-head"><h2>Recruiter score</h2>{report?.checkedAt && <span className="updated">Checked {formatTime(Date.parse(report.checkedAt))}</span>}</div>
+        <div className="card-head"><h2>ATS score</h2>{report?.checkedAt && <span className="updated">Checked {formatTime(Date.parse(report.checkedAt))}</span>}</div>
         {!report ? <p className="empty">No résumé report in this deployment. The build writes it (dist/resume-report.json); deploy main again.</p> : (
           <div className="score">
             <div className={`score-ring ${report.score >= 90 ? 'good' : report.score >= 70 ? '' : 'bad'}`} style={{ '--pct': report.score } as CSSProperties}><strong>{report.score}<small>of 100</small></strong></div>
             <div className="score-facts">
-              <span><b>{report.errors ?? 0}</b> {report.errors === 1 ? 'error' : 'errors'} · <b>{report.warnings ?? 0}</b> {report.warnings === 1 ? 'warning' : 'warnings'} · {report.pages} {report.pages === 1 ? 'page' : 'pages'} · {formatBytes(report.bytes ?? 0)}</span>
+              <span><b>{ats.errors}</b> {ats.errors === 1 ? 'error' : 'errors'} · <b>{ats.warnings}</b> {ats.warnings === 1 ? 'warning' : 'warnings'} for an applicant tracking system · {report.pages} {report.pages === 1 ? 'page' : 'pages'} · {formatBytes(report.bytes ?? 0)}</span>
+              {others > 0 && <span className="muted">{others} more {others === 1 ? 'finding' : 'findings'} from a recruiter's reading or against the site, listed below; they do not change the score.</span>}
               {baseline
                 ? <span className={`delta ${baseline.lower ? 'bad' : 'good'}`}>{baseline.verdict === 'unchanged' ? `Same score as the résumé live before this one (${baseline.score}).` : `${baseline.lower ? 'Lower' : 'Higher'} than the résumé live before this one: ${baseline.score} → ${report.score}.`}</span>
                 : <span className="muted">Not compared with the live résumé: this build had no baseline.</span>}
@@ -61,7 +68,7 @@ export function ResumePage({ resume, proposals }: { resume: ResumeInfo; proposal
           </div>
         )}
         <h3>How the score works</h3>
-        <p className="note" style={{ margin: 0 }}>100 minus 25 per error and 5 per warning. Errors mean the PDF is wrong or unusable: more than two pages, text that cannot be extracted, missing contact details or headline, a role or company missing, a bullet of the two latest roles reworded. Warnings mean weaker than it should be: dates that differ from the site, present tense for a past role, no team size, an impact number without a bullet behind it, a missing keyword. The résumé is scored on every build: <code>npm run resume:build</code> refuses a PDF that scores worse than the current one, the Site update workflow compares with main in the pull request, and the Deploy workflow compares with the live site and warns in the run and in your email. Fix the data in <code>src/resume.ts</code>, never the PDF or the checker.</p>
+        <p className="note" style={{ margin: 0 }}>The score is what an applicant tracking system makes of the PDF: 100 minus 25 per error and 5 per warning it trips over. Errors: more than two pages, text that cannot be extracted or broken glyphs, no email address or LinkedIn, a role title or company missing from the work history. Warnings: a section heading it does not recognise (Summary, Skills, Experience, Education, or spelled out letter by letter), the name not on the first line, dates missing or not in the "Mon YYYY - Mon YYYY" form, a title far from its dates, phone or location missing, education incomplete, a missing keyword, a file over 1.5 MB. What a recruiter or an editor would still say (present tense for a past role, no team size, a number without a bullet behind it) and where the PDF differs from the site (a reworded bullet, another headline or summary) are listed with the lens "Recruiter" or "Site" and do not change the score; a difference with the site fails the tests instead. The résumé is scored on every build: <code>npm run resume:build</code> refuses a PDF that scores worse than the current one, the Site update workflow compares with main in the pull request, and the Deploy workflow compares with the live site and warns in the run and in your email. Fix the data in <code>src/resume.ts</code>, never the PDF or the checker.</p>
       </section>
 
       <section className="card" data-part="Findings">
