@@ -65,11 +65,13 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
       FROM (SELECT *, MIN(ts) FROM events WHERE type = 'pageview' AND ts >= ?1 GROUP BY visitor) GROUP BY source, medium, referrer`,
     vitals: `SELECT metric, metric_value AS value, metric_rating AS rating, COALESCE(path, '/') AS path, device, target FROM events
       WHERE type = 'vital' AND ts >= ?1 AND metric IS NOT NULL AND metric_value IS NOT NULL ORDER BY ts DESC LIMIT 20000`,
-    // Crawlers, recorded by functions/_middleware.ts.
+    // Crawlers, recorded by functions/_middleware.ts. An error answer to a named crawler (a search engine, an AI bot, a link preview)
+    // can mean a broken link to the site; the same answer to an unknown bot is nearly always a scanner trying paths that never existed, so those are counted apart as probes.
     crawlTotals: `SELECT COUNT(*) AS requests, COUNT(DISTINCT bot) AS bots,
       COALESCE(SUM(category = 'search'), 0) AS search, COALESCE(SUM(category IN ('ai-search', 'ai-training')), 0) AS ai,
       COALESCE(SUM(category = 'ai-assistant'), 0) AS assistant, COALESCE(SUM(category IN ('social', 'seo', 'other')), 0) AS other,
-      COALESCE(SUM(status >= 400), 0) AS errors FROM crawls WHERE ts >= ?1`,
+      COALESCE(SUM(status >= 400 AND category <> 'other'), 0) AS errors, COALESCE(SUM(status >= 400 AND category = 'other'), 0) AS probes
+      FROM crawls WHERE ts >= ?1`,
     crawlDaily: `SELECT date(${local}) AS day, COUNT(*) AS requests, SUM(category = 'search') AS search,
       SUM(category IN ('ai-search', 'ai-training', 'ai-assistant')) AS ai FROM crawls WHERE ts >= ?1 GROUP BY day ORDER BY day`,
     crawlBots: `SELECT bot, MAX(operator) AS operator, category, COUNT(*) AS requests, COUNT(DISTINCT path) AS pages, MAX(ts) AS lastSeen,

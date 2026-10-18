@@ -7,7 +7,7 @@ const stats = {
   channels: [{ name: 'LinkedIn', visitors: 7 }, { name: 'Direct', visitors: 5 }],
   organizations: [{ name: 'Unknown', visitors: 9 }, { name: 'Microsoft', visitors: 3 }],
   countries: [{ name: 'United States', visitors: 12 }],
-  crawlTotals: { requests: 40, bots: 5, search: 20, ai: 10, assistant: 4, other: 6, errors: 2 },
+  crawlTotals: { requests: 40, bots: 5, search: 20, ai: 10, assistant: 4, other: 6, errors: 2, probes: 110 },
   vitals: { metrics: [], pages: [], devices: [{ device: 'phone', visits: 5, passes: true }, { device: 'desktop', visits: 7, passes: false }], culprits: [] },
 } as unknown as Stats
 const mcp: McpInfo = { ownerUrl: null, entries: { total: 40, public: 8, roles: 6 }, proposals: [{ id: 1, updatedAt: 0, role: 'csx-data', kind: 'replace', currentText: 'a', proposedText: 'b', rationale: 'why', status: 'proposed', decisionNote: null }, { id: 2, updatedAt: 0, role: 'csx-data', kind: 'add', currentText: null, proposedText: 'c', rationale: 'why', status: 'approved', decisionNote: null }, { id: 3, updatedAt: 0, role: 'csx-data', kind: 'add', currentText: null, proposedText: 'd', rationale: 'why', status: 'applied', decisionNote: null }] }

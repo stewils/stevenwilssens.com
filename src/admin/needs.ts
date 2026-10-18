@@ -38,7 +38,7 @@ export const computeNeeds = ({ stats, mcp, ask, resume }: AdminData): Need[] => 
   if (stats) {
     const failing = stats.vitals.devices.filter((device) => device.passes === false).length
     add('vitals', 'speed', failing, plural(failing, 'device type fails Core Web Vitals', 'device types fail Core Web Vitals'))
-    if (stats.crawlTotals.errors > 0) add('crawl-errors', 'crawlers', stats.crawlTotals.errors, plural(stats.crawlTotals.errors, 'crawler request got an error answer', 'crawler requests got error answers'))
+    if (stats.crawlTotals.errors > 0) add('crawl-errors', 'crawlers', stats.crawlTotals.errors, plural(stats.crawlTotals.errors, 'named crawler request got an error answer', 'named crawler requests got error answers'))
   }
   return needs
 }

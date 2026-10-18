@@ -20,7 +20,7 @@ export type CrawlBot = { bot: string; operator: string | null; category: CrawlCa
 export type CrawlPage = { path: string; requests: number; search: number; ai: number; assistant: number; bots: number; status: number }
 export type CrawlHit = { ts: number; bot: string; category: CrawlCategory; path: string; status: number; country: string | null; network: string | null }
 export type Crawls = {
-  crawlTotals: { requests: number; bots: number; search: number; ai: number; assistant: number; other: number; errors: number }
+  crawlTotals: { requests: number; bots: number; search: number; ai: number; assistant: number; other: number; errors: number; probes: number }
   crawlDaily: { day: string; requests: number; search: number; ai: number }[]
   crawlBots: CrawlBot[]
   crawlPages: CrawlPage[]

@@ -51,14 +51,15 @@ export function CrawlersPage({ stats }: { stats: Stats }) {
     <>
       <section className="card" data-part="Totals">
         <div className="card-head"><h2>Crawlers: search engines and AI</h2></div>
-        <p className="note">Requests from bots, recorded on the server because crawlers rarely run the page tracker. They are not counted as visitors. <b>AI assistant</b> means a person asked ChatGPT, Claude, Perplexity or similar something that made it read the page right then. <b>AI search</b> indexes pages for AI answers, and <b>AI training</b> collects text to train models. Anyone can pretend to be a crawler, so check that the network matches the operator (Googlebot from Google, GPTBot from Microsoft, and so on).</p>
+        <p className="note">Requests from bots, recorded on the server because crawlers rarely run the page tracker. They are not counted as visitors. <b>AI assistant</b> means a person asked ChatGPT, Claude, Perplexity or similar something that made it read the page right then. <b>AI search</b> indexes pages for AI answers, and <b>AI training</b> collects text to train models. Anyone can pretend to be a crawler, so check that the network matches the operator (Googlebot from Google, GPTBot from Microsoft, and so on). <b>Errors</b> are 4xx and 5xx answers to named crawlers, worth a look because they can mean a broken link to the site. <b>Probes</b> are the same answers to unknown bots and scripts: scanners trying WordPress and PHP paths that never existed here, which a 404 answers correctly.</p>
         <div className="stats">
           <div><span>Crawler requests</span><strong>{formatNumber(totals.requests)}</strong><small>from {formatNumber(totals.bots)} crawlers</small></div>
           <div><span>Search engines</span><strong>{formatNumber(totals.search)}</strong><small>Google, Bing, Apple…</small></div>
           <div><span>AI crawlers</span><strong>{formatNumber(totals.ai)}</strong><small>AI search and training</small></div>
           <div className="highlight"><span>AI assistants</span><strong>{formatNumber(totals.assistant)}</strong><small>read when someone asked an AI</small></div>
           <div><span>Other bots</span><strong>{formatNumber(totals.other)}</strong><small>link previews, SEO tools, scripts</small></div>
-          <div><span>Errors</span><strong>{formatNumber(totals.errors)}</strong><small>answered 4xx or 5xx</small></div>
+          <div><span>Errors</span><strong>{formatNumber(totals.errors)}</strong><small>named crawlers answered 4xx or 5xx</small></div>
+          <div><span>Probes</span><strong>{formatNumber(totals.probes)}</strong><small>unknown bots asking for pages that never existed</small></div>
         </div>
         {totals.requests === 0 ? <p className="empty">No crawler requests in this range yet</p> : (
           <BarChart title="Crawler requests per day" bars={daily.map((row) => ({ key: row.day, label: dayLabel(row.day), value: row.requests, detail: `${formatNumber(row.requests)} requests · ${formatNumber(row.search)} search · ${formatNumber(row.ai)} AI` }))} axisLabels={dayAxis(daily)} />
