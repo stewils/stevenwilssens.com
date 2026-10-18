@@ -1,6 +1,6 @@
 # steven.wilssens.com
 
-Steven Wilssens's resume site, read mostly by recruiters and hiring managers. React + TypeScript + Vite, prerendered to static HTML on Cloudflare Pages, with Pages Functions for analytics, the "Ask about Steven" assistant and Steven's private MCP server. README.md has the full layout.
+Steven Wilssens's resume site, read mostly by recruiters and hiring managers. React + TypeScript + Vite, prerendered to static HTML on Cloudflare Pages, with Pages Functions for analytics, the "Ask about Steven" assistant and Steven's private MCP server. In a browser with WebMCP, every page registers the same data and the assistant as tools (`src/webmcp.ts`, `ask_about_steven` in `src/ask/AskAssistant.tsx`). README.md has the full layout.
 
 ## Where the facts live
 

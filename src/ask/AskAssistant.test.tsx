@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AskAssistant from './AskAssistant'
@@ -98,6 +98,45 @@ describe('AskAssistant', () => {
     expect(screen.getByLabelText('Your question')).toHaveValue('Is he a fit?')
     await userEvent.keyboard('{Escape}')
     await waitFor(() => expect(screen.getByRole('dialog').className).not.toContain('is-open'))
+  })
+
+  it('gives a WebMCP agent ask_about_steven once the assistant is on, answers through the panel, and takes the tool away on unmount', async () => {
+    type Tool = { name: string; execute: (input: Record<string, unknown>) => Promise<string> | string }
+    const tools = new Map<string, Tool>()
+    Object.defineProperty(document, 'modelContext', { configurable: true, value: { registerTool: (tool: Tool, options?: { signal?: AbortSignal }) => { tools.set(tool.name, tool); options?.signal?.addEventListener('abort', () => tools.delete(tool.name)) } } })
+    try {
+      const view = render(<AskAssistant page="experience" />)
+      await waitFor(() => expect(tools.has('ask_about_steven')).toBe(true))
+      let reply = ''
+      await act(async () => { reply = await tools.get('ask_about_steven')!.execute({ question: 'What did he build?' }) })
+      const result = JSON.parse(reply) as { answer: string; scope: string; sources: { title: string; href: string }[] }
+      expect(result.answer).toContain('Steven built **data products**')
+      expect(result.scope).toBe('in scope')
+      expect(result.sources).toEqual([{ title: 'Principal Product Manager Lead, Microsoft', href: 'https://steven.wilssens.com/experience' }])
+      expect(screen.getByRole('dialog').className).toContain('is-open')
+      expect(screen.getByText('What did he build?')).toBeInTheDocument()
+      expect(screen.getByText('data products')).toBeInTheDocument()
+      const body = JSON.parse((fetchMock.mock.calls.find((call) => call[1]?.method === 'POST')![1] as RequestInit).body as string) as { page: string }
+      expect(body.page).toBe('experience')
+      expect(await tools.get('ask_about_steven')!.execute({})).toBe('Give a question to ask.')
+      view.unmount()
+      expect(tools.has('ask_about_steven')).toBe(false)
+    } finally {
+      delete (document as { modelContext?: unknown }).modelContext
+    }
+  })
+
+  it('does not offer ask_about_steven while the assistant is off', async () => {
+    fetchMock.mockImplementation(async () => Response.json({ ready: false, siteKey: null }))
+    const registerTool = vi.fn()
+    Object.defineProperty(document, 'modelContext', { configurable: true, value: { registerTool } })
+    try {
+      render(<AskAssistant page="home" />)
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+      expect(registerTool).not.toHaveBeenCalled()
+    } finally {
+      delete (document as { modelContext?: unknown }).modelContext
+    }
   })
 })
 
