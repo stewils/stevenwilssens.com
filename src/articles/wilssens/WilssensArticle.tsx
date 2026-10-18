@@ -34,7 +34,7 @@ const linkedInShare = `https://www.linkedin.com/sharing/share-offsite/?url=${enc
 // Outcomes, not effort, as of 15 October 2026. [value, prefix, decimals, label]
 const stats: [number, string, number, string][] = [[3, '', 0, 'family mailboxes moved off Microsoft 365'], [5, '', 0, 'websites live on the family domain'], [16, '', 0, 'questions to the help assistant this month'], [1.26, '$', 2, 'AI help cost this month, of a $25 cap']]
 
-const Figure = ({ children, caption }: { children: ReactNode; caption: string }) => <figure className="wx-figure wx-diagram"><div className="wx-diagram-scroll">{children}</div><figcaption>{caption}</figcaption></figure>
+const Figure = ({ children, caption }: { children: ReactNode; caption: string }) => <figure className="wx-figure wx-diagram"><div className="wx-diagram-scroll" role="group" aria-label={caption} tabIndex={0}>{children}</div><figcaption>{caption}</figcaption></figure>
 
 const Shot = ({ src, alt, caption, host, terminal = false, width, height }: { src: string; alt: string; caption: string; host?: string; terminal?: boolean; width: number; height: number }) => <figure className={`wx-figure wx-shot ${terminal ? 'is-terminal' : ''}`}>
   <button className="wx-shot-frame" type="button" data-zoom={src} data-zoom-alt={alt} aria-label={`Enlarge: ${alt}`}>
@@ -59,7 +59,7 @@ export default function WilssensArticle() {
       <p className="wx-eyebrow">Project write-up · wilssens.com</p>
       <h1>Building wilssens.com</h1>
       <p className="wx-dek">A family name, turned into a platform: how a search box became mailboxes, websites, AI apps and a command line, and the rules that kept it safe.</p>
-      <p className="wx-ticker" aria-label="name@wilssens.com"><span className="wx-ticker-names" aria-hidden="true">{['jan', 'emma', 'lotte', 'marc', 'an'].map((name) => <span key={name}>{name}</span>)}</span><span className="wx-ticker-domain" aria-hidden="true">@wilssens.com</span></p>
+      <p className="wx-ticker" role="img" aria-label="name@wilssens.com"><span className="wx-ticker-names" aria-hidden="true">{['jan', 'emma', 'lotte', 'marc', 'an'].map((name) => <span key={name}>{name}</span>)}</span><span className="wx-ticker-domain" aria-hidden="true">@wilssens.com</span></p>
       <p className="wx-meta">Steven Wilssens · October 2026 · <span data-read-time>15 min read</span></p>
       <dl className="wx-stats">{stats.map(([value, prefix, decimals, label]) => <div key={label}><dt>{prefix}<span data-count={value} data-decimals={decimals}>{value.toFixed(decimals)}</span></dt><dd>{label}</dd></div>)}</dl>
       <div className="wx-actions">

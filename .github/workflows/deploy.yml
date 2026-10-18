@@ -44,6 +44,20 @@ jobs:
             echo "::warning title=Resume score dropped::Resume score $line. Fix the data before merging, or merge knowing the trade-off."
             { echo; echo "⚠️ This resume scores lower than the live one. Findings:"; jq -r '.findings[] | select(.severity != "info") | "- [\(.severity)] \(.message)"' dist/resume-report.json; } >> "$GITHUB_STEP_SUMMARY"
           fi
+      # Best-practice gate: the built site, in a real browser, every public page and every
+      # admin page, desktop and phone. Fails the build (so the deploy is skipped) on a broken
+      # layout, a serious accessibility violation, a console error, or a Lighthouse
+      # accessibility/best-practices/SEO score below 90. See scripts/site-check.mjs.
+      - name: Install Chromium for the site checks
+        run: npx playwright-core install --with-deps chromium
+      - name: Check the built site against web best practices
+        run: |
+          npx wrangler d1 migrations apply stevenwilssens-analytics --local
+          printf 'ADMIN_TOKEN=ci-check-token
+HASH_SALT=ci-check-salt
+' > .dev.vars
+          node scripts/site-check.mjs --token ci-check-token --lighthouse sample --summary "$GITHUB_STEP_SUMMARY" --json dist/site-check.json
+
       - name: Deploy to Cloudflare
         if: github.event_name != 'pull_request'
         run: |

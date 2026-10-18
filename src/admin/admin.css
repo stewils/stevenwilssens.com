@@ -1,7 +1,7 @@
 /* The admin dashboard: a menu on the left and the page on the right, one page per area.
    The site's own palette; dark when the system is. */
 :root {
-  --ink: #172121; --muted: #6a7473; --paper: #f4f6f1; --card: #ffffff; --line: #d7dfd8;
+  --ink: #172121; --muted: #586360; --paper: #f4f6f1; --card: #ffffff; --line: #d7dfd8;
   --green: #096b50; --accent: #6fd1a6; --series: #0b8a5f; --series-track: #e3ece6; --yellow: #e8b84a;
   --bad: #b3261e; --bad-bg: #fdecea; --good-bg: #d8f0d8; --warn-bg: #fdecc4; --poor-bg: #f6d6d6;
   --side-bg: #13211d; --side-text: rgba(255, 255, 255, 0.74); --side-hover: rgba(255, 255, 255, 0.08); --side-active: rgba(255, 255, 255, 0.14);

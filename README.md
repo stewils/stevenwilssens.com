@@ -23,6 +23,21 @@ printf 'ADMIN_TOKEN=local-test-token\nHASH_SALT=local-salt\n' > .dev.vars   # gi
 npm run build && npx wrangler pages dev
 ```
 
+Then check the built site against web best practices in a real browser (every public page
+and every admin page, desktop and phone):
+
+```sh
+npm run check:site -- --token local-test-token
+```
+
+`scripts/site-check.mjs` starts its own `wrangler pages dev`, then on each page asserts the
+layout (no sideways scroll; the admin has a single scroll container, its page pane), no
+console errors or failed requests, the head tags search engines read, accessibility with
+axe-core (serious and critical violations fail), and Lighthouse's accessibility, best-practices
+and SEO scores (90 or more). It exits non-zero on a failure. The Deploy workflow runs it after
+the build and before the deploy, so a regression blocks the deploy; `--lighthouse none` skips
+the Lighthouse pass, `--json <file>` writes the full report.
+
 ## Project layout
 
 | Path | What it is |
