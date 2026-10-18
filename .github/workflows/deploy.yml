@@ -62,40 +62,16 @@ jobs:
         run: node scripts/indexnow.mjs
 
       # Steven asked to be told when the resume has been updated: here, when a deploy to main changed the PDF or the resume data.
+      # scripts/resume-mail.mjs reads src/resume.ts at both commits, has Claude say in plain words what is different
+      # (without the key it lists the changes itself), adds the score against the live site, and sends the HTML email.
       - name: Email Steven that the resume is live
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.CLOUDFLARE_API_TOKEN != ''
         continue-on-error: true
         env:
           MAIL_APP_PASSWORD: ${{ secrets.MAIL_APP_PASSWORD }}
           MAIL_SMTP_HOST: ${{ vars.MAIL_SMTP_HOST }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
           BEFORE: ${{ github.event.before }}
           TITLE: ${{ github.event.head_commit.message }}
-        run: |
-          if ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null || ! git diff --name-only "$BEFORE" "$GITHUB_SHA" | grep -qE '^(public/steven-wilssens-resume-2026\.pdf|src/resume\.ts)$'; then
-            echo "The resume did not change in this deploy; no email."
-            exit 0
-          fi
-          score=$(jq -r '"\(.score)/100, \(.pages) pages, \(.warnings) warnings"' dist/resume-report.json 2>/dev/null || echo unknown)
-          # The baseline was the live site before this deploy: what recruiters downloaded until now.
-          compared=$(jq -r 'if .baseline == null then "" elif .baseline.lower then "LOWER than before this deploy (\(.baseline.score) → \(.score))" elif .baseline.change > 0 then "higher than before this deploy (\(.baseline.score) → \(.score))" else "unchanged from before this deploy" end' dist/resume-report.json 2>/dev/null || true)
-          lower=$(jq -r '.baseline.lower // false' dist/resume-report.json 2>/dev/null || echo false)
-          subject="Resume live on steven.wilssens.com"
-          if [ "$lower" = true ]; then subject="Resume live on steven.wilssens.com, scoring lower than before"; fi
-          {
-            echo "Your updated resume is live."
-            echo
-            if [ "$lower" = true ]; then
-              echo "WARNING: the resume now live scores $compared. It reads worse to recruiters than the one it replaced. Findings:"
-              jq -r '.findings[] | select(.severity != "info") | "- [\(.severity)] \(.message)"' dist/resume-report.json 2>/dev/null || true
-              echo
-            fi
-            echo "Change: $(printf '%s' "$TITLE" | head -1)"
-            echo "Resume score: $score${compared:+; $compared}"
-            echo
-            echo "Resume PDF: https://steven.wilssens.com/steven-wilssens-resume-2026.pdf"
-            echo "Experience page: https://steven.wilssens.com/experience"
-            echo "Home: https://steven.wilssens.com/"
-            echo
-            echo "Deploy: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          } > /tmp/mail.txt
-          python3 scripts/send-mail.py --subject "$subject" --body-file /tmp/mail.txt
+        run: node scripts/resume-mail.mjs live --before "$BEFORE" --after "$GITHUB_SHA" --report dist/resume-report.json --title "$TITLE" --run-url "https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

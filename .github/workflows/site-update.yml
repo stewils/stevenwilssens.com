@@ -186,44 +186,18 @@ jobs:
           if git diff --name-only origin/main...HEAD | grep -qE '^(public/steven-wilssens-resume-2026\.pdf|src/resume\.ts)$'; then echo "resume_changed=true" >> "$GITHUB_OUTPUT"; else echo "resume_changed=false" >> "$GITHUB_OUTPUT"; fi
 
       # Steven asked to be told when the resume has been updated: here, when a pull request with a new resume is ready to review.
+      # scripts/resume-mail.mjs reads src/resume.ts on main and on the branch, has Claude say in plain words what is different
+      # (without the key it lists the changes itself), adds the score against main and the new findings, and sends the HTML email.
       - name: Email Steven that the resume is ready to review
         if: steps.pr.outputs.resume_changed == 'true'
         continue-on-error: true
         env:
           MAIL_APP_PASSWORD: ${{ secrets.MAIL_APP_PASSWORD }}
           MAIL_SMTP_HOST: ${{ vars.MAIL_SMTP_HOST }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
           PR_URL: ${{ steps.pr.outputs.url }}
           PREVIEW: ${{ steps.pr.outputs.preview }}
           TITLE: ${{ inputs.title }}
           INSTRUCTION: ${{ inputs.instruction }}
-          CHECKS: ${{ steps.commit.outputs.checks }}
-          SCORE_LINE: ${{ steps.score.outputs.line }}
-          SCORE_LOWER: ${{ steps.score.outputs.lower }}
-          SCORE_BEFORE: ${{ steps.score.outputs.before }}
-          SCORE_AFTER: ${{ steps.score.outputs.after }}
-        run: |
-          subject="Resume updated: ready to review ($TITLE)"
-          if [ "$SCORE_LOWER" = true ]; then subject="Resume updated, but it scores lower: $SCORE_BEFORE → $SCORE_AFTER ($TITLE)"; fi
-          {
-            echo "Your resume has been updated on a branch and is ready to review."
-            echo
-            if [ "$SCORE_LOWER" = true ]; then
-              echo "WARNING: this update lowers the resume score from $SCORE_BEFORE to $SCORE_AFTER out of 100. The resume would read worse to recruiters than the one live today. What got worse:"
-              cat /tmp/resume-new-findings.txt 2>/dev/null || true
-              echo
-              echo "Fix the data on the branch (or tell Claude to) before merging, or merge knowing the trade-off."
-              echo
-            fi
-            echo "Change: $TITLE"
-            echo "Resume score: ${SCORE_LINE:-unknown} (lint, tests, build: $CHECKS)"
-            echo
-            echo "Pull request: $PR_URL"
-            echo "Preview of the site: $PREVIEW"
-            echo "Resume PDF on the preview: $PREVIEW/steven-wilssens-resume-2026.pdf"
-            echo
-            echo "Nothing is live yet. Merge the pull request (or tell Claude to) and you will get a second email when it is on steven.wilssens.com."
-            echo
-            echo "What was asked:"
-            echo "$INSTRUCTION"
-          } > /tmp/mail.txt
-          python3 scripts/send-mail.py --subject "$subject" --body-file /tmp/mail.txt
+        run: node scripts/resume-mail.mjs review --before origin/main --after HEAD --report /tmp/resume-after.json --new-findings /tmp/resume-new-findings.txt --title "$TITLE" --instruction "$INSTRUCTION" --pr "$PR_URL" --preview "$PREVIEW" --run-url "https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
