@@ -205,4 +205,7 @@ if (options.summary) {
   appendFileSync(resolve(options.summary), lines.join('\n') + '\n')
 }
 if (process.env.GITHUB_ACTIONS) for (const finding of fails) console.log(`::error title=Site check failed::${finding.page} (${finding.viewport}) ${finding.check}: ${finding.message}`)
-process.exitCode = fails.length ? 1 : 0
+// Force exit: the self-started `wrangler pages dev` keeps a pipe open, so the process
+// would otherwise hang after printing. All output above is written synchronously.
+if (server) { try { server.kill('SIGKILL') } catch { /* already gone */ } }
+process.exit(fails.length ? 1 : 0)
