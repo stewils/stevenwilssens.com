@@ -98,15 +98,23 @@ export default function Admin() {
   const mcp = useApi<McpInfo>(`/api/mcp?r=${refreshCount}`, token, rejected)
   const resume = useApi<ResumeInfo>(`/api/resume?r=${refreshCount}`, token, rejected)
   const team = useApi<TeamReads>(`/api/team?r=${refreshCount}`, token, rejected)
-  // What the Team page last saved (seen, undo, mark as unread): the server's answer, until the next load.
+  // What the Team page last saved (seen, undo, mark as unread): the server's answer, until
+  // the next load has answered. While that load runs, the saved answer stays (the data from
+  // before the save is older); once a load fails, nothing counts as unread (AC-15). Of two
+  // saves in flight, only the answer to the later one is kept.
   const [posted, setPosted] = useState<{ reads: TeamReads; refresh: number } | null>(null)
-  const teamReads = posted && posted.refresh === refreshCount ? posted.reads : team.data
+  const lastPost = useRef(0)
+  const teamReads = team.error
+    ? null
+    : posted && (posted.refresh === refreshCount || (team.loading && posted.refresh === refreshCount - 1)) ? posted.reads : team.data
   const postTeam = useCallback(async (action: TeamAction, ids: string[]) => {
+    const request = ++lastPost.current
     try {
       const response = await fetch('/api/team', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ids }) })
       if (response.status === 401) { rejected(); return false }
       if (!response.ok) return false
-      setPosted({ reads: (await response.json()) as TeamReads, refresh: refreshCount })
+      const reads = (await response.json()) as TeamReads
+      if (request === lastPost.current) setPosted({ reads, refresh: refreshCount })
       return true
     } catch {
       return false

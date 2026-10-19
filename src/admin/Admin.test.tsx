@@ -324,6 +324,71 @@ describe('the Team page', () => {
     await act(async () => { vi.advanceTimersByTime(5000) })
     expect(screen.getByText('That token was not accepted.')).toBeInTheDocument()
   })
+
+  // Answers per route after the first load: GET /api/team as given, POST /api/team as given, the rest as usual.
+  const answer = (get: () => Promise<Response>, post: () => Promise<Response> = () => Promise.resolve(new Response('{}', { status: 500 }))) => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/api/team' && init?.method === 'POST') return post()
+      if (url.startsWith('/api/team')) return get()
+      return Promise.resolve(new Response(JSON.stringify(bodies[routeOf(url)]()), { status: 200 }))
+    })
+  }
+  const json = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))
+  const markSeen = async () => {
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    await waitFor(() => expect(menu().getByRole('link', { name: 'Team, 2 not seen' })).toBeInTheDocument())
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(NOW)
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    answer(() => json(makeTeamReads()), () => json(makeTeamReads({ read: [sha('2'), sha('3')] })))
+    go('team')
+    await act(async () => { vi.advanceTimersByTime(5000) })
+    expect(menu().getByRole('link', { name: 'Team' })).not.toHaveTextContent(/\d/)
+  }
+  const refresh = () => act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Refresh' })) })
+
+  it('keeps what was saved while the next load runs, instead of the read state from before it', async () => {
+    await markSeen()
+    answer(() => new Promise<Response>(() => {}))
+    await refresh()
+    expect(screen.getByRole('button', { name: 'Loading…' })).toBeDisabled()
+    expect(menu().getByRole('link', { name: 'Team' })).not.toHaveTextContent(/\d/)
+    go('overview')
+    expect(screen.queryByText(/your agent team you have not seen/)).not.toBeInTheDocument()
+  })
+
+  it('counts nothing as unread when a later load of the read state fails (AC-15)', async () => {
+    await markSeen()
+    answer(() => Promise.resolve(new Response('{}', { status: 500 })))
+    await refresh()
+    // Fake timers: let the answers settle without waitFor.
+    for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve() })
+    expect(screen.getByText('Could not load what you have seen on the Team page (HTTP 500).')).toBeInTheDocument()
+    expect(menu().getByRole('link', { name: 'Team' })).not.toHaveTextContent(/\d/)
+    go('overview')
+    expect(screen.queryByText(/your agent team you have not seen/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the answer to the later of two saves in flight, whichever arrives last', async () => {
+    serve({ team: { body: makeTeamReads({ read: [sha('2'), sha('3')] }) } })
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    go('team')
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Mark as unread' })).toHaveLength(3))
+    const pending: ((response: Response) => void)[] = []
+    answer(() => json(makeTeamReads()), () => new Promise<Response>((resolve) => { pending.push(resolve) }))
+    const row = (summary: string) => screen.getByText(summary).closest('li')!
+    fireEvent.click(within(row('The panel reviews every draft')).getByRole('button', { name: 'Mark as unread' }))
+    fireEvent.click(within(row('The Team page shows the team')).getByRole('button', { name: 'Mark as unread' }))
+    expect(pending).toHaveLength(2)
+    await act(async () => { pending[1](new Response(JSON.stringify(makeTeamReads({ unread: [sha('2'), sha('3')] })), { status: 200 })) })
+    await waitFor(() => expect(menu().getByRole('link', { name: 'Team, 2 not seen' })).toBeInTheDocument())
+    // The first save's answer comes last, and is older than the second's: it does not count.
+    await act(async () => { pending[0](new Response(JSON.stringify(makeTeamReads({ read: [sha('2')], unread: [sha('3')] })), { status: 200 })) })
+    expect(menu().getByRole('link', { name: 'Team, 2 not seen' })).toBeInTheDocument()
+    expect(within(row('The panel reviews every draft')).getByRole('button', { name: 'Marked as unread' })).toBeInTheDocument()
+  })
 })
 
 describe('preferences', () => {
