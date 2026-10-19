@@ -14,6 +14,10 @@ export type Resolution = 'answered' | 'dismissed'
 export type SavedQuestion = { id: number; ts: number; reason: QuestionReason; page: string | null; question: string; answer: string | null; country: string | null; asOrg: string | null; resolvedAt?: number | null; resolution?: Resolution | null; entryId?: number | null }
 export type QuestionInput = Omit<SavedQuestion, 'id' | 'resolvedAt' | 'resolution' | 'entryId'>
 
+// One question as it was asked, for the people who used the assistant on /admin.
+export type LogEntry = { id: number; ts: number; visitor: string; kind: 'question' | 'fit'; page: string | null; question: string; answer: string | null; outcome: Outcome; country: string | null; asOrg: string | null }
+export type LogInput = Omit<LogEntry, 'id'>
+
 // The public report card: everything since the assistant went live.
 export type ReportTotals = { since: string | null; questions: number; answered: number; gap: number; off: number; limited: number; costMicro: number; msFirst: number }
 
@@ -35,10 +39,19 @@ export interface AskStore {
   // Totals over the assistant's whole life, for the public report card.
   totals(): Promise<ReportTotals>
   allVotes(): Promise<{ helpful: number; unhelpful: number }>
+  // Every question with the visitor who asked it; entries older than keepMs go.
+  logQuestion(entry: LogInput, keepMs: number): Promise<void>
+  // What /privacy promises for everything older than `before`: the log and open questions
+  // deleted, closed questions stripped to the question. Run on every save and periodically.
+  prune(before: number): Promise<void>
+  // The log since `since`, newest first.
+  log(since: number, limit: number): Promise<LogEntry[]>
 }
 
 export const dayOf = (ts: number) => new Date(ts).toISOString().slice(0, 10)
 export const monthStart = (ts: number) => `${dayOf(ts).slice(0, 7)}-01`
+
+type LogDb = { id: number; ts: number; visitor: string; kind: LogEntry['kind']; page: string | null; question: string; answer: string | null; outcome: Outcome; country: string | null; as_org: string | null }
 
 type DailyDb = { day: string; outcome: Outcome; questions: number; input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number; cost_micro: number; ms_first: number; ms_total: number }
 type QuestionDb = { id: number; ts: number; reason: QuestionReason; page: string | null; question: string; answer: string | null; country: string | null; as_org: string | null; resolved_at: number | null; resolution: Resolution | null; entry_id: number | null }
@@ -85,8 +98,7 @@ export class D1AskStore implements AskStore {
   async saveQuestion(q: QuestionInput, keepMs: number) {
     const row = await this.db.prepare('INSERT INTO ask_questions (ts, reason, page, question, answer, country, as_org) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id')
       .bind(q.ts, q.reason, q.page, q.question, q.answer, q.country, q.asOrg).first<{ id: number }>()
-    // Open questions expire; answered ones stay, since the report card counts them.
-    await this.db.prepare('DELETE FROM ask_questions WHERE ts < ? AND resolved_at IS NULL').bind(q.ts - keepMs).run()
+    await this.prune(q.ts - keepMs)
     return row!.id
   }
 
@@ -121,6 +133,26 @@ export class D1AskStore implements AskStore {
     const row = await this.db.prepare('SELECT COALESCE(SUM(helpful), 0) AS helpful, COALESCE(SUM(unhelpful), 0) AS unhelpful FROM ask_votes').first<{ helpful: number; unhelpful: number }>()
     return { helpful: row?.helpful ?? 0, unhelpful: row?.unhelpful ?? 0 }
   }
+
+  async logQuestion(e: LogInput, keepMs: number) {
+    await this.db.prepare('INSERT INTO ask_log (ts, visitor, kind, page, question, answer, outcome, country, as_org) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(e.ts, e.visitor, e.kind, e.page, e.question, e.answer, e.outcome, e.country, e.asOrg).run()
+    await this.prune(e.ts - keepMs)
+  }
+
+  async prune(before: number) {
+    // Open questions expire; closed ones stay, since the report card counts them, but only
+    // the question is left: not the assistant's answer, the page or where it came from.
+    await this.db.batch([
+      this.db.prepare('DELETE FROM ask_log WHERE ts < ?').bind(before),
+      this.db.prepare('DELETE FROM ask_questions WHERE ts < ? AND resolved_at IS NULL').bind(before),
+      this.db.prepare('UPDATE ask_questions SET page = NULL, answer = NULL, country = NULL, as_org = NULL WHERE ts < ? AND resolved_at IS NOT NULL AND (page IS NOT NULL OR answer IS NOT NULL OR country IS NOT NULL OR as_org IS NOT NULL)').bind(before),
+    ])
+  }
+
+  async log(since: number, limit: number) {
+    const { results } = await this.db.prepare('SELECT * FROM ask_log WHERE ts >= ? ORDER BY ts DESC LIMIT ?').bind(since, limit).all<LogDb>()
+    return results.map((row) => ({ id: row.id, ts: row.ts, visitor: row.visitor, kind: row.kind, page: row.page, question: row.question, answer: row.answer, outcome: row.outcome, country: row.country, asOrg: row.as_org }))
+  }
 }
 
 // Per-outcome sums into one report line. Time to first word is only summed for answers (answered and gap).
@@ -143,6 +175,7 @@ export class MemoryAskStore implements AskStore {
   rows: DailyRow[] = []
   voteRows: VoteRow[] = []
   saved: SavedQuestion[] = []
+  entries: LogEntry[] = []
 
   async countHits(ipHash: string, since: number) { return this.hits.filter((hit) => hit.ipHash === ipHash && hit.ts >= since).length }
   async countAllHits(since: number) { return this.hits.filter((hit) => hit.ts >= since).length }
@@ -164,7 +197,7 @@ export class MemoryAskStore implements AskStore {
   async saveQuestion(q: QuestionInput, keepMs: number) {
     const id = (this.saved[this.saved.length - 1]?.id ?? 0) + 1
     this.saved.push({ id, ...q, resolvedAt: null, resolution: null, entryId: null })
-    this.saved = this.saved.filter((item) => item.ts >= q.ts - keepMs || item.resolvedAt)
+    await this.prune(q.ts - keepMs)
     return id
   }
 
@@ -177,4 +210,14 @@ export class MemoryAskStore implements AskStore {
   }
   async totals() { return sumTotals(this.rows.map((row) => ({ outcome: row.outcome, questions: row.questions, costMicro: row.costMicro, msFirst: row.msFirst, since: row.day }))) }
   async allVotes() { return this.voteRows.reduce((sum, row) => ({ helpful: sum.helpful + row.helpful, unhelpful: sum.unhelpful + row.unhelpful }), { helpful: 0, unhelpful: 0 }) }
+  async logQuestion(e: LogInput, keepMs: number) {
+    this.entries.push({ id: this.entries.length + 1, ...e })
+    await this.prune(e.ts - keepMs)
+  }
+  async prune(before: number) {
+    this.entries = this.entries.filter((item) => item.ts >= before)
+    this.saved = this.saved.filter((item) => item.ts >= before || item.resolvedAt)
+      .map((item) => item.ts < before ? { ...item, page: null, answer: null, country: null, asOrg: null } : item)
+  }
+  async log(since: number, limit: number) { return this.entries.filter((e) => e.ts >= since).sort((a, b) => b.ts - a.ts).slice(0, limit) }
 }

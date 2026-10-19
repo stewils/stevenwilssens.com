@@ -257,8 +257,8 @@ describe('the Team page', () => {
     go('assistant')
     expect(heading()).toHaveTextContent('Ask about Steven')
     const parts = [...document.querySelectorAll<HTMLElement>('.page [data-part]')]
-    expect(parts.map((part) => part.dataset.part)).toEqual(['Use and cost', 'Waiting for you'])
-    expect(parts.map((part) => part.querySelector('h2')!.textContent)).toEqual(['Use and cost', 'Questions waiting for you'])
+    expect(parts.map((part) => part.dataset.part)).toEqual(['People', 'Use and cost', 'Waiting for you'])
+    expect(parts.map((part) => part.querySelector('h2')!.textContent)).toEqual(['People who asked', 'Use and cost', 'Questions waiting for you'])
   })
 
   it('shows the number not seen on the menu item, named "Team, N not seen"', async () => {

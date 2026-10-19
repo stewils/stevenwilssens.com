@@ -61,7 +61,7 @@ export const badgeCounts = (needs: Need[]) => {
   return counts
 }
 
-export const computeSummaries = ({ stats, mcp, ask, resume, team }: AdminData): Partial<Record<PageId, string>> => {
+export const computeSummaries = ({ stats, mcp, ask, resume, team, days }: AdminData): Partial<Record<PageId, string>> => {
   const summaries: Partial<Record<PageId, string>> = {}
   if (stats) {
     const { totals } = stats
@@ -80,7 +80,12 @@ export const computeSummaries = ({ stats, mcp, ask, resume, team }: AdminData): 
       ? `ATS score ${report.score}/100 · ${report.pages ?? '?'} ${plural(report.pages ?? 0, 'page', 'pages')} · ${report.ats?.warnings ?? report.warnings ?? 0} ${plural(report.ats?.warnings ?? report.warnings ?? 0, 'warning', 'warnings')}${report.baseline ? ` · ${report.baseline.verdict === 'unchanged' ? 'unchanged from' : `${report.baseline.verdict} than`} the live résumé before` : ''}`
       : 'No résumé report in this deployment'
   }
-  if (ask) summaries.assistant = `${formatUsd(ask.month.costMicro)} of ${formatUsd(ask.budgetUsd * 1_000_000)} this month · ${formatNumber(ask.month.questions)} questions · ${formatNumber(ask.month.gap)} gaps`
+  if (ask) {
+    const people = ask.log && new Set(ask.log.map((entry) => entry.visitor)).size
+    // The log keeps 90 days, so a longer range counts the people of those 90.
+    const logDays = ask.logDays ?? Math.min(days, 90)
+    summaries.assistant = `${formatUsd(ask.month.costMicro)} of ${formatUsd(ask.budgetUsd * 1_000_000)} this month · ${formatNumber(ask.month.questions)} questions · ${formatNumber(ask.month.gap)} gaps${people === undefined ? '' : ` · ${formatNumber(people)} ${people === 1 ? 'person' : 'people'} asked in ${plural(logDays, 'the last day', `${logDays} days`)}`}`
+  }
   if (mcp) summaries.mcp = `${formatNumber(mcp.entries.total)} dossier entries across ${mcp.entries.roles} roles · ${formatNumber(mcp.entries.public)} public${mcp.publicCalls ? ` · ${formatNumber(mcp.publicCalls.total)} public ${plural(mcp.publicCalls.total, 'call', 'calls')}` : ''}`
   if (team) summaries.team = tileLine(team.manifest, unreadUpdates(team.manifest, team.reads).length)
   return summaries

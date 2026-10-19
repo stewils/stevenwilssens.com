@@ -111,6 +111,58 @@ describe('the D1 assistant store', () => {
   })
 })
 
+describe.each(stores)('the %s assistant store after 90 days', (_, make) => {
+  it('keeps a closed question but nothing about where it came from or what the assistant answered', async () => {
+    const store = make()
+    const closed = await store.saveQuestion(question(1 * day, { answer: 'The assistant said this', page: 'experience' }), 90 * day)
+    if (store instanceof MemoryAskStore) Object.assign(store.saved[0], { resolvedAt: 2 * day, resolution: 'answered' })
+    else await (store as unknown as { db: D1Database }).db.prepare('UPDATE ask_questions SET resolved_at = ?, resolution = ? WHERE id = ?').bind(2 * day, 'answered', closed).run()
+    await store.saveQuestion(question(1 * day + 1), 90 * day)
+    await store.saveQuestion(question(92 * day), 90 * day)
+    // The open one from day 1 is gone, the closed one is stripped, today's is whole.
+    expect(await store.resolvedCounts(0)).toEqual({ answered: 1, dismissed: 0 })
+    const open = await store.questions(0, 10)
+    expect(open).toHaveLength(1)
+    expect(open[0]).toMatchObject({ ts: 92 * day, country: 'BE', asOrg: 'Proximus' })
+    const all = store instanceof MemoryAskStore ? store.saved : await (store as unknown as { db: D1Database }).db.prepare('SELECT id, question, answer, page, country, as_org AS asOrg FROM ask_questions ORDER BY id').all().then((r) => r.results)
+    expect(all[0]).toMatchObject({ question: 'Does Steven speak French?', answer: null, page: null, country: null, asOrg: null })
+  })
+})
+
+describe.each(stores)('pruning the %s assistant store', (_, make) => {
+  it('keeps everything from the cut on and prunes only what is older', async () => {
+    const store = make()
+    const cut = 100 * day
+    await store.logQuestion({ ts: cut - 1, visitor: 'before', kind: 'question', page: null, question: 'q', answer: null, outcome: 'answered', country: null, asOrg: null }, 1000 * day)
+    await store.logQuestion({ ts: cut, visitor: 'at', kind: 'question', page: null, question: 'q', answer: null, outcome: 'answered', country: null, asOrg: null }, 1000 * day)
+    await store.saveQuestion(question(cut - 1), 1000 * day)
+    await store.saveQuestion(question(cut), 1000 * day)
+    await store.prune(cut)
+    expect((await store.log(0, 10)).map((e) => e.visitor)).toEqual(['at'])
+    expect((await store.questions(0, 10)).map((q) => q.ts)).toEqual([cut])
+  })
+})
+
+describe.each(stores)('the %s assistant log', (_, make) => {
+  const entry = (ts: number, visitor = 'v') => ({ ts, visitor, kind: 'question' as const, page: 'home', question: `q at ${ts}`, answer: null, outcome: 'answered' as const, country: null, asOrg: null })
+
+  it('deletes entries older than the retention when a new one comes in, as /privacy promises', async () => {
+    const store = make()
+    const now = 200 * day
+    await store.logQuestion(entry(now - 91 * day, 'old'), 90 * day)
+    await store.logQuestion(entry(now - 89 * day, 'kept'), 90 * day)
+    await store.logQuestion(entry(now, 'new'), 90 * day)
+    expect((await store.log(0, 100)).map((e) => e.visitor)).toEqual(['new', 'kept'])
+  })
+
+  it('reads the log since a time, newest first, up to a limit', async () => {
+    const store = make()
+    for (const at of [1, 2, 3, 4]) await store.logQuestion(entry(at * day), 90 * day)
+    expect((await store.log(2 * day, 10)).map((e) => e.ts)).toEqual([4 * day, 3 * day, 2 * day])
+    expect((await store.log(0, 2)).map((e) => e.ts)).toEqual([4 * day, 3 * day])
+  })
+})
+
 describe('the memory assistant store', () => {
   it('counts closed questions by resolution and keeps them past their expiry', async () => {
     const store = new MemoryAskStore()

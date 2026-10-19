@@ -70,7 +70,7 @@ export function TrafficPage({ stats }: { stats: Stats }) {
       <section className="card" data-part="Who visited">
         <div className="card-head"><h2>Who visited</h2></div>
         <p className="note">Each row is one visitor on one day, with the pages they viewed in order (open a row). Organization is the network they browsed from, which is often their employer.</p>
-        <DataTable columns={visitorColumns} rows={stats.visitors} rowKey={(row) => row.visitor} empty="No visitors in this range yet" label="Visitors" expand={(row) => <><p><b>Journey:</b> {row.journey}</p><p><b>Clicked:</b> {row.clicked ?? 'nothing'}</p><p><b>First seen:</b> {formatTime(row.firstSeen)}</p></>} />
+        <DataTable columns={visitorColumns} rows={stats.visitors} rowKey={(row) => row.visitor} empty="No visitors in this range yet" label="Visitors" rowName={(row) => `${row.organization ?? 'an unknown network'}, ${formatTime(row.lastSeen)}`} expand={(row) => <><p><b>Journey:</b> {row.journey}</p><p><b>Clicked:</b> {row.clicked ?? 'nothing'}</p><p><b>First seen:</b> {formatTime(row.firstSeen)}</p></>} />
       </section>
 
       <section className="card" data-part="Pages">

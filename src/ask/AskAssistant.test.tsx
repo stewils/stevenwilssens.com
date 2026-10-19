@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { within, act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AskAssistant from './AskAssistant'
@@ -45,6 +45,9 @@ describe('AskAssistant', () => {
     expect(document.documentElement.classList.contains('ask-docked')).toBe(true)
     expect(screen.getByRole('button', { name: 'What are his patents about?' })).toBeInTheDocument()
     expect(sessionStorage.getItem('sw-ask-open')).toBe('1')
+    // What is kept, said where the reader types.
+    expect(within(dialog).getByText(/Questions are kept 90 days/)).toBeInTheDocument()
+    expect(within(dialog).getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy')
   })
 
   it('stays hidden when the assistant is off', async () => {

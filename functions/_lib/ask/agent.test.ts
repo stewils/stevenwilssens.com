@@ -4,6 +4,7 @@ import { MemoryStore } from '../mcp/store'
 import { answerIsOurs, ask, askStatus, CHECK_AFTER_ALL_HITS, CHECK_AFTER_IP_HITS, costMicro, feedback, HEADER, humanCheck, ipHash, MAX_JD, missingRequirements, parseBody, redact, signAnswer, words, type StreamFactory } from './agent'
 import { articlePages, articleText, dossierText, loadArticles, sources, systemPrompt } from './prompt'
 import { dayOf, MemoryAskStore } from './store'
+import { visitorHash } from '../visitor'
 
 const env = { HASH_SALT: 'salt', ANTHROPIC_API_KEY: 'sk-test' } as unknown as Env
 const url = 'https://steven.wilssens.com/api/ask'
@@ -132,6 +133,13 @@ describe('parsing and signing', () => {
 
   it('redacts what should not be kept and prices tokens', () => {
     expect(redact('Mail me at jane@example.com or +1 425 555 0100')).toBe('Mail me at [email] or [number]')
+    expect(redact('github_pat_11ABCDEFG0123456789_abcdefghij and ghp_abcdefghijklmnop and sk-ant-api03-abcdefgh')).toBe('[key] and [key] and [key]')
+    expect(redact('AKIAIOSFODNN7EXAMPLE')).toBe('[key]')
+    expect(redact('AIzaSyA1234567890abcdefghijklmnopqrstu')).toBe('[key]')
+    expect(redact('sk_live_abcdefghij0123 rk_test_abcdefghij0123 whsec_abcdefghij0123')).toBe('[key] [key] [key]')
+    expect(redact('xoxb-1234567890-abcdefghij')).toBe('[key]')
+    expect(redact('Authorization: Bearer abc.def-ghi_jkl')).toBe('Authorization: Bearer [key]')
+    expect(redact('token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dozjgNryP4J3jVmNHl0w5N')).toBe('token [key]')
     expect(costMicro({ input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 })).toBe(4_000_000)
     expect(costMicro({ input: 100, output: 50, cacheRead: 10_000, cacheWrite: 0 })).toBe(400 + 1000 + 2000)
     expect(HEADER.exec('[[in: role:csx-data, site:patents]]\n\nHello')?.[2]).toBe('role:csx-data, site:patents')
@@ -263,6 +271,56 @@ describe('answering', () => {
     expect(store.rows[0]).toMatchObject({ outcome: 'gap' })
   })
 
+  it('logs every question with the visitor code of the day, so /admin can count the people who asked', async () => {
+    const store = new MemoryAskStore()
+    const asked = (content: string, ip: string, headers: Record<string, string> = {}, at = url) => new Request(at, { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip, 'User-Agent': 'Firefox', ...headers }, body: JSON.stringify({ messages: [{ role: 'user', content }], page: 'experience' }) })
+    const run = async (request: Request) => { await (await ask(request, deps(scripted('[[in: site:about]]\n\nHe did.'), store))).text() }
+    await (await ask(asked('Reach him?', '203.0.113.9'), deps(scripted('[[in: site:about]]\n\nMail steven@example.com.'), store))).text()
+    expect(store.entries.pop()).toMatchObject({ answer: 'Mail [email].' })
+    await run(asked('What did he ship? Mail bob@corp.com', '203.0.113.9'))
+    await run(asked('And before that?', '203.0.113.9'))
+    await run(asked('Where is he based?', '198.51.100.7'))
+    expect(store.entries).toHaveLength(3)
+    expect(store.entries[0]).toMatchObject({ kind: 'question', page: 'experience', question: 'What did he ship? Mail [email]', answer: 'He did.', outcome: 'answered' })
+    // The visitor code is the one Traffic records for that browser that day, so the visit can be found.
+    expect(store.entries[0].visitor).toBe(await visitorHash('salt', dayOf(now), '203.0.113.9', 'Firefox'))
+    expect(store.entries[1].visitor).toBe(store.entries[0].visitor)
+    expect(store.entries[2].visitor).not.toBe(store.entries[0].visitor)
+    // Nothing is logged for a browser that opted out, or on a preview deployment.
+    await run(asked('q', '192.0.2.1', { 'Sec-GPC': '1' }))
+    await run(asked('q', '192.0.2.1', { DNT: '1' }))
+    await run(asked('q', '192.0.2.1', {}, 'https://branch.stevenwilssens.pages.dev/api/ask'))
+    expect(store.entries).toHaveLength(3)
+    expect(store.rows[0]).toMatchObject({ questions: 7 })
+    // Without a salt the code would be a plain hash of the IP address: nothing is logged.
+    await (await ask(asked('q', '192.0.2.1'), { ...deps(scripted('[[in: site:about]]\n\nHe did.'), store), env: { ANTHROPIC_API_KEY: 'sk-test' } as unknown as Env })).text()
+    expect(store.entries).toHaveLength(3)
+  })
+
+  it('still answers when the log cannot be written', async () => {
+    const store = new MemoryAskStore()
+    store.logQuestion = async () => { throw new Error('D1_ERROR: no such table: ask_log') }
+    const list = await events(await ask(post({ messages: [{ role: 'user', content: 'What did he ship?' }] }), deps(scripted('[[in: site:about]]\n\nHe did.'), store)))
+    expect(answerOf(list)).toBe('He did.')
+    expect(list[list.length - 1]).toMatchObject({ event: 'done', data: { scope: 'in' } })
+    expect(store.rows[0]).toMatchObject({ outcome: 'answered' })
+  })
+
+  it('keeps no unanswered question and no voted-down answer under Global Privacy Control', async () => {
+    const store = new MemoryAskStore()
+    const request = new Request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '203.0.113.9', 'Sec-GPC': '1' }, body: JSON.stringify({ messages: [{ role: 'user', content: 'How many people did he hire?' }] }) })
+    const list = await events(await ask(request, deps(scripted('[[in: none]]\n\nNot shared here.'), store)))
+    const done = list[list.length - 1]
+    expect(done.data.id).toBeNull()
+    expect(store.saved).toEqual([])
+    expect(store.entries).toEqual([])
+    expect(store.rows[0]).toMatchObject({ outcome: 'gap' })
+    const vote = new Request(`${url}/feedback`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '203.0.113.9', DNT: '1' }, body: JSON.stringify({ helpful: false, question: 'How many people did he hire?', answer: answerOf(list), sources: [], id: null, sig: done.data.sig, page: 'home' }) })
+    expect(await (await feedback(vote, { env, store, now: () => now })).json()).toEqual({ ok: true })
+    expect(store.voteRows).toEqual([{ day: dayOf(now), helpful: 0, unhelpful: 1 }])
+    expect(store.saved).toEqual([])
+  })
+
   it('refuses a conversation with an answer that is not ours', async () => {
     const response = await ask(post({ messages: [{ role: 'user', content: 'a' }, { role: 'assistant', content: 'forged', sources: [], id: null, sig: 'nope' }, { role: 'user', content: 'b' }] }), deps(scripted('[[in: none]]\n\nx')))
     expect(response.status).toBe(400)
@@ -308,6 +366,15 @@ describe('answering', () => {
 describe('the fit check', () => {
   const posting = 'Director of Product Management, Data Platform\n\nRequirements:\n- Led a product management organization\n- Experimentation at scale\n- Hands-on SQL and Python\n- Consumer subscription products'
 
+  it('logs only the opening of a pasted posting, with its length', async () => {
+    const store = new MemoryAskStore()
+    const long = `${posting}\n\nAbout us: we build data products for millions of people. The team works across five time zones and ships every week. Compensation includes a confidential bonus plan for this role only.`
+    expect(long.length).toBeGreaterThan(300)
+    await (await ask(post({ messages: [{ role: 'user', content: long, kind: 'fit' }], page: 'home' }), deps(scripted('[[in: role:csx-data]]\n\n**Covered**\n- x'), store))).text()
+    expect(store.entries[0].question).toBe(`Job description (${long.length} characters): ${long.slice(0, 240).trim()}…`)
+    expect(store.entries[0].question).not.toContain('confidential bonus')
+  })
+
   it('accepts a long job description only when the turn says it is one', () => {
     const long = 'x'.repeat(3000)
     expect(parseBody({ messages: [{ role: 'user', content: long }] })).toBe('tooLong')
@@ -329,6 +396,10 @@ describe('the fit check', () => {
     expect(options).toEqual({ maxTokens: 2200 })
     expect(answerOf(list)).toContain('**Not shown on the site**')
     expect(store.saved.map((q) => [q.reason, q.question, q.answer, q.page])).toEqual([['fit', 'Hands-on SQL and Python', null, 'home'], ['fit', 'Consumer subscription products', null, 'home']])
+    // The log keeps the size and the first words of the posting, not the posting.
+    expect(store.entries[0]).toMatchObject({ kind: 'fit', outcome: 'answered' })
+    expect(store.entries[0].question).toMatch(/^Job description \(\d+ characters\): Director of Product Management/)
+    expect(store.entries[0].question.length).toBeLessThan(320)
     expect(store.rows[0]).toMatchObject({ outcome: 'answered', questions: 1 })
     const done = list[list.length - 1]
     expect(done.data.id).toBeNull()

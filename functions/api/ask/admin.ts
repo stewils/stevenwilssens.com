@@ -1,10 +1,16 @@
 // GET /api/ask/admin?days=30: what the dashboard shows about the assistant: this
-// month against the budget, questions and cost per day and outcome, votes, the
+// month against the budget, questions and cost per day and outcome, votes, every
+// question in the range with the visitor who asked it (the people who used it), the
 // open questions it could not answer, and how many Steven has closed (admin token).
 import type { Env } from '../../_lib/env'
 import { isAdmin } from '../../_lib/auth'
 import { budgetMicro, checkAfterMicro, DEFAULT_BUDGET_USD, humanCheck, MODEL } from '../../_lib/ask/agent'
 import { D1AskStore, dayOf, monthStart } from '../../_lib/ask/store'
+
+// The log keeps 90 days and the card shows at most this many questions.
+const LOG_DAYS = 90
+const LOG_LIMIT = 2000
+const ANSWER_CHARS = 1500
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })
 
@@ -15,7 +21,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const store = new D1AskStore(env.DB)
   const sinceDay = dayOf(now - days * 86_400_000)
   const ninetyDays = now - 90 * 86_400_000
-  const [daily, votes, questions, resolved, monthRows, check] = await Promise.all([store.daily(sinceDay), store.votes(sinceDay), store.questions(ninetyDays, 200), store.resolvedCounts(ninetyDays), store.daily(monthStart(now)), humanCheck(env, store, now, null)])
+  const [daily, votes, questions, resolved, monthRows, check, log] = await Promise.all([store.daily(sinceDay), store.votes(sinceDay), store.questions(ninetyDays, 200), store.resolvedCounts(ninetyDays), store.daily(monthStart(now)), humanCheck(env, store, now, null), store.log(now - Math.min(days, LOG_DAYS) * 86_400_000, LOG_LIMIT).catch((err: unknown) => { console.error('ask log', err); return null })])
   const month = { questions: 0, answered: 0, gap: 0, off: 0, limited: 0, failed: 0, costMicro: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
   for (const row of monthRows) {
     month.questions += row.questions
@@ -41,5 +47,9 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     votes,
     questions,
     resolved,
+    // Answers can be long; the card needs enough to read, not every word.
+    log: log?.map((entry) => entry.answer && entry.answer.length > ANSWER_CHARS ? { ...entry, answer: `${entry.answer.slice(0, ANSWER_CHARS)}…` } : entry),
+    logDays: Math.min(days, LOG_DAYS),
+    logCapped: log ? log.length >= LOG_LIMIT : undefined,
   })
 }

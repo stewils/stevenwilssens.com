@@ -70,7 +70,13 @@ export type AskInfo = {
   // Open questions (not yet answered or dismissed in the MCP), and how many were closed in the last 90 days.
   questions: { id: number; ts: number; reason: 'gap' | 'unhelpful' | 'fit'; page: string | null; question: string; answer: string | null; country: string | null; asOrg: string | null }[]
   resolved: { answered: number; dismissed: number }
+  // Every question in the range (kept 90 days), newest first, with the analytics' visitor code of the day.
+  log?: AskLogEntry[]
+  // The days the log covers (at most 90), and whether it stopped at its row limit.
+  logDays?: number
+  logCapped?: boolean
 }
+export type AskLogEntry = { id: number; ts: number; visitor: string; kind: 'question' | 'fit'; page: string | null; question: string; answer: string | null; outcome: 'answered' | 'gap' | 'off' | 'limited' | 'failed'; country: string | null; asOrg: string | null }
 
 // The résumé report the build writes (scripts/resume-check.mjs) and the score history
 // functions/_lib/resume-scores.ts keeps.

@@ -1,5 +1,7 @@
 import type { Env } from '../_lib/env'
 import { isBot, parseUserAgent } from '../_lib/useragent'
+import { visitorHash } from '../_lib/visitor'
+import { D1AskStore } from '../_lib/ask/store'
 
 type Payload = {
   type?: string
@@ -28,11 +30,6 @@ const ratings = new Set(['good', 'needs-improvement', 'poor'])
 const text = (value: unknown, max = 300) => (typeof value === 'string' && value ? value.slice(0, max) : null)
 const int = (value: unknown, max: number) => (typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(Math.round(value), max)) : null)
 
-const hash = async (value: string) => {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
-  return [...new Uint8Array(digest).slice(0, 8)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
-}
-
 const hostOf = (url: string | null) => {
   if (!url) return null
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return null }
@@ -41,6 +38,7 @@ const hostOf = (url: string | null) => {
 const originHost = (url: string) => { try { return new URL(url).host } catch { return null } }
 
 const retentionMs = 395 * 86_400_000 // 13 months, as stated on /privacy
+const askLogMs = 90 * 86_400_000
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   const requestUrl = new URL(request.url)
@@ -63,7 +61,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   const now = Date.now()
   const day = new Date(now).toISOString().slice(0, 10)
   const ip = request.headers.get('CF-Connecting-IP') ?? ''
-  const visitor = await hash(`${env.HASH_SALT ?? ''}|${day}|${ip}|${userAgent}`)
+  const visitor = await visitorHash(env.HASH_SALT ?? '', day, ip, userAgent)
   const agent = parseUserAgent(userAgent)
   const cf = (request.cf ?? {}) as IncomingRequestCfProperties
   const referrer = text(payload.referrer, 500)
@@ -87,7 +85,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     ratings.has(payload.rating ?? '') ? payload.rating : null,
   ).run()
 
-  if (Math.random() < 0.02) waitUntil(env.DB.prepare('DELETE FROM events WHERE ts < ?').bind(now - retentionMs).run())
+  if (Math.random() < 0.02) {
+    waitUntil(env.DB.prepare('DELETE FROM events WHERE ts < ?').bind(now - retentionMs).run())
+    // What the assistant keeps goes after 90 days also when nobody asks anything for a while (as
+    // /privacy says). Its own statements, so the events cleanup goes on even if they fail.
+    waitUntil(new D1AskStore(env.DB).prune(now - askLogMs).catch(() => null))
+  }
 
   return new Response(null, { status: 204 })
 }

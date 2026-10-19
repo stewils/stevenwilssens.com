@@ -143,4 +143,31 @@ describe('POST /api/collect records', () => {
     expect(rows(db).map((row) => row.visitor)).not.toContain('old')
     expect(rows(db)).toHaveLength(2)
   })
+
+  it("and with them what the assistant kept past 90 days, even when nobody asked anything since", async () => {
+    const db = fakeD1()
+    const add = db.sqlite.prepare("INSERT INTO ask_log (ts, visitor, kind, question, outcome) VALUES (?, ?, 'question', 'q', 'answered')")
+    add.run(Date.now() - 91 * 86_400_000, 'old')
+    add.run(Date.now() - 89 * 86_400_000, 'kept')
+    const ask = db.sqlite.prepare("INSERT INTO ask_questions (ts, reason, page, question, answer, country, as_org, resolved_at, resolution) VALUES (?, 'gap', 'home', ?, 'the answer', 'BE', 'Proximus', ?, ?)")
+    ask.run(Date.now() - 91 * 86_400_000, 'open and old', null, null)
+    ask.run(Date.now() - 91 * 86_400_000, 'closed and old', Date.now(), 'answered')
+    ask.run(Date.now() - 89 * 86_400_000, 'open and recent', null, null)
+    vi.spyOn(Math, 'random').mockReturnValue(0.01)
+    await send(post({ type: 'pageview' }), db)
+    expect((db.sqlite.prepare('SELECT visitor FROM ask_log').all() as { visitor: string }[]).map((row) => row.visitor)).toEqual(['kept'])
+    expect(db.sqlite.prepare('SELECT question, answer, page, country, as_org FROM ask_questions ORDER BY id').all().map((row) => ({ ...row }))).toEqual([
+      { question: 'closed and old', answer: null, page: null, country: null, as_org: null },
+      { question: 'open and recent', answer: 'the answer', page: 'home', country: 'BE', as_org: 'Proximus' },
+    ])
+  })
+
+  it('and still deletes old events where the assistant log does not exist yet', async () => {
+    const db = fakeD1()
+    db.sqlite.exec('DROP TABLE ask_log')
+    db.sqlite.prepare("INSERT INTO events (ts, type, visitor, host) VALUES (?, 'pageview', 'old', 'steven.wilssens.com')").run(Date.now() - 400 * 86_400_000)
+    vi.spyOn(Math, 'random').mockReturnValue(0.01)
+    expect((await send(post({ type: 'pageview' }), db)).status).toBe(204)
+    expect(rows(db).map((row) => row.visitor)).not.toContain('old')
+  })
 })

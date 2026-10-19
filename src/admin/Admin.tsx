@@ -168,7 +168,7 @@ export default function Admin() {
       case 'crawlers': return stats.data ? <CrawlersPage stats={stats.data} /> : waiting('crawler data')
       case 'speed': return stats.data ? <SpeedPage vitals={stats.data.vitals} /> : waiting('page speed data', false)
       case 'resume': return resume.data ? <ResumePage resume={resume.data} proposals={mcp.data?.proposals ?? null} /> : waiting('the résumé report', false)
-      case 'assistant': return ask.data ? <AssistantPage info={ask.data} days={days} /> : waiting("the assistant's numbers")
+      case 'assistant': return ask.data ? <AssistantPage info={ask.data} days={days} visitors={stats.data?.visitors} /> : waiting("the assistant's numbers")
       case 'mcp': return mcp.data ? <McpPage info={mcp.data} /> : waiting('the MCP details', false)
       case 'team': return <TeamPage manifest={teamManifest} reads={teamReads} readsError={team.error} onPost={postTeam} />
       case 'links': return <LinksPage />

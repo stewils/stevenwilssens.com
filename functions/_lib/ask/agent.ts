@@ -19,6 +19,7 @@ import type { Env } from '../env'
 import type { DossierStore } from '../mcp/store'
 import { contact, jdPrefix, loadArticles, sources as allSources, systemPrompt, type Articles, type Source } from './prompt'
 import { dayOf, monthStart, type AskStore, type Outcome, type Usage } from './store'
+import { optedOut, visitorHash } from '../visitor'
 
 export const MODEL = 'claude-opus-5-5'
 /** Micro-dollars per token (claude-opus-5-5: $4 / $20 per MTok; cache read $0.20, cache write with a 1-hour lifetime $8). */
@@ -113,10 +114,15 @@ const historyIsOurs = async (env: Env, messages: Turn[]) => {
   return true
 }
 
-/** What is saved for /admin: no email addresses, phone or card numbers, keys. */
+/** What is saved for /admin: no email addresses, phone or card numbers, keys or tokens. */
 export const redact = (text: string) => text
   .replace(/[^\s@<>()"']+@[^\s@<>()"']+\.[a-z]{2,}/gi, '[email]')
-  .replace(/\b(?:sk|ghp|xox[a-z])[-_][A-Za-z0-9_-]{8,}/g, '[key]')
+  .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, 'Bearer [key]')
+  .replace(/\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g, '[key]')
+  .replace(/\b(?:github_pat_|gh[opsur]_|sk[-_]|xox[a-z]-)[A-Za-z0-9_-]{8,}/g, '[key]')
+  .replace(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, '[key]')
+  .replace(/\bAIza[A-Za-z0-9_-]{30,}/g, '[key]')
+  .replace(/\b(?:rk|pk|whsec)_(?:live|test)?_?[A-Za-z0-9]{10,}/g, '[key]')
   .replace(/\+?\d[\d\s().-]{7,}\d/g, '[number]')
 
 /** A job description is not kept; what /admin shows for a vote on a fit check is its size and its first words. */
@@ -304,6 +310,19 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
     : { role: 'user', content: turn.kind === 'fit' ? `${jdPrefix}\n\n${turn.content}` : turn.content })
   const question = last.content
   const cf = ((request as Request & { cf?: IncomingRequestCfProperties }).cf ?? {}) as Partial<IncomingRequestCfProperties>
+  const where = { page: parsed.page, country: (cf.country as string | undefined) ?? null, asOrg: (cf.asOrganization as string | undefined) ?? null }
+  // Who asked what, for /admin: the analytics' visitor code for the day, so people are counted
+  // like visitors. Not on preview deployments (they share the database) or when the browser opted out.
+  // Under GPC or DNT nothing about the visitor is kept, not even an unanswered question (as /privacy says).
+  const optOut = optedOut(request)
+  // Without HASH_SALT the code would be a plain hash of the IP address, so nothing is logged.
+  const visitor = optOut || !env.HASH_SALT || new URL(request.url).hostname.endsWith('.pages.dev') ? null
+    : await visitorHash(env.HASH_SALT, day, request.headers.get('CF-Connecting-IP') ?? '', request.headers.get('User-Agent') ?? '')
+  const logAs = async (outcome: Outcome, answer: string) => {
+    if (!visitor) return
+    const asked = fit ? `Job description (${question.length} characters): ${redact(question).slice(0, 240).trim()}…` : redact(question).slice(0, MAX_QUESTION)
+    await store.logQuestion({ ts: started, visitor, kind: fit ? 'fit' : 'question', question: asked, answer: answer ? redact(answer).slice(0, MAX_ANSWER) : null, outcome, ...where }, KEEP_MS).catch((err: unknown) => console.error('ask log', err))
+  }
   const makeStream = stream ?? (env.ASK_MOCK === '1' ? mockStream : claudeStream(env))
   const maxSources = fit ? MAX_SOURCES_FIT : MAX_SOURCES
 
@@ -355,8 +374,9 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
         await send('delta', { text: state.answer })
       }
       let id: number | null = null
-      const where = { page: parsed.page, country: (cf.country as string | undefined) ?? null, asOrg: (cf.asOrganization as string | undefined) ?? null }
-      if (state.scope === 'in' && fit) {
+      if (optOut) {
+        // Nothing kept: the answer is not saved as a question for Steven either.
+      } else if (state.scope === 'in' && fit) {
         // The requirements the record does not show are the questions Steven should answer next; the posting itself is not kept.
         for (const requirement of missingRequirements(state.answer)) await store.saveQuestion({ ts: started, reason: 'fit', question: requirement, answer: null, ...where }, KEEP_MS).catch(() => null)
       } else if (state.scope === 'in' && !state.sources.length && state.answer.trim()) {
@@ -373,6 +393,7 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
       const outcome: Outcome = state.failed ? 'failed' : state.scope === 'out' ? 'off' : state.sources.length ? 'answered' : 'gap'
       const done = now()
       await store.recordUsage(day, outcome, usage, costMicro(usage), (firstAt || done) - started, done - started).catch((err: unknown) => console.error('ask usage', err))
+      await logAs(outcome, state.failed ? '' : state.answer)
       await writer.close().catch(() => {})
     }
   }
@@ -394,7 +415,7 @@ export async function feedback(request: Request, { env, store, now = Date.now }:
   if (!question || !answer || !(await answerIsOurs(env, question, { content: answer, sources, id, sig: str(body.sig, 100) }))) return json({ ok: false }, 400)
   await store.addHit(`${hash}:vote`, started)
   await store.recordVote(dayOf(started), body.helpful)
-  if (!body.helpful && id === null) {
+  if (!body.helpful && id === null && !optedOut(request)) {
     const page = str(body.page, 40)
     await store.saveQuestion({ ts: started, reason: 'unhelpful', page: /^[a-z0-9-]{1,40}$/.test(page) ? page : null, question: describeQuestion(question), answer: redact(answer), country: null, asOrg: null }, KEEP_MS)
   }

@@ -142,7 +142,7 @@ export function ResumePage({ resume, proposals }: { resume: ResumeInfo; proposal
         {history.length === 0 ? <p className="empty">Nothing recorded yet. The first deploy of this version of the site records the résumé that is live.</p> : (
           <>
             {history.length > 1 && <TrendChart title="Score per update" unit="points" max={100} format={String} readout={`Now ${oldestFirst[oldestFirst.length - 1].score} · best ${Math.max(...oldestFirst.map((row) => row.score))}`} points={oldestFirst.map((row) => ({ key: row.pdfHash, label: formatDay(row.firstSeen), value: row.score, detail: `${row.score}/100 · ${formatNumber(row.warnings)} warnings${row.commitMessage ? ` · ${row.commitMessage}` : ''}` }))} />}
-            <DataTable columns={historyColumns} rows={history} rowKey={(row) => row.pdfHash} label="Résumé score history" expand={(row) => (row.findings.length ? <ul className="plain">{row.findings.map((finding) => <li key={finding.id}><span className={`badge ${finding.severity}`}>{severityLabel[finding.severity as keyof typeof severityLabel] ?? finding.severity}</span> {finding.message}</li>)}</ul> : <p className="muted">No findings for this résumé.</p>)} />
+            <DataTable columns={historyColumns} rows={history} rowKey={(row) => row.pdfHash} label="Résumé score history" rowName={(row) => `the résumé live since ${formatDay(row.firstSeen)}`} expand={(row) => (row.findings.length ? <ul className="plain">{row.findings.map((finding) => <li key={finding.id}><span className={`badge ${finding.severity}`}>{severityLabel[finding.severity as keyof typeof severityLabel] ?? finding.severity}</span> {finding.message}</li>)}</ul> : <p className="muted">No findings for this résumé.</p>)} />
           </>
         )}
       </section>

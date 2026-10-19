@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
 import { DataTable, type Column } from './DataTable'
 
@@ -90,5 +91,37 @@ describe('DataTable', () => {
     expect(screen.getByText('Details of Microsoft')).toBeInTheDocument()
     fireEvent.click(screen.getByText('Microsoft').closest('tr')!)
     expect(screen.queryByText('Details of Microsoft')).not.toBeInTheDocument()
+  })
+
+  it('opens and closes a detail row from the keyboard, with Enter and Space on its button', async () => {
+    const user = userEvent.setup()
+    render(<DataTable columns={columns} rows={rows.slice(0, 2)} rowKey={(row) => row.name} expand={(row) => <p>Details of {row.name}</p>} />)
+    const first = screen.getByRole('button', { name: 'Open details for Microsoft' })
+    const second = screen.getByRole('button', { name: 'Open details for Amazon' })
+    expect(first).toHaveAttribute('aria-expanded', 'false')
+    first.focus()
+    await user.keyboard('{Enter}')
+    expect(screen.getByText('Details of Microsoft')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Close details for Microsoft' })).toHaveAttribute('aria-expanded', 'true')
+    await user.keyboard(' ')
+    expect(screen.queryByText('Details of Microsoft')).not.toBeInTheDocument()
+    second.focus()
+    await user.keyboard(' ')
+    expect(screen.getByText('Details of Amazon')).toBeInTheDocument()
+  })
+
+  it('names a row button after the first column that holds text, or after rowName', () => {
+    type Visit = { ts: number; who: string }
+    const visits: Column<Visit>[] = [{ key: 'ts', label: 'When', value: (row) => row.ts }, { key: 'who', label: 'Who', value: (row) => row.who }]
+    const { unmount } = render(<DataTable columns={visits} rows={[{ ts: 1760876543000, who: 'Contoso' }]} rowKey={(row) => row.who} expand={() => <p>x</p>} />)
+    expect(screen.getByRole('button', { name: 'Open details for Contoso' })).toBeInTheDocument()
+    unmount()
+    render(<DataTable columns={visits} rows={[{ ts: 1, who: 'Contoso' }]} rowKey={(row) => row.who} expand={() => <p>x</p>} rowName={(row) => `visit ${row.ts}`} />)
+    expect(screen.getByRole('button', { name: 'Open details for visit 1' })).toBeInTheDocument()
+  })
+
+  it('has no row buttons when rows do not open', () => {
+    render(<DataTable columns={columns} rows={rows.slice(0, 2)} rowKey={(row) => row.name} />)
+    expect(screen.queryByRole('button', { name: /details for/ })).not.toBeInTheDocument()
   })
 })
