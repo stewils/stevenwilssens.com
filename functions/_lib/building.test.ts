@@ -1,6 +1,6 @@
 // The live numbers behind the Building write-ups: this site's own from its database and
 // the GitHub pull requests, another project's from its site, in one shape.
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { GitHub } from './github'
 import { projectFeed, projects, siteFeed, updateBranchPrefix } from './building'
 
@@ -60,5 +60,24 @@ describe('a project\'s feed', () => {
   it('fails plainly when the site does not answer', async () => {
     const fetchImpl = (async () => new Response('down', { status: 503 })) as unknown as typeof fetch
     await expect(projectFeed('aibreaker', projects.aibreaker, fetchImpl)).rejects.toThrow('AI Breaker answered 503')
+  })
+})
+
+describe('feeds with missing data', () => {
+  it('counts zero when the database answers no rows', async () => {
+    expect((await siteFeed(fakeDb([]), null)).numbers).toEqual({ countries: 0, vitalsGoodPercent: 0, proposalsApproved: 0 })
+  })
+
+  it('dates a project feed now and keeps no numbers when the site leaves them out', async () => {
+    const fetchImpl = (async () => new Response(JSON.stringify({ asOf: 12 }))) as unknown as typeof fetch
+    const feed = await projectFeed('leo', { ...projects.leo, feed: 'https://leo.example/api/building' }, fetchImpl)
+    expect(feed.numbers).toEqual({})
+    expect(Date.parse(feed.asOf)).not.toBeNaN()
+  })
+
+  it('uses the global fetch when none is given', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ asOf: '2026-10-18T00:00:00Z', numbers: { a: 1 } })))
+    expect((await projectFeed('wilssens', projects.wilssens)).numbers).toEqual({ a: 1 })
+    spy.mockRestore()
   })
 })
