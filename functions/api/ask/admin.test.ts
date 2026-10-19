@@ -54,4 +54,19 @@ describe('GET /api/ask/admin', () => {
     expect(((await (await send(get('?days=10000'))).json()) as { days: number }).days).toBe(365)
     expect(((await (await send(get('?days=-1'))).json()) as { days: number }).days).toBe(1)
   })
+
+  it('sends every question in the range with its visitor, and still answers when the log cannot be read', async () => {
+    const db = fakeD1()
+    const store = new D1AskStore(db)
+    const now = Date.now()
+    await store.logQuestion({ ts: now - 60_000, visitor: 'abc', kind: 'question', page: 'home', question: 'What did he ship?', answer: 'Windows data.', outcome: 'answered', country: 'US', asOrg: 'Contoso' }, 90 * 86_400_000)
+    await store.logQuestion({ ts: now - 10 * 86_400_000, visitor: 'old', kind: 'question', page: 'home', question: 'Earlier', answer: null, outcome: 'off', country: null, asOrg: null }, 90 * 86_400_000)
+    const data = await (await send(get('?days=7'), db)).json() as Record<string, any>
+    expect(data.log).toEqual([{ id: 1, ts: now - 60_000, visitor: 'abc', kind: 'question', page: 'home', question: 'What did he ship?', answer: 'Windows data.', outcome: 'answered', country: 'US', asOrg: 'Contoso' }])
+    db.failOn = /ask_log/
+    const response = await send(get('?days=7'), db)
+    expect(response.status).toBe(200)
+    expect(((await response.json()) as Record<string, unknown>).log).toBeUndefined()
+  })
 })
+

@@ -1,8 +1,8 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AssistantPage } from './AssistantPage'
-import { makeAsk, NOW } from '../test/admin-fixtures'
-import type { AskInfo } from './types'
+import { makeAsk, makeStats, NOW, ts } from '../test/admin-fixtures'
+import type { AskInfo, AskLogEntry } from './types'
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
@@ -105,5 +105,51 @@ describe('Ask about Steven page', () => {
     expect(stat('Waiting')).not.toHaveClass('highlight')
     expect(stat('Answered by you')).toHaveTextContent('0')
     expect(screen.getByText(/Nothing waits: every question/)).toBeInTheDocument()
+  })
+
+  describe('People who asked', () => {
+    const asked = (label: string) => screen.getByText(label, { selector: '.stats span' }).parentElement!
+    const entry = (id: number, visitor: string, at: number, extra: Partial<AskLogEntry> = {}): AskLogEntry => ({ id, ts: at, visitor, kind: 'question', page: 'home', question: `Question ${id}`, answer: `Answer ${id}`, outcome: 'answered', country: 'US', asOrg: 'Microsoft', ...extra })
+    const log = [
+      entry(3, 'v9', ts(18, 8), { question: 'Write me a poem', answer: null, outcome: 'off', page: null, asOrg: null, country: null }),
+      entry(2, 'v1', ts(19, 10), { kind: 'fit', question: 'Job description (900 characters): Director…', outcome: 'gap', page: 'experience' }),
+      entry(1, 'v1', ts(19, 9), { question: 'What did he ship?' }),
+    ]
+
+    it('counts the people, their questions, follow-ups and job checks, and lists what each asked', () => {
+      render(<AssistantPage info={makeAsk({ log })} days={7} visitors={makeStats().visitors} />)
+      expect(asked('People')).toHaveTextContent('2asked at least one question')
+      expect(asked('People')).toHaveClass('highlight')
+      expect(asked('Questions')).toHaveTextContent('31.5 per person')
+      expect(asked('Asked a follow-up')).toHaveTextContent('150% of the people')
+      expect(asked('Checked a job')).toHaveTextContent('1pasted a job description')
+      expect(screen.getByRole('img', { name: /People per day \(7 days\)/ })).toBeInTheDocument()
+      const table = screen.getByRole('table', { name: 'People who asked' })
+      const rows = within(table).getAllByRole('row').slice(1)
+      expect(rows[0]).toHaveTextContent('What did he ship?')
+      expect(rows[0]).toHaveTextContent('Microsoft, US')
+      expect(rows[0]).toHaveTextContent('home, experience')
+      expect(within(rows[0]).getAllByRole('listitem')).toHaveLength(2)
+      expect(rows[1]).toHaveTextContent('Write me a poem')
+      // Opening a row shows the answers and the visit from the traffic data.
+      fireEvent.click(rows[0])
+      expect(screen.getByText(/\/ → \/work → \/about \(from linkedin\.com\) · downloaded the résumé/)).toBeInTheDocument()
+      expect(screen.getByText('Answer 1')).toBeInTheDocument()
+      expect(screen.getByText('fit check')).toBeInTheDocument()
+      fireEvent.click(within(table).getAllByRole('row').find((row) => row.textContent?.includes('Write me a poem'))!)
+      expect(screen.getByText('off topic')).toHaveClass('badge', 'info')
+      expect(screen.queryByText(/^Visit:/)).not.toBeInTheDocument()
+    })
+
+    it('says when the API sends no log, and when nobody asked', () => {
+      const { rerender } = render(<AssistantPage info={makeAsk()} days={7} />)
+      expect(screen.getByText(/The deployed API does not send the log yet/)).toBeInTheDocument()
+      expect(asked('People')).not.toHaveClass('highlight')
+      expect(asked('Questions')).toHaveTextContent('00 per person')
+      expect(asked('Asked a follow-up')).toHaveTextContent('00% of the people')
+      rerender(<AssistantPage info={makeAsk({ log: [] })} days={7} />)
+      expect(screen.queryByText(/does not send the log/)).not.toBeInTheDocument()
+      expect(screen.getByText('Nobody asked the assistant anything in the last 7 days.')).toBeInTheDocument()
+    })
   })
 })
