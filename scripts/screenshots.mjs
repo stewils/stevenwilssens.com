@@ -4,6 +4,7 @@
 //
 //   npm run build && node scripts/screenshots.mjs home experience admin#resume
 //   node scripts/screenshots.mjs --slices home        (also screen-sized slices, phone at 2x)
+//   node scripts/screenshots.mjs --widths 1440,1280,390 admin#team   (a 1280 laptop too)
 //   node scripts/screenshots.mjs --base https://<branch>.stevenwilssens.pages.dev --token <t> --out shots/branch home
 //
 // Without --base it serves dist with wrangler on --port for the run (like
@@ -16,11 +17,15 @@
 // shows as on the live site (locally and in CI the model key is missing); questions
 // (POST) still reach the server. --slices takes each screen by scrolling to it, so fixed
 // and sticky parts (the Ask button, an article's contents bar) sit where a visitor sees them.
+// The admin scrolls its pane, not the window: there the full-page shot is the whole pane
+// (the window made as tall as it for that one shot) and the slices scroll the pane, a
+// screen less its sticky section bar at a time.
 // Admin pages (/admin…) need a token: --token, or for a local server ADMIN_TOKEN or
 // .dev.vars (never sent to another host; the rules are in scripts/screenshots-options.mjs,
 // with tests). A shot of the admin sign-in card fails the run.
 // Writes <out>/<page>-<desktop|phone>-<light|dark>.png, with --slices also
-// <page>-<viewport>-<theme>-<n>.png per screen height; default out is screenshots/ (ignored by git).
+// <page>-<viewport>-<theme>-<n>.png per screen height; <viewport> is desktop (1440), phone (390)
+// or w<width>. The default out is screenshots/ (ignored by git).
 // Errors print one line ("screenshots: …") and exit 1.
 import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -28,11 +33,11 @@ import { connect } from 'node:net'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { chromium } from 'playwright-core'
-import { parseDevVars, resolveOptions } from './screenshots-options.mjs'
+import { measureScroller, parseDevVars, resolveOptions, scrollScrollerTo, sliceTops, viewportsFor } from './screenshots-options.mjs'
 
 const fail = (message) => { console.error(`screenshots: ${message}`); process.exit(1) }
 
-let options, base, paths, token
+let options, base, paths, token, viewports
 try {
   const parsed = parseArgs({ allowPositionals: true, options: {
     base: { type: 'string' },
@@ -40,14 +45,15 @@ try {
     out: { type: 'string', default: 'screenshots' },
     port: { type: 'string', default: '8789' },
     slices: { type: 'boolean', default: false },
+    widths: { type: 'string', default: '1440,390' },
   } })
   options = parsed.values
   const devVars = existsSync('.dev.vars') ? parseDevVars(readFileSync('.dev.vars', 'utf8')) : {}
   ;({ base, paths, token } = resolveOptions({ ...options, positionals: parsed.positionals, env: process.env, devVars }))
+  viewports = viewportsFor(options.widths, options.slices)
 } catch (error) {
   fail(error.message)
 }
-const viewports = [{ name: 'desktop', width: 1440, height: 900, scale: 1 }, { name: 'phone', width: 390, height: 844, scale: options.slices ? 2 : 1 }]
 
 const portInUse = (port) => new Promise((done) => {
   const socket = connect({ host: '127.0.0.1', port: Number(port) })
@@ -101,26 +107,35 @@ const shoot = async (browser) => {
       }
       const name = `${(path.replace(/^\//, '').replace(/[^a-z0-9]+/gi, '-') || 'home').replace(/-$/, '')}-${viewport.name}`
       const file = join(options.out, `${name}-${scheme}.png`)
-      const image = await page.screenshot({ fullPage: true })
+      // The whole page: on the admin, the window as tall as the pane's content for this one shot.
+      const size = await page.evaluate(measureScroller)
+      let image
+      if (size.pane) {
+        await page.setViewportSize({ width: viewport.width, height: Math.min(16_000, size.scrollHeight + viewport.height - size.clientHeight) })
+        await page.waitForTimeout(200)
+        image = await page.screenshot({ fullPage: true })
+        await page.setViewportSize({ width: viewport.width, height: viewport.height })
+        await page.waitForTimeout(200)
+      } else {
+        image = await page.screenshot({ fullPage: true })
+      }
       writeFileSync(file, image)
       console.log(file)
       const other = taken.get(name)
       if (other && other.equals(image)) throw new Error(`${name}: the light and the dark shot are identical, so the theme did not switch`)
       taken.set(name, image)
       if (options.slices) {
-        // One screen at a time, scrolled to as a visitor would: fixed and sticky parts are
-        // drawn where they really are. The browser stops the last scroll at the bottom.
-        const height = await page.evaluate(() => document.documentElement.scrollHeight)
-        for (let y = 0, n = 1; y < height; y += viewport.height, n++) {
-          const slice = join(options.out, `${name}-${scheme}-${n}.png`)
-          await page.evaluate((top) => new Promise((done) => {
-            window.scrollTo({ top, left: 0, behavior: 'instant' })
-            requestAnimationFrame(() => requestAnimationFrame(done))
-          }), y)
+        // One screen at a time, scrolled to as a visitor would (the admin's pane, else the
+        // window): fixed and sticky parts are drawn where they really are.
+        const tops = sliceTops(await page.evaluate(measureScroller))
+        for (const [index, top] of tops.entries()) {
+          const slice = join(options.out, `${name}-${scheme}-${index + 1}.png`)
+          await page.evaluate(scrollScrollerTo, top)
           await page.waitForTimeout(100)
           await page.screenshot({ path: slice })
           console.log(slice)
         }
+        await page.evaluate(scrollScrollerTo, 0)
       }
     }
     await context.close()

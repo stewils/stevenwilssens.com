@@ -28,3 +28,38 @@ export const resolveOptions = ({ base: givenBase, token: givenToken, port = '878
   }
   return { base, local, paths, token }
 }
+
+// The widths to take: desktop (1440) and phone (390) unless --widths names others, such as
+// a 1280 laptop. A phone is taken at 2x with --slices, so text can be read in a slice.
+export const viewportsFor = (widths = '1440,390', slices = false) => String(widths).split(',').map((item) => item.trim()).filter(Boolean).map((text) => {
+  const width = Number(text)
+  if (!/^\d+$/.test(text) || width < 280 || width > 3840) throw new OptionError(`--widths ${widths}: ${text} is not a width from 280 to 3840`)
+  const phone = width < 600
+  return { name: width === 1440 ? 'desktop' : width === 390 ? 'phone' : `w${width}`, width, height: phone ? 844 : width < 1440 ? 800 : 900, scale: phone && slices ? 2 : 1 }
+})
+
+// The admin scrolls its pane (.main), not the window (body:has(.shell) { overflow: hidden }),
+// so a screenshot has to scroll whatever scrolls. These two run in the page (Playwright sends
+// their source), so each finds the scroller itself: the pane when it scrolls, else the document.
+export function measureScroller() {
+  const pane = document.querySelector('.main')
+  const scroller = pane && pane.scrollHeight > pane.clientHeight ? pane : (document.scrollingElement ?? document.documentElement)
+  return { pane: scroller === pane, scrollHeight: scroller.scrollHeight, clientHeight: scroller.clientHeight }
+}
+export function scrollScrollerTo(top) {
+  const pane = document.querySelector('.main')
+  const scroller = pane && pane.scrollHeight > pane.clientHeight ? pane : (document.scrollingElement ?? document.documentElement)
+  scroller.scrollTop = top
+  return new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(scroller.scrollTop))))
+}
+
+// Where each slice starts. In the admin's pane a slice is a screen less the sticky section
+// bar (STICKY px), so nothing is hidden under it; the last slice ends at the bottom.
+export const STICKY = 60
+export const sliceTops = ({ pane, scrollHeight, clientHeight }) => {
+  const step = Math.max(1, pane ? clientHeight - STICKY : clientHeight)
+  const last = Math.max(0, scrollHeight - clientHeight)
+  const tops = []
+  for (let top = 0; top < last; top += step) tops.push(top)
+  return [...tops, last]
+}
