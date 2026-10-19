@@ -11,7 +11,7 @@ import feed from './feed.json'
 import '../wilssens/article.css'
 
 // The write-up of why and how AI Breaker (aibreaker.org) was built, linked from /projects.
-// Facts come from the project's own decision log and specs as of 17 October 2026;
+// Facts come from the project's own decision log and specs as of 19 October 2026;
 // survey figures are cited inline. Screenshots: public sections of aibreaker.org.
 
 const sections = [
@@ -64,7 +64,7 @@ export default function AIBreakerArticle() {
       <p className="wx-eyebrow">Project write-up · aibreaker.org</p>
       <h1>Building AI Breaker</h1>
       <p className="wx-dek">The off switch for AI on Windows: why a product for people who are wary of AI starts with the research on fear and control, and how it was built so that every claim can be checked and every change undone.</p>
-      <p className="wx-meta">Steven Wilssens · October 2026 · <span data-read-time>19 min read</span></p>
+      <p className="wx-meta">Steven Wilssens · October 2026 · <span data-read-time>21 min read</span></p>
       <Stats project="aibreaker" feed={feed} items={stats} />
       <div className="wx-actions">
         <a className="primary-button" href="https://aibreaker.org" target="_blank" rel="noreferrer">Visit aibreaker.org ↗</a>
@@ -88,7 +88,7 @@ export default function AIBreakerArticle() {
           <ul>
             <li><strong>Start from a human insight, then check it against the research.</strong> Fear falls when people hold the switch. The surveys say how many people need one. <a href="#fear">Half the country is wary</a> · <a href="#control">Why a switch calms</a></li>
             <li><strong>Trust is a feature you build, not a claim you make.</strong> Only controls Microsoft documents, proof from Windows’ own logs, an undo that was built before anything else, and “blocked” said only after it was seen to stop. <a href="#proof">Proof from Windows</a> · <a href="#testing">Proven before claimed</a></li>
-            <li><strong>AI-assisted development run like a team.</strong> A written context file, specs with numbered acceptance criteria, agents in the roles of product manager, designer, tester and reviewer, and a log of 122 dated decisions. <a href="#building">How it was built</a></li>
+            <li><strong>AI-assisted development run like a team.</strong> A written context file, specs with numbered acceptance criteria, agents in the roles of product manager, designer, testers, copy checker, reviewer and a skeptic that tries to disprove every serious finding, checks that a script enforces, and a log of 138 dated decisions. <a href="#building">How it was built</a></li>
           </ul>
           <p><strong>Why a product leader still builds:</strong> to stay sharp on what my teams ship, and because the judgment calls in this one, scope, honesty about limits, what to charge for, are product calls. I built it with Claude Code, Anthropic’s AI coding tool, starting on 10 October 2026.</p>
         </aside>
@@ -220,10 +220,13 @@ export default function AIBreakerArticle() {
           <H2 id="building" kicker="11">How it was built: a team of agents, one decision log</H2>
           <p>I built AI Breaker with Claude Code, starting on 10 October 2026, the way I would run a small product team, because the failure mode of AI-assisted work is not bad code. It is forgetting a decision, re-arguing it, and shipping something that quietly contradicts last week.</p>
           <ul className="wx-points">
-            <li><strong>One context file, read at the start of every session.</strong> What we are building, the market, pricing, the levels, the technical approach with its known findings, the brand, the legal constraints, the ship gates, the roadmap, how to work with me, and a log of every decision with its date and reason. 122 entries so far. A decision that is superseded is struck through and the new one points at it, so the history stays readable.</li>
-            <li><strong>Specs with numbered acceptance criteria,</strong> 29 of them, each naming the roadmap phase, what it depends on, the trust property it serves, its UI states and its open questions with a recommendation. I approve a spec before anything is built, one question at a time.</li>
-            <li><strong>Roles, as agents.</strong> A product-manager agent writes the spec. A designer agent covers every state of a screen against the design rules. The main session builds. A tester agent verifies each criterion through the VM harness on Home and Pro. A code-reviewer agent checks the diff for reversibility, documentation citations, trademark use and that Defender is untouched. The tester and reviewer get the spec, not the builder’s explanation of the code.</li>
-            <li><strong>A definition of done that cannot be argued down.</strong> Every criterion on both editions, rollback to clean, analyzer clean, installer builds, the published binaries launch, the version number moves, the decision log and the internal page are updated. And never weaken or delete a failing check to get a pass.</li>
+            <li><strong>One context file, read at the start of every session.</strong> What we are building, the market, pricing, the levels, the technical approach with its known findings, the brand, the legal constraints, the ship gates, the roadmap, how to work with me, and a log of every decision with its date and reason. 138 entries so far. A decision that is superseded says what replaced it, and every agent reads the last two weeks of the log first, so last week’s decision beats a month-old spec.</li>
+            <li><strong>Specs with numbered acceptance criteria,</strong> 33 of them, each naming the roadmap phase, what it depends on, the trust property it serves, the enforced routes it researched, its UI states and its open questions with a recommendation. I approve a spec before anything is built, one question at a time.</li>
+            <li><strong>Roles, as agents, each with its own instructions, tools and model.</strong> A product-manager agent writes the spec. A designer agent covers every state of a screen against the design rules. The main session builds. A tester agent verifies each criterion in the Home and Pro virtual machines; an extension tester does the same in Edge and Chrome; a copy checker reads every word a person will see. A code-reviewer agent reads the diff cold. Judgment roles run on the most capable model at high effort; the testers, whose job is to follow the criteria and report evidence, run on a faster one. The tester and reviewer get the spec, not the builder’s explanation of the code.</li>
+            <li><strong>Results as data, and a skeptic before any rework.</strong> The tester writes a verdict file (each criterion, Home and Pro, the evidence, what it could not verify) and the reviewer returns typed findings. Every blocking finding then goes to a fresh agent whose only job is to refute it, so a plausible-but-wrong finding dies before it costs a rebuild. The whole chain, spec gate to close-out, is a saved workflow that runs in the same order every time.</li>
+            <li><strong>A definition of done that a script enforces.</strong> Every criterion on both editions, rollback to clean, analyzer clean, installer builds, the published binaries launch, the decision log and the internal page are updated, and never weaken or delete a failing check to get a pass. The parts a script can check (the version number moved, every test file actually runs, the internal page and its to-dos moved with the change) run before every push and on every pull request. On its first run it found a test file the build had silently stopped running.</li>
+            <li><strong>Shared machines, shared like a lab.</strong> Several sessions often work at once, so each works in its own branch and worktree, and the test harness holds a lock on each virtual machine and waits for free memory: a second session waits its turn instead of restoring a checkpoint under someone else’s test.</li>
+            <li><strong>The AI that reads is not the code that acts.</strong> On the build station, a research agent that reads untrusted web pages gets no shell, no repository and no keys; it writes proposals in its own folder, and a deterministic runner validates them, runs the tests and opens draft pull requests for me.</li>
             <li><strong>Permissions granted one at a time, in writing.</strong> The AI may run the VM harness on my PC; it may set up the test machines; it may set up the rule station with me present. Each exception is dated and scoped in the context file, and the default stays “never change the host”.</li>
           </ul>
           <p>Pushback is part of the process. The first version of the app was, in my words, “read only”: you could pick a level but not find the button that applied it. The designer agent’s spec names the four reasons why and the one-sentence fix, and the app was rebuilt around a single Review page whose Apply button is the only thing that changes anything.</p>
@@ -237,7 +240,7 @@ export default function AIBreakerArticle() {
             <li><strong>Build the undo before the feature.</strong> A tool that changes a system as SYSTEM earns trust through the way back, not the way in. Rollback, panic and recovery were written and harness-tested before any level existed.</li>
             <li><strong>Say “not covered” rather than pretend.</strong> A row that cannot be proven says so. A list that can go stale says when it froze. A feature that needs a restart says so before the click.</li>
             <li><strong>Write the rules once, then let the system enforce them.</strong> The catalog of targets the service may touch, the protected list of hosts the feed may never block, and the authorization computed from the plan are code, not reminders.</li>
-            <li><strong>Run AI like a team, with a written memory.</strong> Roles, specs, a definition of done and a dated decision log kept 99 commits consistent in a week. The same practices run a human team.</li>
+            <li><strong>Run AI like a team, with a written memory and checks it can’t argue with.</strong> Roles, specs, a skeptic for every serious finding, a definition of done enforced by a script, and a dated decision log kept 129 commits consistent in nine days. The same practices run a human team.</li>
           </ol>
         </section>
 
