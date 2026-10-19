@@ -308,7 +308,7 @@ jobs:
             Start the six reviewers in parallel with the Agent tool. Never push, commit, merge or edit any file
             outside .review/. Write .review/result.json as the skill says; its "comment" is posted on the pull
             request for Steven.
-          claude_args: '--max-turns 300 --allowedTools "Agent,Task,Read,Glob,Grep,Write(.review/**),Edit(.review/**),Bash(npm run lint*),Bash(npm test*),Bash(npm run test:coverage*),Bash(npm run check:recruiter*),Bash(npm run check:site*),Bash(npm run screenshots*),Bash(npm audit*),Bash(node scripts/resume-check.mjs*),Bash(node scripts/recruiter-check.mjs*),Bash(node scripts/screenshots.mjs*),Bash(node scripts/site-check.mjs*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(git status*),Bash(gh pr view*),Bash(gh pr diff*),Bash(ls*),Bash(cat*),Bash(mkdir -p .review*)"'
+          claude_args: '--max-turns 300 --allowedTools "Agent,Task,Read,Glob,Grep,Write(.review/**),Edit(.review/**),Write(/${{ github.workspace }}/.review/**),Edit(/${{ github.workspace }}/.review/**),Bash(npm run lint*),Bash(npm test*),Bash(npm run test:coverage*),Bash(npm run check:recruiter*),Bash(npm run check:site*),Bash(npm run screenshots*),Bash(npm audit*),Bash(node scripts/resume-check.mjs*),Bash(node scripts/recruiter-check.mjs*),Bash(node scripts/screenshots.mjs*),Bash(node scripts/site-check.mjs*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(git status*),Bash(gh pr view*),Bash(gh pr diff*),Bash(ls*),Bash(cat*),Bash(head*),Bash(tail*),Bash(wc*),Bash(find*),Bash(grep*),Bash(sort*),Bash(diff*),Bash(md5sum*),Bash(sha256sum*),Bash(jq*),Bash(git rev-parse*),Bash(git ls-files*),Bash(git cat-file*),Bash(git merge-base*),Bash(git blame*),Bash(npx vitest*),Bash(npx tsc*),Bash(npx oxlint*),Bash(mkdir -p .review*)"'
 
       - name: Post the sign-offs and pass or fail
         if: steps.who.outputs.dependabot != 'true'
@@ -317,6 +317,8 @@ jobs:
         run: |
           if [ ! -f .review/result.json ]; then
             echo "::error::The team review wrote no result."
+            # Say why: the tool calls Claude Code refused (names and inputs only).
+            jq -c '.[] | select(.type == "result") | .permission_denials[]? | {tool: .tool_name, input: .tool_input}' "$RUNNER_TEMP/claude-execution-output.json" 2>/dev/null | head -20 || true
             exit 1
           fi
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
@@ -346,6 +348,7 @@ jobs:
           name: team-review
           path: |
             .review
+            ${{ runner.temp }}/claude-execution-output.json
             !.review/screenshots
             !.review/cov-*
           include-hidden-files: true
