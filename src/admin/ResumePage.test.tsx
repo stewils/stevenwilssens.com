@@ -25,6 +25,16 @@ describe('Résumé page', () => {
     expect(score.getByRole('link', { name: 'Open the PDF' })).toHaveAttribute('href', '/steven-wilssens-resume-2026.pdf')
   })
 
+  it('explains the score as a list: what costs 25 points, what costs 5, and what does not count', () => {
+    const { container } = render(<ResumePage resume={makeResume()} proposals={makeMcp().proposals} />)
+    const rules = container.querySelector('dl.rules')!
+    const terms = [...rules.querySelectorAll('dt')].map((term) => term.textContent)
+    expect(terms).toEqual(['Error 25 points each', 'Warning 5 points each', 'Recruiter no points', 'Site no points', 'When it is checked', 'What to fix'])
+    expect(within(rules as HTMLElement).getByText('More than two pages')).toBeInTheDocument()
+    expect(within(rules as HTMLElement).getByText('A file over 1.5 MB')).toBeInTheDocument()
+    expect(within(rules as HTMLElement).getByText(/Never the PDF, never the checker/)).toBeInTheDocument()
+  })
+
   it('warns about a lower score, a PDF that drifted from the data, and counts old reports without lenses', () => {
     const { container } = render(<ResumePage resume={withReport({ score: 60, ats: undefined, errors: 1, warnings: 3, pages: 1, bytes: undefined, matchesSite: false, commitMessage: null, checkedAt: undefined, baseline: { source: 'main', score: 70, change: -10, lower: true, verdict: 'lower' }, findings: [{ severity: 'warn', lens: 'site', id: 'a', message: 'a' }, { severity: 'warn', lens: 'recruiter', id: 'b', message: 'b' }] })} proposals={[]} />)
     const score = card('ATS score')

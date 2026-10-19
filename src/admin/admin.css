@@ -312,6 +312,12 @@ td .delta { font-size: 12px; margin-left: 4px; }
 .notes { margin-top: 12px; font-size: 13px; color: var(--muted); }
 .notes summary { cursor: pointer; font-weight: 600; }
 .notes ul { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; }
+/* How the score works: one row per kind of finding, the penalty beside it. */
+.rules { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 10px 20px; margin: 0; font-size: 13px; line-height: 1.5; }
+.rules dt { font-weight: 700; display: flex; align-items: center; gap: 8px; white-space: nowrap; align-self: start; }
+.rules dd { margin: 0; color: var(--muted); }
+.rules ul { margin: 0; padding-left: 18px; display: grid; gap: 3px; }
+.rules code { font: 12px 'DM Mono', monospace; }
 
 /* Narrow screens: the menu becomes a bar on top whose tabs scroll sideways. */
 @media (max-width: 899px) {
@@ -336,6 +342,8 @@ td .delta { font-size: 12px; margin-left: 4px; }
   .kpis { padding: 12px 0; }
   .need-where { display: none; }
   .meter { grid-template-columns: minmax(0, 1fr); }
+  .rules { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .rules dd { margin-bottom: 8px; }
   .meter-text { grid-column: 1; }
 }
 
