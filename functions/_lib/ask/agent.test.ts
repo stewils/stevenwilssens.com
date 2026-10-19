@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { Env } from '../env'
 import { MemoryStore } from '../mcp/store'
-import { answerIsOurs, ask, askStatus, costMicro, feedback, HEADER, MAX_JD, missingRequirements, parseBody, redact, signAnswer, words, type StreamFactory } from './agent'
+import { answerIsOurs, ask, askStatus, CHECK_AFTER_ALL_HITS, CHECK_AFTER_IP_HITS, costMicro, feedback, HEADER, humanCheck, ipHash, MAX_JD, missingRequirements, parseBody, redact, signAnswer, words, type StreamFactory } from './agent'
 import { articlePages, articleText, dossierText, loadArticles, sources, systemPrompt } from './prompt'
-import { MemoryAskStore } from './store'
+import { dayOf, MemoryAskStore } from './store'
 
 const env = { HASH_SALT: 'salt', ANTHROPIC_API_KEY: 'sk-test' } as unknown as Env
 const url = 'https://steven.wilssens.com/api/ask'
@@ -130,9 +130,77 @@ describe('parsing and signing', () => {
   })
 
   it('reports whether it is on', async () => {
-    expect(await askStatus(env).json()).toEqual({ ready: true, siteKey: null })
-    expect(await askStatus({} as Env).json()).toEqual({ ready: false, siteKey: null })
-    expect(await askStatus({ ASK_MOCK: '1', TURNSTILE_SECRET_KEY: 's', TURNSTILE_SITE_KEY: 'k' } as Env).json()).toEqual({ ready: true, siteKey: 'k' })
+    const status = new Request(url, { headers: { 'CF-Connecting-IP': '203.0.113.9' } })
+    expect(await (await askStatus(status, env, new MemoryAskStore(), now)).json()).toEqual({ ready: true, siteKey: null })
+    expect(await (await askStatus(status, {} as Env, new MemoryAskStore(), now)).json()).toEqual({ ready: false, siteKey: null })
+    // With keys the site key is handed out only while the check is on; a quiet day hands out nothing.
+    const keyed = { ASK_MOCK: '1', TURNSTILE_SECRET_KEY: 's', TURNSTILE_SITE_KEY: 'k' } as Env
+    const store = new MemoryAskStore()
+    expect(await (await askStatus(status, keyed, store, now)).json()).toEqual({ ready: true, siteKey: null })
+    for (let i = 0; i < CHECK_AFTER_IP_HITS; i++) await store.addHit(await ipHash(status, keyed), now - 60_000)
+    expect(await (await askStatus(status, keyed, store, now)).json()).toEqual({ ready: true, siteKey: 'k' })
+  })
+})
+
+describe('the human check', () => {
+  const keyed = { ...env, TURNSTILE_SECRET_KEY: 'secret', TURNSTILE_SITE_KEY: 'k' } as Env
+  const question = { messages: [{ role: 'user', content: 'q' }] }
+  // Turnstile's siteverify: `good` passes, anything else fails, and every call is counted.
+  const siteverify = () => {
+    const calls: string[] = []
+    const fetch = async (_url: string | URL | Request, init?: RequestInit) => {
+      const token = String((init!.body as FormData).get('response'))
+      calls.push(token)
+      return Response.json(token === 'good' ? { success: true, hostname: 'steven.wilssens.com' } : { success: false, 'error-codes': ['invalid-input-response'] })
+    }
+    return { calls, fetch }
+  }
+  const withFetch = async <T,>(fetch: typeof globalThis.fetch, run: () => Promise<T>) => { const real = globalThis.fetch; globalThis.fetch = fetch; try { return await run() } finally { globalThis.fetch = real } }
+
+  it('asks nobody on a quiet day, even without a token', async () => {
+    const verify = siteverify()
+    const store = new MemoryAskStore()
+    const d = { ...deps(scripted('[[in: site:about]]\n\nx'), store), env: keyed }
+    const response = await withFetch(verify.fetch as typeof globalThis.fetch, () => ask(post(question), d))
+    expect(response.status).toBe(200)
+    expect(verify.calls).toEqual([])
+    expect(await humanCheck(keyed, store, now, null)).toMatchObject({ state: 'standby', why: null })
+  })
+
+  it("switches on once the day's spend passes the threshold, and tells the panel which widget to show", async () => {
+    const verify = siteverify()
+    const store = new MemoryAskStore()
+    await store.recordUsage(dayOf(now), 'answered', { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, 10_000_000, 0, 0)
+    const d = { ...deps(scripted('[[in: site:about]]\n\nx'), store), env: keyed }
+    const refused = await withFetch(verify.fetch as typeof globalThis.fetch, () => ask(post(question), d))
+    expect(refused.status).toBe(403)
+    expect(await refused.json()).toEqual({ error: 'human', message: words.human, siteKey: 'k' })
+    expect(verify.calls).toEqual([]) // an empty token is not sent to Cloudflare
+    expect(store.hits).toHaveLength(0) // a refused question does not count against the hourly limit
+    const bad = await withFetch(verify.fetch as typeof globalThis.fetch, () => ask(post({ ...question, turnstileToken: 'stale' }), d))
+    expect(bad.status).toBe(403)
+    const good = await withFetch(verify.fetch as typeof globalThis.fetch, () => ask(post({ ...question, turnstileToken: 'good' }), d))
+    expect(good.status).toBe(200)
+    expect(verify.calls).toEqual(['stale', 'good'])
+    expect(await humanCheck(keyed, store, now, null)).toMatchObject({ state: 'on', why: 'spend' })
+    // A lower threshold in the environment is respected.
+    expect((await humanCheck({ ...keyed, ASK_CHECK_AFTER_USD: '50' } as Env, store, now, null)).state).toBe('standby')
+  })
+
+  it('switches on when one connection, or everyone together, asks too often in an hour', async () => {
+    const store = new MemoryAskStore()
+    const hash = await ipHash(post(question), keyed)
+    for (let i = 0; i < CHECK_AFTER_IP_HITS; i++) await store.addHit(hash, now - 60_000)
+    expect(await humanCheck(keyed, store, now, hash)).toMatchObject({ state: 'on', why: 'connection' })
+    expect(await humanCheck(keyed, store, now, 'someone-else')).toMatchObject({ state: 'standby' })
+    for (let i = 0; i < CHECK_AFTER_ALL_HITS; i++) await store.addHit(`ip-${i}`, now - 60_000)
+    expect(await humanCheck(keyed, store, now, 'someone-else')).toMatchObject({ state: 'on', why: 'everyone' })
+    // Last hour only.
+    const old = new MemoryAskStore()
+    for (let i = 0; i < CHECK_AFTER_ALL_HITS; i++) await old.addHit(`ip-${i}`, now - 2 * 3_600_000)
+    expect((await humanCheck(keyed, old, now, null)).state).toBe('standby')
+    // Without keys it is off whatever the traffic.
+    expect(await humanCheck(env, store, now, hash)).toMatchObject({ state: 'off', why: null })
   })
 })
 

@@ -148,18 +148,21 @@ export default function AskAssistant({ page }: { page: string }) {
     turnstileWaiters.current.push(done)
   })
   const freshToken = () => { turnstileToken.current = ''; if (turnstileId.current && window.turnstile) window.turnstile.reset(turnstileId.current) }
-  useEffect(() => {
-    if (!open || !siteKey || !turnstileRef.current || turnstileId.current) return
-    const mount = () => { if (window.turnstile && turnstileRef.current && !turnstileId.current) turnstileId.current = window.turnstile.render(turnstileRef.current, { sitekey: siteKey, size: 'flexible', appearance: 'interaction-only', callback: gotToken, 'expired-callback': () => { turnstileToken.current = '' }, 'error-callback': () => { turnstileToken.current = '' }, 'timeout-callback': () => { turnstileToken.current = '' } }) }
-    if (window.turnstile) mount()
-    else {
-      const script = document.createElement('script')
-      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
-      script.async = true
-      script.onload = mount
-      document.head.appendChild(script)
+  // The server asks for the check only when the assistant looks under attack, so the
+  // widget comes up when the status says so, or mid-conversation when an answer does.
+  const ensureWidget = (key: string) => new Promise<void>((resolve) => {
+    const mount = () => {
+      if (window.turnstile && turnstileRef.current && !turnstileId.current) turnstileId.current = window.turnstile.render(turnstileRef.current, { sitekey: key, size: 'flexible', appearance: 'interaction-only', callback: gotToken, 'expired-callback': () => { turnstileToken.current = '' }, 'error-callback': () => { turnstileToken.current = '' }, 'timeout-callback': () => { turnstileToken.current = '' } })
+      resolve()
     }
-  }, [open, siteKey])
+    if (window.turnstile) return mount()
+    const existing = document.querySelector<HTMLScriptElement>('script[src^="https://challenges.cloudflare.com/turnstile/"]')
+    const script = existing ?? Object.assign(document.createElement('script'), { src: 'https://challenges.cloudflare.com/turnstile/v0/api.js', async: true })
+    script.addEventListener('load', mount, { once: true })
+    script.addEventListener('error', () => resolve(), { once: true })
+    if (!existing) document.head.appendChild(script)
+  })
+  useEffect(() => { if (open && siteKey && !turnstileId.current) void ensureWidget(siteKey) }, [open, siteKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const close = () => { setOpen(false); fabRef.current?.focus() }
   const reset = () => { controller.current?.abort(); setTurns([]); setNotice(''); setBusy(false); setMode('ask'); inputRef.current?.focus() }
@@ -203,10 +206,15 @@ export default function AskAssistant({ page }: { page: string }) {
     })
     try {
       let response = await post(await awaitToken(tokenWait))
-      if (response.status === 403 && turnstileId.current) {
-        // The token was missing, spent or stale: ask the widget for a new one and try once more.
-        const data = (await response.clone().json().catch(() => ({}))) as { error?: string }
-        if (data.error === 'human') { freshToken(); response = await post(await awaitToken(tokenWait)) }
+      if (response.status === 403) {
+        // The check is on and the token was missing, spent or stale: bring up the widget if
+        // it is not there yet, or ask it for a new token, and try once more.
+        const data = (await response.clone().json().catch(() => ({}))) as { error?: string; siteKey?: string }
+        if (data.error === 'human' && (turnstileId.current || data.siteKey)) {
+          if (turnstileId.current) freshToken()
+          else { setSiteKey(data.siteKey!); await ensureWidget(data.siteKey!) }
+          response = await post(await awaitToken(tokenWait))
+        }
       }
       if (!response.ok || !response.body) {
         const data = (await response.json().catch(() => ({}))) as { message?: string }
@@ -370,7 +378,7 @@ export default function AskAssistant({ page }: { page: string }) {
 
         <form className="ask-compose" onSubmit={submit}>
           {notice && <p className="ask-notice" role="status">{notice}</p>}
-          {siteKey && <div className="ask-turnstile" ref={turnstileRef} />}
+          <div className="ask-turnstile" ref={turnstileRef} />
           {mode === 'fit' ? (
             <div className="ask-fit">
               <div className="ask-fit-head"><strong>Check a job description</strong><span>Covered, partly covered, not shown, and what to ask him.</span></div>
