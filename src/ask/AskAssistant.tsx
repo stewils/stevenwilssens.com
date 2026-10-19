@@ -32,6 +32,8 @@ const openKey = 'sw-ask-open'
 const maxQuestion = 1000
 export const maxJobDescription = 8000
 const maxTurns = 24
+/** How long a send waits for the human check's token before posting without one. */
+const tokenWait = 8000
 export const fitChip = 'Check a job description against his record'
 
 const storage = {
@@ -79,6 +81,7 @@ export default function AskAssistant({ page }: { page: string }) {
   const turnstileRef = useRef<HTMLDivElement>(null)
   const turnstileToken = useRef('')
   const turnstileId = useRef('')
+  const turnstileWaiters = useRef<((token: string) => void)[]>([])
   const controller = useRef<AbortController | null>(null)
   const pending = useRef('')
   const paint = useRef(0)
@@ -136,9 +139,18 @@ export default function AskAssistant({ page }: { page: string }) {
   }, [turns, busy])
 
   // Turnstile, only when the server asks for it: an invisible widget that hands us a token.
+  // The first token takes a moment and each one is spent on one question, so a send
+  // waits for the token instead of posting without one.
+  const gotToken = (token: string) => { turnstileToken.current = token; const waiters = turnstileWaiters.current; turnstileWaiters.current = []; waiters.forEach((resolve) => resolve(token)) }
+  const awaitToken = (ms: number) => turnstileToken.current || !turnstileId.current ? Promise.resolve(turnstileToken.current) : new Promise<string>((resolve) => {
+    const timer = setTimeout(() => { turnstileWaiters.current = turnstileWaiters.current.filter((waiter) => waiter !== done); resolve('') }, ms)
+    const done = (token: string) => { clearTimeout(timer); resolve(token) }
+    turnstileWaiters.current.push(done)
+  })
+  const freshToken = () => { turnstileToken.current = ''; if (turnstileId.current && window.turnstile) window.turnstile.reset(turnstileId.current) }
   useEffect(() => {
     if (!open || !siteKey || !turnstileRef.current || turnstileId.current) return
-    const mount = () => { if (window.turnstile && turnstileRef.current && !turnstileId.current) turnstileId.current = window.turnstile.render(turnstileRef.current, { sitekey: siteKey, size: 'flexible', appearance: 'interaction-only', callback: (token: string) => { turnstileToken.current = token }, 'expired-callback': () => { turnstileToken.current = '' } }) }
+    const mount = () => { if (window.turnstile && turnstileRef.current && !turnstileId.current) turnstileId.current = window.turnstile.render(turnstileRef.current, { sitekey: siteKey, size: 'flexible', appearance: 'interaction-only', callback: gotToken, 'expired-callback': () => { turnstileToken.current = '' }, 'error-callback': () => { turnstileToken.current = '' }, 'timeout-callback': () => { turnstileToken.current = '' } }) }
     if (window.turnstile) mount()
     else {
       const script = document.createElement('script')
@@ -179,17 +191,23 @@ export default function AskAssistant({ page }: { page: string }) {
     controller.current = abort
     let failed = ''
     const result = { ...answer }
+    const post = async (token: string) => fetch('/api/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: abort.signal,
+      body: JSON.stringify({
+        page,
+        turnstileToken: token,
+        messages: ([...history, asked] as Turn[]).map((turn) => turn.role === 'user' ? { role: 'user', content: turn.content, ...(turn.kind ? { kind: turn.kind } : {}) } : { role: 'assistant', content: turn.content, sources: turn.sources.map((source) => source.id), id: turn.id, sig: turn.sig }),
+      }),
+    })
     try {
-      const response = await fetch('/api/ask', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: abort.signal,
-        body: JSON.stringify({
-          page,
-          turnstileToken: turnstileToken.current,
-          messages: ([...history, asked] as Turn[]).map((turn) => turn.role === 'user' ? { role: 'user', content: turn.content, ...(turn.kind ? { kind: turn.kind } : {}) } : { role: 'assistant', content: turn.content, sources: turn.sources.map((source) => source.id), id: turn.id, sig: turn.sig }),
-        }),
-      })
+      let response = await post(await awaitToken(tokenWait))
+      if (response.status === 403 && turnstileId.current) {
+        // The token was missing, spent or stale: ask the widget for a new one and try once more.
+        const data = (await response.clone().json().catch(() => ({}))) as { error?: string }
+        if (data.error === 'human') { freshToken(); response = await post(await awaitToken(tokenWait)) }
+      }
       if (!response.ok || !response.body) {
         const data = (await response.json().catch(() => ({}))) as { message?: string }
         failed = data.message ?? 'Something went wrong. Please try again.'
@@ -227,7 +245,7 @@ export default function AskAssistant({ page }: { page: string }) {
     })
     controller.current = null
     setBusy(false)
-    if (turnstileId.current && window.turnstile) { window.turnstile.reset(turnstileId.current); turnstileToken.current = '' }
+    freshToken() // the token is spent: have the next one ready
     return result
   }
 

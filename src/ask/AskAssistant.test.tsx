@@ -90,6 +90,41 @@ describe('AskAssistant', () => {
     expect(screen.queryByRole('button', { name: 'Helpful' })).not.toBeInTheDocument()
   })
 
+  it('waits for the human check\'s token before sending, and asks for a fresh one when the server rejects it', async () => {
+    // A fake Turnstile: render() keeps the callback, the test hands out tokens when it likes.
+    let giveToken: ((token: string) => void) | null = null
+    let resets = 0
+    const turnstile = { render: (_el: HTMLElement, options: Record<string, unknown>) => { giveToken = options.callback as (token: string) => void; return 'w1' }, reset: () => { resets++ } }
+    Object.defineProperty(window, 'turnstile', { configurable: true, writable: true, value: turnstile })
+    const posted: string[] = []
+    fetchMock.mockImplementation(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method !== 'POST') return Response.json({ ready: true, siteKey: 'site-key' })
+      const token = (JSON.parse(init.body as string) as { turnstileToken: string }).turnstileToken
+      posted.push(token)
+      if (token !== 'token-2') return Response.json({ error: 'human', message: 'Not a person.' }, { status: 403 })
+      return stream(sseBody([['meta', { scope: 'in', sources: [] }], ['delta', { text: 'Answered.' }], ['done', { id: null, sig: 'sig-2' }]]))
+    })
+    render(<AskAssistant page="home" />)
+    await userEvent.click(await screen.findByRole('button', { name: /ask about steven/i }))
+    await waitFor(() => expect(giveToken).not.toBeNull())
+    await userEvent.type(screen.getByLabelText('Your question'), 'Hello{enter}')
+
+    // Nothing is posted until the widget hands over its first token.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(posted).toEqual([])
+    await act(async () => { giveToken!('token-1') })
+    await waitFor(() => expect(posted).toEqual(['token-1']))
+
+    // The server rejected it: the widget is reset and the question goes again with the next token.
+    await waitFor(() => expect(resets).toBe(1))
+    await act(async () => { giveToken!('token-2') })
+    await screen.findByText('Answered.')
+    expect(posted).toEqual(['token-1', 'token-2'])
+    expect(screen.queryByText('Not a person.')).not.toBeInTheDocument()
+    expect(resets).toBe(2) // spent: the next one is being prepared
+    Reflect.deleteProperty(window, 'turnstile')
+  })
+
   it('opens from anywhere on the site with a question typed in, and closes on Escape', async () => {
     render(<AskAssistant page="home" />)
     await screen.findByRole('button', { name: /ask about steven/i })
