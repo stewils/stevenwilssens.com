@@ -6,23 +6,54 @@
 // follows the reader from page to page in this tab (sessionStorage) until
 // "New conversation", and an open panel opens again on the next page.
 //
+// A second way in: paste a job description. It is sent as a user turn marked
+// `kind: 'fit'`, and the answer comes back in a fixed shape (covered, partly
+// covered, not shown on the site, what to ask Steven). Follow-up questions keep
+// the posting in the conversation.
+//
 // Answers are model text: rendered with a small Markdown subset (src/ask/markdown.ts),
 // links only to the site, the résumé, LinkedIn, Justia and Steven's email.
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import profileImage from '../assets/profile.jpg'
 import { renderMarkdown } from './markdown'
 import { pickSuggestions } from './suggestions'
+import { waits } from './waits'
+import { registerTool } from '../webmcp'
 import './ask.css'
 
 export type Source = { id: string; title: string; href: string | null }
 export type Turn =
-  | { role: 'user'; content: string }
+  | { role: 'user'; content: string; kind?: 'fit' }
   | { role: 'assistant'; content: string; sources: Source[]; id: number | null; sig: string; scope: 'in' | 'out'; error?: boolean; vote?: 'up' | 'down' }
+type Mode = 'ask' | 'fit'
+type Answer = Extract<Turn, { role: 'assistant' }>
 
 const storeKey = 'sw-ask'
 const openKey = 'sw-ask-open'
 const maxQuestion = 1000
+export const maxJobDescription = 8000
 const maxTurns = 24
+/** What the server accepts with a question (functions/_lib/ask/agent.ts: 12 turns, 30,000 characters): the newest exchanges that fit go with it, the oldest are left behind. */
+const sentTurns = 11
+const sentChars = 30_000
+/** The exchanges to send with a new question: complete question-and-answer pairs (a failed answer and its question are left out), newest first until the server's limits are reached, in order. */
+const conversation = (turns: Turn[], asked: Turn): Turn[] => {
+  const kept: Turn[] = [asked]
+  let chars = asked.content.length
+  for (let i = turns.length - 1; i > 0; i--) {
+    const answer = turns[i]
+    const question = turns[i - 1]
+    if (answer.role !== 'assistant' || question.role !== 'user') continue
+    i-- // this pair is handled
+    if (answer.error || !answer.content) continue
+    if (kept.length + 2 > sentTurns || chars + question.content.length + answer.content.length > sentChars) break
+    kept.unshift(question, answer)
+    chars += question.content.length + answer.content.length
+  }
+  return kept
+}
+const tickTheBox = 'Tick the box below and your question goes through.'
+export const fitChip = 'Check a job description against his record'
 
 const storage = {
   get: (key: string) => { try { return sessionStorage.getItem(key) } catch { return null } },
@@ -36,6 +67,7 @@ const Plus = () => <svg viewBox="0 0 24 24" width="20" height="20" fill="none" s
 const Up = () => <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 11v9H4v-9zM7 11l4-7c1.5 0 2.5 1 2.5 2.5V10h5a2 2 0 0 1 2 2.3l-1 6A2 2 0 0 1 17.5 20H7" /></svg>
 const Down = () => <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 13V4h3v9zM17 13l-4 7c-1.5 0-2.5-1-2.5-2.5V14h-5a2 2 0 0 1-2-2.3l1-6A2 2 0 0 1 6.5 4H17" /></svg>
 const CopyIcon = () => <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></svg>
+const Clipboard = () => <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4.5h6M9 11h6M9 15h4" /></svg>
 
 const parseSse = (block: string): { event: string; data: Record<string, unknown> } | null => {
   const event = /^event: (.+)$/m.exec(block)?.[1]
@@ -43,14 +75,18 @@ const parseSse = (block: string): { event: string; data: Record<string, unknown>
   try { return { event, data: JSON.parse(/^data: (.+)$/m.exec(block)?.[1] ?? '{}') as Record<string, unknown> } } catch { return null }
 }
 
+const formatCount = (n: number) => n.toLocaleString('en-US')
+
 declare global { interface Window { turnstile?: { render: (el: HTMLElement, options: Record<string, unknown>) => string; reset: (id: string) => void } } }
 
 export default function AskAssistant({ page }: { page: string }) {
   const [ready, setReady] = useState(false)
   const [siteKey, setSiteKey] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
+  const [mode, setMode] = useState<Mode>('ask')
   const [turns, setTurns] = useState<Turn[]>([])
   const [draft, setDraft] = useState('')
+  const [posting, setPosting] = useState('')
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [copied, setCopied] = useState<number | null>(null)
@@ -58,15 +94,19 @@ export default function AskAssistant({ page }: { page: string }) {
   const [docked, setDocked] = useState(false)
   const [phone, setPhone] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const postingRef = useRef<HTMLTextAreaElement>(null)
   const logRef = useRef<HTMLDivElement>(null)
   const fabRef = useRef<HTMLButtonElement>(null)
   const turnstileRef = useRef<HTMLDivElement>(null)
   const turnstileToken = useRef('')
   const turnstileId = useRef('')
+  const turnstileWaiters = useRef<((token: string) => void)[]>([])
+  const turnstileInteractive = useRef(false) // Cloudflare has put the checkbox in front of the visitor
   const controller = useRef<AbortController | null>(null)
   const pending = useRef('')
   const paint = useRef(0)
   const loaded = useRef(false)
+  const sendRef = useRef<(question: string) => Promise<Answer | null>>(async () => null)
 
   // Mount: is the assistant on, what was said earlier in this tab, and the screen size.
   useEffect(() => {
@@ -84,8 +124,9 @@ export default function AskAssistant({ page }: { page: string }) {
     small?.addEventListener('change', layout)
     if (storage.get(openKey) === '1' && !small?.matches) setOpen(true)
     const onOpen = (event: Event) => {
-      const question = (event as CustomEvent<{ question?: string }>).detail?.question
-      if (question) setDraft(question)
+      const detail = (event as CustomEvent<{ question?: string; fit?: boolean }>).detail ?? {}
+      if (detail.question) setDraft(detail.question)
+      if (detail.fit) setMode('fit')
       setOpen(true)
     }
     window.addEventListener('sw-ask-open', onOpen)
@@ -97,9 +138,9 @@ export default function AskAssistant({ page }: { page: string }) {
     document.documentElement.classList.toggle('ask-docked', open && docked)
     document.documentElement.classList.toggle('ask-sheet', open && phone)
     storage.set(openKey, open ? '1' : null)
-    if (open && !phone) requestAnimationFrame(() => inputRef.current?.focus())
+    if (open && !phone) requestAnimationFrame(() => (mode === 'fit' ? postingRef.current : inputRef.current)?.focus())
     return () => { document.documentElement.classList.remove('ask-docked', 'ask-sheet') }
-  }, [open, docked, phone])
+  }, [open, docked, phone, mode])
 
   useEffect(() => { if (loaded.current) storage.set(storeKey, JSON.stringify(turns.slice(-maxTurns))) }, [turns])
 
@@ -118,21 +159,39 @@ export default function AskAssistant({ page }: { page: string }) {
   }, [turns, busy])
 
   // Turnstile, only when the server asks for it: an invisible widget that hands us a token.
-  useEffect(() => {
-    if (!open || !siteKey || !turnstileRef.current || turnstileId.current) return
-    const mount = () => { if (window.turnstile && turnstileRef.current && !turnstileId.current) turnstileId.current = window.turnstile.render(turnstileRef.current, { sitekey: siteKey, size: 'flexible', appearance: 'interaction-only', callback: (token: string) => { turnstileToken.current = token }, 'expired-callback': () => { turnstileToken.current = '' } }) }
-    if (window.turnstile) mount()
-    else {
-      const script = document.createElement('script')
-      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
-      script.async = true
-      script.onload = mount
-      document.head.appendChild(script)
+  // The first token takes a moment and each one is spent on one question, so a send
+  // waits for the token instead of posting without one.
+  const gotToken = (token: string) => { turnstileToken.current = token; const waiters = turnstileWaiters.current; turnstileWaiters.current = []; waiters.forEach((resolve) => resolve(token)) }
+  const awaitToken = (ms: number) => turnstileToken.current || !turnstileId.current ? Promise.resolve(turnstileToken.current) : new Promise<string>((resolve) => {
+    const timer = setTimeout(() => { turnstileWaiters.current = turnstileWaiters.current.filter((waiter) => waiter !== done); resolve('') }, ms)
+    const done = (token: string) => { clearTimeout(timer); resolve(token) }
+    turnstileWaiters.current.push(done)
+  })
+  const freshToken = () => { turnstileToken.current = ''; if (turnstileId.current && window.turnstile) window.turnstile.reset(turnstileId.current) }
+  // The token for a send: a short wait normally, a long one once the visitor has a box to tick.
+  const tokenForSend = async () => {
+    let token = await awaitToken(waits.token)
+    if (!token && turnstileInteractive.current) { setNotice(tickTheBox); token = await awaitToken(waits.interactive); setNotice('') }
+    return token
+  }
+  // The server asks for the check only when the assistant looks under attack, so the
+  // widget comes up when the status says so, or mid-conversation when an answer does.
+  const ensureWidget = (key: string) => new Promise<void>((resolve) => {
+    const mount = () => {
+      if (window.turnstile && turnstileRef.current && !turnstileId.current) turnstileId.current = window.turnstile.render(turnstileRef.current, { sitekey: key, size: 'flexible', appearance: 'interaction-only', callback: gotToken, 'expired-callback': () => { turnstileToken.current = '' }, 'error-callback': () => { turnstileToken.current = '' }, 'timeout-callback': () => { turnstileToken.current = '' }, 'before-interactive-callback': () => { turnstileInteractive.current = true }, 'after-interactive-callback': () => { turnstileInteractive.current = false } })
+      resolve()
     }
-  }, [open, siteKey])
+    if (window.turnstile) return mount()
+    const existing = document.querySelector<HTMLScriptElement>('script[src^="https://challenges.cloudflare.com/turnstile/"]')
+    const script = existing ?? Object.assign(document.createElement('script'), { src: 'https://challenges.cloudflare.com/turnstile/v0/api.js', async: true })
+    script.addEventListener('load', mount, { once: true })
+    script.addEventListener('error', () => resolve(), { once: true })
+    if (!existing) document.head.appendChild(script)
+  })
+  useEffect(() => { if (open && siteKey && !turnstileId.current) void ensureWidget(siteKey) }, [open, siteKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const close = () => { setOpen(false); fabRef.current?.focus() }
-  const reset = () => { controller.current?.abort(); setTurns([]); setNotice(''); setBusy(false); inputRef.current?.focus() }
+  const reset = () => { controller.current?.abort(); setTurns([]); setNotice(''); setBusy(false); setMode('ask'); inputRef.current?.focus() }
 
   const flush = useCallback(() => {
     paint.current = 0
@@ -144,32 +203,45 @@ export default function AskAssistant({ page }: { page: string }) {
     })
   }, [])
 
-  const send = async (question: string) => {
-    const text = question.trim().slice(0, maxQuestion)
-    if (!text || busy) return
+  // A question, or (kind 'fit') a pasted job description. Resolves to the answer once
+  // it has streamed in, for the WebMCP tool below; null when busy or empty.
+  const send = async (input: string, kind?: 'fit'): Promise<Answer | null> => {
+    const text = input.trim().slice(0, kind === 'fit' ? maxJobDescription : maxQuestion)
+    if (!text || busy) return null
     setNotice('')
-    setDraft('')
-    if (inputRef.current) inputRef.current.style.height = ''
+    if (kind === 'fit') { setPosting(''); setMode('ask') } else { setDraft(''); if (inputRef.current) inputRef.current.style.height = '' }
     const history = turns.filter((turn) => turn.role === 'user' || !turn.error)
+    const asked: Turn = kind === 'fit' ? { role: 'user', content: text, kind: 'fit' } : { role: 'user', content: text }
     const answer: Turn = { role: 'assistant', content: '', sources: [], id: null, sig: '', scope: 'in' }
-    setTurns([...history, { role: 'user', content: text }, answer])
+    setTurns([...history, asked, answer])
     setBusy(true)
     pending.current = ''
     const abort = new AbortController()
     controller.current = abort
     let failed = ''
     const result = { ...answer }
+    const post = async (token: string) => fetch('/api/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: abort.signal,
+      body: JSON.stringify({
+        page,
+        turnstileToken: token,
+        messages: conversation(history, asked).map((turn) => turn.role === 'user' ? { role: 'user', content: turn.content, ...(turn.kind ? { kind: turn.kind } : {}) } : { role: 'assistant', content: turn.content, sources: turn.sources.map((source) => source.id), id: turn.id, sig: turn.sig }),
+      }),
+    })
     try {
-      const response = await fetch('/api/ask', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: abort.signal,
-        body: JSON.stringify({
-          page,
-          turnstileToken: turnstileToken.current,
-          messages: ([...history, { role: 'user', content: text }] as Turn[]).map((turn) => turn.role === 'user' ? { role: 'user', content: turn.content } : { role: 'assistant', content: turn.content, sources: turn.sources.map((source) => source.id), id: turn.id, sig: turn.sig }),
-        }),
-      })
+      let response = await post(await tokenForSend())
+      if (response.status === 403) {
+        // The check is on and the token was missing, spent or stale: bring up the widget if
+        // it is not there yet, or ask it for a new token, and try once more.
+        const data = (await response.clone().json().catch(() => ({}))) as { error?: string; siteKey?: string }
+        if (data.error === 'human' && (turnstileId.current || data.siteKey)) {
+          if (turnstileId.current) freshToken()
+          else { setSiteKey(data.siteKey!); await ensureWidget(data.siteKey!) }
+          response = await post(await tokenForSend())
+        }
+      }
       if (!response.ok || !response.body) {
         const data = (await response.json().catch(() => ({}))) as { message?: string }
         failed = data.message ?? 'Something went wrong. Please try again.'
@@ -207,15 +279,49 @@ export default function AskAssistant({ page }: { page: string }) {
     })
     controller.current = null
     setBusy(false)
-    if (turnstileId.current && window.turnstile) { window.turnstile.reset(turnstileId.current); turnstileToken.current = '' }
+    freshToken() // the token is spent: have the next one ready
+    return result
   }
 
+  // WebMCP (src/webmcp.ts): an agent in the visitor's browser asks through this same
+  // panel, so the visitor sees the question and the answer, the limits and the
+  // human check apply as they do to a typed question, and the vote buttons work.
+  useEffect(() => { sendRef.current = send })
+  useEffect(() => {
+    if (!ready) return
+    return registerTool({
+      name: 'ask_about_steven',
+      description: 'Ask the "Ask about Steven" assistant a question in plain words: his roles, results, leadership, teams, patents, projects, what he is looking for, how to reach him. It answers from what Steven published and says when his notes do not cover something. One question per call; a follow-up continues the conversation. The exchange is shown to the visitor in the panel.',
+      inputSchema: { type: 'object', properties: { question: { type: 'string', description: 'The question, under 1000 characters' } }, required: ['question'], additionalProperties: false },
+      annotations: { readOnlyHint: true },
+      execute: async (input) => {
+        const question = typeof input.question === 'string' ? input.question.trim() : ''
+        if (!question) return 'Give a question to ask.'
+        setOpen(true)
+        const answer = await sendRef.current(question)
+        if (!answer) return 'The assistant is answering another question right now. Ask again in a moment.'
+        if (answer.error) return `The assistant could not answer: ${answer.content}`
+        return JSON.stringify({
+          answer: answer.content,
+          scope: answer.scope === 'out' ? 'out of scope: the assistant only answers questions about Steven' : 'in scope',
+          sources: answer.sources.map((source) => ({ title: source.title, href: source.href })),
+        }, null, 1)
+      },
+    })
+  }, [ready])
+
   const stop = () => { controller.current?.abort() }
-  const submit = (event: FormEvent) => { event.preventDefault(); void send(draft) }
+  const submit = (event: FormEvent) => { event.preventDefault(); if (mode === 'fit') void send(posting, 'fit'); else void send(draft) }
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(draft) }
   }
+  // In the posting box Enter is a new line; Ctrl+Enter (Cmd+Enter) sends.
+  const onPostingKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); void send(posting, 'fit') }
+  }
   const grow = (element: HTMLTextAreaElement) => { element.style.height = ''; element.style.height = `${Math.min(element.scrollHeight, 160)}px` }
+  const startFit = () => { setMode('fit'); setNotice(''); requestAnimationFrame(() => postingRef.current?.focus()) }
+  const stopFit = () => { setMode('ask'); requestAnimationFrame(() => inputRef.current?.focus()) }
 
   const vote = async (index: number, up: boolean) => {
     const answer = turns[index]
@@ -229,6 +335,7 @@ export default function AskAssistant({ page }: { page: string }) {
   const streaming = busy && turns[turns.length - 1]?.role === 'assistant'
   const waiting = streaming && !turns[turns.length - 1]?.content
   const remaining = maxQuestion - draft.length
+  const postingLeft = maxJobDescription - posting.length
 
   return (
     <>
@@ -252,14 +359,21 @@ export default function AskAssistant({ page }: { page: string }) {
         <div className="ask-log" ref={logRef} aria-live="polite">
           {turns.length === 0 && (
             <div className="ask-welcome">
-              <p className="ask-greeting">Hi. I know Steven's roles, results, patents, recommendations and what he is looking for. What would you like to know?</p>
+              <p className="ask-greeting">Hi. I know Steven's roles, results, patents, recommendations and what he is looking for. Ask me anything, or paste a job description and I'll say what his record covers, what it doesn't, and what to ask him. Your own AI assistant can read the same record through <a href="/mcp">steven.wilssens.com/mcp</a>.</p>
               <div className="ask-chips">
-                {suggestions.map((text, index) => <button type="button" key={text} className="ask-chip" style={{ '--i': index } as React.CSSProperties} onClick={() => void send(text)}>{text}</button>)}
+                <button type="button" className="ask-chip ask-chip-fit" style={{ '--i': 0 } as React.CSSProperties} onClick={startFit}><Clipboard />{fitChip}</button>
+                {suggestions.map((text, index) => <button type="button" key={text} className="ask-chip" style={{ '--i': index + 1 } as React.CSSProperties} onClick={() => void send(text)}>{text}</button>)}
               </div>
             </div>
           )}
           {turns.map((turn, index) => turn.role === 'user'
-            ? <div className="ask-turn ask-turn-user" key={index}><div className="ask-bubble">{turn.content}</div></div>
+            ? (
+              <div className="ask-turn ask-turn-user" key={index}>
+                {turn.kind === 'fit'
+                  ? <div className="ask-bubble ask-bubble-jd"><span className="ask-jd-label">Job description · {formatCount(turn.content.length)} characters</span><span className="ask-jd-excerpt">{turn.content.length > 260 ? `${turn.content.slice(0, 260).trimEnd()}…` : turn.content}</span></div>
+                  : <div className="ask-bubble">{turn.content}</div>}
+              </div>
+            )
             : (
               <div className={`ask-turn ask-turn-assistant ${turn.error ? 'is-error' : ''} ${turn.scope === 'out' ? 'is-out' : ''}`} key={index}>
                 <div className="ask-answer">
@@ -290,15 +404,30 @@ export default function AskAssistant({ page }: { page: string }) {
 
         <form className="ask-compose" onSubmit={submit}>
           {notice && <p className="ask-notice" role="status">{notice}</p>}
-          {siteKey && <div className="ask-turnstile" ref={turnstileRef} />}
-          <div className={`ask-compose-row ${busy ? 'is-busy' : ''}`}>
-            <label className="ask-visually-hidden" htmlFor="ask-input">Your question</label>
-            <textarea id="ask-input" ref={inputRef} rows={1} maxLength={maxQuestion} placeholder="Ask about his work, teams, results…" enterKeyHint="send" value={draft} onChange={(event) => { setDraft(event.target.value); grow(event.target) }} onKeyDown={onKeyDown} disabled={busy} />
-            {busy
-              ? <button type="button" className="ask-send is-stop" onClick={stop} aria-label="Stop" title="Stop"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="3" fill="currentColor" /></svg></button>
-              : <button type="submit" className="ask-send" aria-label="Send" title="Send" disabled={!draft.trim()}><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" /></svg></button>}
-          </div>
-          <p className="ask-foot">{remaining < 120 ? <span className="ask-count">{remaining} left</span> : <span>Enter to send, Shift+Enter for a new line.</span>} <a href="mailto:steven@wilssens.com">Prefer email?</a></p>
+          <div className="ask-turnstile" ref={turnstileRef} />
+          {mode === 'fit' ? (
+            <div className="ask-fit">
+              <div className="ask-fit-head"><strong>Check a job description</strong><span>Covered, partly covered, not shown, and what to ask him.</span></div>
+              <label className="ask-visually-hidden" htmlFor="ask-posting">Job description</label>
+              <textarea id="ask-posting" ref={postingRef} rows={7} maxLength={maxJobDescription} placeholder="Paste the posting: title, responsibilities, requirements…" value={posting} onChange={(event) => setPosting(event.target.value)} onKeyDown={onPostingKeyDown} disabled={busy} />
+              <div className="ask-fit-row">
+                <button type="button" className="ask-ghost" onClick={stopFit}>Back to questions</button>
+                <span className="ask-foot-text">{postingLeft < 800 ? <span className="ask-count">{formatCount(postingLeft)} left</span> : <span>Ctrl+Enter to send.</span>}</span>
+                <button type="submit" className="ask-fit-send" disabled={busy || !posting.trim()}>Check fit</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className={`ask-compose-row ${busy ? 'is-busy' : ''}`}>
+                <label className="ask-visually-hidden" htmlFor="ask-input">Your question</label>
+                <textarea id="ask-input" ref={inputRef} rows={1} maxLength={maxQuestion} placeholder="Ask about his work, teams, results…" enterKeyHint="send" value={draft} onChange={(event) => { setDraft(event.target.value); grow(event.target) }} onKeyDown={onKeyDown} disabled={busy} />
+                {busy
+                  ? <button type="button" className="ask-send is-stop" onClick={stop} aria-label="Stop" title="Stop"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="3" fill="currentColor" /></svg></button>
+                  : <button type="submit" className="ask-send" aria-label="Send" title="Send" disabled={!draft.trim()}><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" /></svg></button>}
+              </div>
+              <p className="ask-foot">{remaining < 120 ? <span className="ask-count">{remaining} left</span> : <span>Enter to send, Shift+Enter for a new line.</span>} <span><button type="button" className="ask-foot-link" onClick={startFit} disabled={busy}>Job description?</button> · <a href="mailto:steven@wilssens.com">Prefer email?</a></span></p>
+            </>
+          )}
         </form>
       </section>
     </>

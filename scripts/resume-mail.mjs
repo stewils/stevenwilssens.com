@@ -252,7 +252,8 @@ export function scoreOf(report) {
   const before = baseline && typeof baseline.score === 'number' ? baseline.score : null
   const verdict = before == null ? 'unknown' : baseline.lower ? 'lower' : report.score > before ? 'higher' : 'unchanged'
   const count = (severity) => report.findings?.filter((finding) => finding.severity === severity).length ?? null
-  return { score: report.score, before, verdict, lower: verdict === 'lower', pages: report.pages ?? null, warnings: report.warnings ?? count('warn'), errors: report.errors ?? count('error') }
+  // The score is the ATS score; the counts beside it are the findings that make it.
+  return { score: report.score, before, verdict, lower: verdict === 'lower', pages: report.pages ?? null, warnings: report.ats?.warnings ?? report.warnings ?? count('warn'), errors: report.ats?.errors ?? report.errors ?? count('error') }
 }
 
 const palette = { paper: '#f4f6f1', card: '#ffffff', ink: '#172121', body: '#3c4847', muted: '#6a7473', green: '#096b50', deep: '#0f4a38', halo: '#dbeae5', line: '#d7dfd8', yellow: '#e8b84a', warnBg: '#fff8e5', warnInk: '#6b4e00', red: '#b4382c' }
@@ -307,7 +308,7 @@ export function renderEmail({ kind, summary, score, title = '', instruction = ''
   </td></tr>
   ${lower ? `<tr><td class="inner" style="padding:14px 40px 0;">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${palette.warnBg};border-left:4px solid ${palette.yellow};border-radius:0 12px 12px 0;"><tr><td style="padding:16px 20px;font-family:${font};font-size:15px;line-height:1.5;color:${palette.warnInk};">
-      <strong>This resume scores lower than ${against}: ${esc(scoreText)}.</strong> It reads worse to recruiters. ${live ? 'Fix the data and push again.' : 'Fix the data on the branch, or tell Claude to, before merging; or merge knowing the trade-off.'}
+      <strong>This resume scores lower than ${against}: ${esc(scoreText)}.</strong> An applicant tracking system reads it worse. ${live ? 'Fix the data and push again.' : 'Fix the data on the branch, or tell Claude to, before merging; or merge knowing the trade-off.'}
       ${worse.length ? `<ul style="margin:10px 0 0;padding-left:18px;">${worse.map((line) => `<li style="margin:4px 0;">${esc(line)}</li>`).join('')}</ul>` : ''}
     </td></tr></table>
   </td></tr>` : ''}
@@ -326,9 +327,9 @@ export function renderEmail({ kind, summary, score, title = '', instruction = ''
   ${score ? `<tr><td class="inner" style="padding:26px 40px 0;">
     <div style="padding-bottom:12px;">${label('How it scores')}</div>
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
-      ${stat('Recruiter score', `${score.score}<span style="font-size:16px;font-weight:600;color:${palette.muted};">/100</span>`, esc(verdictNote), verdictColor)}
+      ${stat('ATS score', `${score.score}<span style="font-size:16px;font-weight:600;color:${palette.muted};">/100</span>`, esc(verdictNote), verdictColor)}
       ${stat('Pages', score.pages ?? '–', score.pages != null ? (score.pages <= 2 ? 'Fits the two pages recruiters read' : 'More than the two pages recruiters read') : '')}
-      ${stat('Warnings', score.warnings ?? '–', score.errors ? `${score.errors} error${score.errors === 1 ? '' : 's'} too` : 'No errors')}
+      ${stat('ATS warnings', score.warnings ?? '–', score.errors ? `${score.errors} error${score.errors === 1 ? '' : 's'} too` : 'No errors')}
     </tr></table>
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top:14px;"><tr><td style="padding:0 6px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td style="background:${palette.line};border-radius:999px;height:6px;font-size:0;line-height:0;"><table role="presentation" cellspacing="0" cellpadding="0" border="0" width="${Math.max(2, Math.min(100, score.score))}%"><tr><td style="background:${verdictColor};border-radius:999px;height:6px;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr></table></td></tr></table>
   </td></tr>` : ''}
@@ -353,12 +354,12 @@ export function renderEmail({ kind, summary, score, title = '', instruction = ''
     summary.headline,
     '',
     summary.intro,
-    ...(lower ? ['', `WARNING: this resume scores lower than ${against}: ${scoreText}. It reads worse to recruiters.`, ...worse.map((line) => `- ${line}`), live ? 'Fix the data and push again.' : 'Fix the data on the branch (or tell Claude to) before merging, or merge knowing the trade-off.'] : []),
+    ...(lower ? ['', `WARNING: this resume scores lower than ${against}: ${scoreText}. An applicant tracking system reads it worse.`, ...worse.map((line) => `- ${line}`), live ? 'Fix the data and push again.' : 'Fix the data on the branch (or tell Claude to) before merging, or merge knowing the trade-off.'] : []),
     '',
     'WHAT CHANGED',
     ...summary.items.map((item) => `- ${item.label}: ${item.text}`),
     ...(instruction ? ['', 'WHAT YOU ASKED', instruction] : []),
-    ...(score ? ['', 'HOW IT SCORES', `Recruiter score: ${score.score}/100${score.before != null ? ` (${verdictNote.toLowerCase()})` : ''}`, `Pages: ${score.pages ?? 'unknown'}; warnings: ${score.warnings ?? 'unknown'}; errors: ${score.errors ?? 'unknown'}`] : []),
+    ...(score ? ['', 'HOW IT SCORES', `ATS score: ${score.score}/100${score.before != null ? ` (${verdictNote.toLowerCase()})` : ''}`, `Pages: ${score.pages ?? 'unknown'}; warnings: ${score.warnings ?? 'unknown'}; errors: ${score.errors ?? 'unknown'}`] : []),
     '',
     `${primary.label}: ${primary.href}`,
     ...secondary.map((link) => `${link.label}: ${link.href}`),

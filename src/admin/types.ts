@@ -44,10 +44,14 @@ export type Stats = Crawls & {
 } & Record<'referrers' | 'utmSources' | 'utmCampaigns' | 'countries' | 'cities' | 'organizations' | 'browsers' | 'systems' | 'devices' | 'languages' | 'screens', Row[]>
 
 export type Proposal = { id: number; updatedAt: number; role: string; field?: string | null; kind: 'replace' | 'add' | 'remove'; currentText: string | null; proposedText: string | null; rationale: string; status: 'proposed' | 'approved' | 'rejected' | 'applied'; decisionNote: string | null }
+export type PublicCall = { ts: number; tool: string; query: string | null; country: string | null; asOrg: string | null }
 export type McpInfo = {
   ownerUrl: string | null
+  publicUrl: string
   entries: { total: number; public: number; roles: number }
   proposals: Proposal[]
+  // The read-only server at /mcp: calls in the range, per tool, and the latest ones.
+  publicCalls: { days: number; total: number; byTool: { tool: string; calls: number }[]; recent: PublicCall[] }
 }
 
 export type AskInfo = {
@@ -56,17 +60,23 @@ export type AskInfo = {
   model: string
   budgetUsd: number
   humanCheck: boolean
+  // The Turnstile check right now: off (no keys), standby (a quiet day, nobody is asked) or on, and why.
+  check?: { state: 'off' | 'standby' | 'on'; why: 'spend' | 'connection' | 'everyone' | null; lastHour: number; spentTodayMicro: number; afterMicro: number }
   month: { questions: number; answered: number; gap: number; off: number; limited: number; failed: number; costMicro: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number }
   daily: { day: string; outcome: string; questions: number; costMicro: number; msFirst: number; msTotal: number }[]
   votes: { day: string; helpful: number; unhelpful: number }[]
-  questions: { id: number; ts: number; reason: 'gap' | 'unhelpful'; page: string | null; question: string; answer: string | null; country: string | null; asOrg: string | null }[]
+  // Open questions (not yet answered or dismissed in the MCP), and how many were closed in the last 90 days.
+  questions: { id: number; ts: number; reason: 'gap' | 'unhelpful' | 'fit'; page: string | null; question: string; answer: string | null; country: string | null; asOrg: string | null }[]
+  resolved: { answered: number; dismissed: number }
 }
 
 // The résumé report the build writes (scripts/resume-check.mjs) and the score history
 // functions/_lib/resume-scores.ts keeps.
-export type Finding = { severity: 'error' | 'warn' | 'info'; id: string; message: string }
+// The lens a finding belongs to: only `ats` findings make the score (the ATS score).
+export type Lens = 'ats' | 'site' | 'recruiter'
+export type Finding = { severity: 'error' | 'warn' | 'info'; lens?: Lens; id: string; message: string }
 export type ResumeReport = {
-  exists?: boolean; score: number; errors?: number; warnings?: number; pages?: number; bytes?: number; title?: string | null; matchesSite?: boolean; checkedAt?: string
+  exists?: boolean; score: number; errors?: number; warnings?: number; ats?: { errors: number; warnings: number }; pages?: number; bytes?: number; title?: string | null; matchesSite?: boolean; checkedAt?: string
   pdfHash?: string; commit?: string | null; commitMessage?: string | null
   findings: Finding[]
   questions: { about: string; question: string }[]

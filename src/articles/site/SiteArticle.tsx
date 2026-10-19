@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import askPanel from '../../assets/articles/site/ask-panel.jpg'
 import pullRequest from '../../assets/articles/site/pull-request.jpg'
 import { openAsk } from '../../ask/open'
@@ -44,6 +44,35 @@ const Shot = ({ src, alt, caption, host, width, height }: { src: string; alt: st
 </figure>
 
 const H2 = ({ id, kicker, children }: { id: string; kicker: string; children: ReactNode }) => <h2 id={id} className="wx-h2"><span className="wx-kicker">{kicker}</span>{children}</h2>
+
+// The assistant's report card, live from /api/ask/report (functions/_lib/ask/report.ts):
+// aggregates over its whole life, cached ten minutes. Prerendered pages and readers
+// without JavaScript get the sentence instead.
+type Report = { since: string | null; questions: number; answered: number; gaps: number; gapsCovered: number; gapsOpen: number; helpful: number; unhelpful: number; costMicro: number; costPerAnswerMicro: number | null; publicNotes: number }
+const usd = (micro: number) => `$${(micro / 1_000_000).toFixed(2)}`
+export function ReportCard() {
+  const [report, setReport] = useState<Report | null>(null)
+  useEffect(() => {
+    if (typeof fetch !== 'function') return
+    let cancelled = false
+    fetch('/api/ask/report').then(async (response) => (response.ok ? response.json() : null)).then((data: Report | null) => { if (!cancelled && data && typeof data.questions === 'number') setReport(data) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+  if (!report) return <p className="wx-report-wait">The numbers load here from the site’s own database: questions asked, the share answered with sources, the gaps and how many I have since covered, the votes and the cost.</p>
+  const inScope = report.answered + report.gaps
+  const since = report.since ? new Date(`${report.since}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : null
+  return <figure className="wx-figure wx-report" aria-label="The assistant’s report card">
+    <dl className="wx-report-grid">
+      <div><dt>{report.questions.toLocaleString('en-US')}</dt><dd>questions{since ? ` since ${since}` : ''}</dd></div>
+      <div><dt>{inScope ? `${Math.round((report.answered / inScope) * 100)}%` : '—'}</dt><dd>answered with sources, of the questions in scope</dd></div>
+      <div><dt>{report.gaps.toLocaleString('en-US')}</dt><dd>{report.gaps === 1 ? 'time' : 'times'} my notes had no answer</dd></div>
+      <div><dt>{report.gapsCovered.toLocaleString('en-US')}</dt><dd>{report.gapsCovered === 1 ? 'question' : 'questions'} from readers I answered since, as public notes · {report.gapsOpen} waiting</dd></div>
+      <div><dt>{report.helpful} / {report.unhelpful}</dt><dd>votes, helpful / not helpful</dd></div>
+      <div><dt>{report.costPerAnswerMicro === null ? '—' : usd(report.costPerAnswerMicro)}</dt><dd>per answer · {usd(report.costMicro)} in all</dd></div>
+    </dl>
+    <figcaption>Live from the site’s own database, refreshed every ten minutes. A gap is a question in scope that my notes could not answer; each one reaches me in the private MCP, and my answer becomes a note the assistant uses from then on.</figcaption>
+  </figure>
+}
 
 export default function SiteArticle() {
   const rootRef = useRef<HTMLElement>(null)
@@ -108,8 +137,8 @@ export default function SiteArticle() {
           <Figure caption="The résumé build scores the new PDF and the current one, and only replaces the file when the score does not drop."><ResumeGateDiagram /></Figure>
           <p>It checks that the text is extractable without icon-font glyphs, that the file is two pages or fewer, that the contact details, headline, every role, company and date match the site, that the bullets of the two latest roles match word for word, that past roles are in the past tense, that a team size and the keywords recruiters search for appear, and that every number on the home page has a bullet behind it. Errors cost 25 points and warnings 5. A new PDF only replaces the current one when its score does not drop, and overriding that needs a reason in the commit message.</p>
           <p>The gate earned its keep on its first day. The first batch of résumé changes from the loop described below added scope and outcomes to my latest role, and the PDF ran one line onto a third page. The checker scored it 65 out of 100, the test went red, and main stopped deploying:</p>
-          <pre className="wx-pre" tabIndex={0} aria-label="Output of the résumé checker"><span className="is-quiet">$ npm run resume:check</span>{'\n'}public/steven-wilssens-resume-2026.pdf: score 65/100, 3 pages, 346 KB, 1 error, 2 warnings{'\n'}  <span className="is-bad">[error]</span> 3 pages; a resume for a principal role is two at most.{'\n'}  <span className="is-warn">[warn]</span> "15% increase in Windows adoption" has no role bullet behind it in src/resume.ts; a hiring manager will ask what it measures.{'\n'}  <span className="is-warn">[warn]</span> "30% reduction in customer issues" has no role bullet behind it in src/resume.ts; a hiring manager will ask what it measures.</pre>
-          <p>The fix was a layout one, an hour later: a compact honors line, a shorter patents note and a smaller bottom margin brought the PDF back to two pages at a score of 90. The checker was not touched, and since then the score of every résumé that goes live is kept, so the dashboard shows whether a change made it better or worse. The two warnings are fair too: those numbers have been on my résumé for years, and I owe them a bullet or a deletion.</p>
+          <pre className="wx-pre" tabIndex={0} aria-label="Output of the résumé checker"><span className="is-quiet">$ npm run resume:check</span>{'\n'}public/steven-wilssens-resume-2026.pdf: score 65/100, 3 pages, 346 KB, 1 error, 2 warnings{'\n'}  <span className="is-bad">[error]</span> 3 pages; a resume for a principal role is two at most.{'\n'}  <span className="is-quiet">[2 warnings: key numbers with no role bullet behind them in src/resume.ts; both numbers have since been replaced]</span></pre>
+          <p>The fix was a layout one, an hour later: a compact honors line, a shorter patents note and a smaller bottom margin brought the PDF back to two pages at a score of 90. The checker was not touched, and since then the score of every résumé that goes live is kept, so the dashboard shows whether a change made it better or worse. The two warnings were fair too: those numbers had been on my résumé for years with no bullet behind them, and I have since replaced them with the Perfect Day numbers from my Windows Data role.</p>
         </section>
 
         <section aria-labelledby="readers">
@@ -135,8 +164,9 @@ export default function SiteArticle() {
             <li><strong>Every page is prerendered to its own HTML file</strong> with its title, description and structured data: who I am, what each page is, where it sits on the site, and that this write-up is an article. Google uses the profile markup for people results.</li>
             <li><strong>Every page also exists as Markdown.</strong> The build converts the prerendered HTML into <code>/about.md</code>, <code>/experience.md</code> and so on, served with a canonical link back to the page, plus an <code>llms.txt</code> index and one file with every page. A model reading the Markdown gets the content without the navigation and the icons.</li>
             <li><strong>The sitemap tells the truth about dates.</strong> A page’s last-modified date is when its content changed, not when the site was last deployed, and each production deploy pings the search engines through IndexNow.</li>
+            <li><strong>The site is also an MCP server.</strong> <a href="/mcp">steven.wilssens.com/mcp</a> is a read-only <abbr title="Model Context Protocol">MCP</abbr> server a recruiter can add to their own Claude or any other client: the résumé, every role, the recommendations, the patents and my public notes as tools, plus a fit check that hands their assistant my whole record and the rules for an honest comparison. It knows nothing I have not published, it cannot write, and every call is logged by tool and query so I can see what assistants ask.</li>
           </ul>
-          <p>None of this is visible to a person, which is why it is easy to skip. The crawler log is what makes it worth doing: within five days, the AI crawlers were fetching the Markdown copies.</p>
+          <p>None of this is visible to a person, which is why it is easy to skip. The crawler log is what makes it worth doing: within five days, the AI crawlers were fetching the Markdown copies. The MCP server is the same idea one step further: a recruiter who runs an assistant over candidates should not have to scrape my site to put me in it.</p>
         </section>
 
         <section aria-labelledby="assistant">
@@ -147,15 +177,17 @@ export default function SiteArticle() {
             <li><strong>Its knowledge is the data file plus my public notes.</strong> The system prompt is built from the same file as the site, the patents list and the dossier entries I marked public. It contains nothing I have not published.</li>
             <li><strong>Every answer starts with a hidden line</strong> the server strips: the sections it rests on, shown to the reader as links; “none”, when my notes do not cover the question, which saves it as a gap; or “out”, for anything off topic, where the reader sees a fixed sentence and the model’s text is never shown.</li>
             <li><strong>Answers are signed,</strong> so nobody can send the assistant an earlier answer it did not give. <strong>Limits are in the code:</strong> thirty questions an hour per visitor, twelve turns, a thousand characters, an optional human check, and a monthly budget counted from the provider’s own token usage. When the budget is spent the button disappears and the site keeps working.</li>
+            <li><strong>It checks a job description against my record.</strong> Paste a posting and it answers in a fixed shape: which requirements my record covers, with the role or page that backs each; which it covers partly; which it does not show at all, even when they are probably true; and the questions an interviewer should ask me. The “not shown” list is the point. Every other candidate’s AI says yes to everything; this one is told that a plausible guess is not a fact. The requirements it could not match reach me the same way the unanswered questions do.</li>
           </ul>
-          <p>Questions, cost, votes and the unanswered questions go to the dashboard. The assistant is two days old as I write this, so the only honest number is the cost: ten questions, forty-nine cents. The interesting number will be the gaps, because of what happens to them next.</p>
+          <p>Questions, cost, votes and the unanswered questions go to the dashboard, and the numbers that matter are public, here, straight from the database. I measured what I shipped at Microsoft; the assistant gets the same treatment, including the numbers that do not flatter it.</p>
+          <ReportCard />
         </section>
 
         <section aria-labelledby="loop">
           <H2 id="loop" kicker="06">The loop: interview, review, edit, merge</H2>
           <p>The part of this site I am most pleased with is not on the site. It is a private <abbr title="Model Context Protocol">MCP</abbr> server, reachable only through a link I have, that turns Claude into a workspace for my career. Connected to the Claude app, it does four things.</p>
           <ul className="wx-steps">
-            <li><strong>Interview me like a sceptical recruiter.</strong> It reads what is already published, so it never asks what the site answers. It knows which roles have no numbers, which stints are short and where dates overlap, and asks one question at a time. Every answer becomes a dossier entry, private by default. Questions the site’s assistant could not answer go to the top of the list.</li>
+            <li><strong>Interview me like a sceptical recruiter.</strong> It reads what is already published, so it never asks what the site answers. It knows which roles have no numbers, which stints are short and where dates overlap, and asks one question at a time. Every answer becomes a dossier entry, private by default. The questions the site’s assistant could not answer, and the requirements from pasted job descriptions that my record does not show, come first: when a session starts it tells me how many are waiting, I answer them one by one, and each answer becomes a public note the assistant uses from then on.</li>
             <li><strong>Review the site from a recruiter’s seat.</strong> A review tool reads the published pages, the résumé report and an import of my LinkedIn profile, and returns findings with why a recruiter cares and what fixes it: a leadership role with no team size, an unexplained number, a gap, a LinkedIn headline that says something else. It scores the whole, and the score is what I work against.</li>
             <li><strong>Propose résumé changes and record my decisions.</strong> At the end of a session Claude compares the dossier with the résumé and proposes concrete edits: the current text, the new text, the notes it rests on. I approve or reject each one. So far: 20 proposals, 18 approved, 2 rejected because they overstated.</li>
             <li><strong>Change the site, through a pull request.</strong> An approved batch goes to GitHub Actions, where Claude Code edits the data file on a branch, rebuilds the résumé through the gate, runs the lint, tests and build, opens a pull request, starts the preview and emails me what changed, in plain words. I read the preview and merge, from the same conversation if I like.</li>
@@ -181,7 +213,7 @@ export default function SiteArticle() {
 
         <section aria-labelledby="next">
           <H2 id="next" kicker="08">What’s next</H2>
-          <p>Three batches of approved résumé changes have landed through the loop, including a role that closes a gap recruiters used to ask about. Next, LinkedIn gets compared against the site after every batch, so the three tell one story, and the assistant’s unanswered questions, once there are some, set the agenda for the next interview.</p>
+          <p>Three batches of approved résumé changes have landed through the loop, including a role that closes a gap recruiters used to ask about. Next, LinkedIn gets compared against the site after every batch, so the three tell one story, and the assistant’s unanswered questions set the agenda for the next interview; the report card above says how many are waiting. The public MCP server is new, and the dashboard will tell me whether any recruiter’s assistant ever connects.</p>
           <p>The numbers in the header are live, from the site’s own database, as of <span data-feed-date="">{feedDate(feed.asOf)}.</span> The write-up itself is refreshed from the repository after every check-in, by the same loop.</p>
           <div className="wx-end">
             <p>Ask the assistant something a recruiter would ask.</p>

@@ -9,7 +9,8 @@ import type { LinkedInFix } from './linkedin'
 export type Severity = 'high' | 'medium' | 'low'
 export type Finding = { area: string; severity: Severity; finding: string; why: string; fix: string }
 export type Question = { about: string; question: string; whyItMatters: string }
-export type ResumeReport = { exists?: boolean; score: number; pages?: number; errors?: number; warnings?: number; matchesSite?: boolean; checkedAt?: string; findings: { severity: 'error' | 'warn' | 'info'; id: string; message: string }[]; questions: { about: string; question: string }[] }
+// The score is the ATS score: only findings with lens 'ats' make it (scripts/resume-check.mjs).
+export type ResumeReport = { exists?: boolean; score: number; pages?: number; errors?: number; warnings?: number; ats?: { errors: number; warnings: number }; matchesSite?: boolean; checkedAt?: string; findings: { severity: 'error' | 'warn' | 'info'; lens?: 'ats' | 'site' | 'recruiter'; id: string; message: string }[]; questions: { about: string; question: string }[] }
 export type ReviewInput = { pages: Record<string, string | null>; resumeReport: ResumeReport | null; linkedin: { fixes: LinkedInFix[]; summary: string } | null; now: number }
 export type Review = { score: number; headline: string; findings: Finding[]; questions: Question[]; counts: Record<Severity, number> }
 

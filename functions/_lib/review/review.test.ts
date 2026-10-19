@@ -119,11 +119,10 @@ describe('LinkedIn import', () => {
 describe('the recruiter review', () => {
   const pages = { home: '# Steven Wilssens\n\nPrincipal product leader for data and AI. Now building in AI while choosing my next leadership role. Hiring a product leader for data, experimentation or AI?', about: '# About', experience: '# Experience', work: '# Selected work', recommendations: '# Recommendations' }
 
-  it('flags unexplained numbers, the missing resume report and the missing LinkedIn import, and asks about gaps', () => {
+  it('flags the missing resume report and the missing LinkedIn import, and asks about gaps', () => {
     const review = reviewForRecruiters({ pages, resumeReport: null, linkedin: null, now })
     const areas = review.findings.map((f) => f.area)
-    expect(areas).toContain('impact:15%')
-    expect(areas).toContain('impact:30%')
+    expect(areas.filter((area) => area.startsWith('impact:'))).toEqual([])
     expect(areas).toContain('resume')
     expect(areas).toContain('linkedin')
     expect(areas).not.toContain('scope:windows-devices-data')

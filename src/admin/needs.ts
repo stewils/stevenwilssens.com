@@ -31,7 +31,7 @@ export const computeNeeds = ({ stats, mcp, ask, resume }: AdminData, now = new D
     if (!mcp.ownerUrl) add('mcp-key', 'mcp', 1, 'the career MCP has no owner key: set the MCP_OWNER_KEY secret and redeploy')
   }
   if (ask) {
-    add('ask-gaps', 'assistant', ask.questions.length, plural(ask.questions.length, 'question the assistant could not answer; cover it in your next MCP session', 'questions the assistant could not answer; cover them in your next MCP session'))
+    add('ask-gaps', 'assistant', ask.questions.length, plural(ask.questions.length, 'question from the site waits for your answer; your career MCP will offer it when a session starts', 'questions from the site wait for your answers; your career MCP will offer them when a session starts'))
     if (!ask.configured && !ask.mock) add('ask-off', 'assistant', 1, 'the assistant is not live: set the ANTHROPIC_API_KEY secret and redeploy')
     const budget = ask.budgetUsd * 1_000_000
     const projected = projectMonth(ask.month.costMicro, now)
@@ -70,10 +70,10 @@ export const computeSummaries = ({ stats, mcp, ask, resume }: AdminData): Partia
   if (resume) {
     const report = resume.report
     summaries.resume = report
-      ? `Score ${report.score}/100 · ${report.pages ?? '?'} ${plural(report.pages ?? 0, 'page', 'pages')} · ${report.warnings ?? 0} ${plural(report.warnings ?? 0, 'warning', 'warnings')}${report.baseline ? ` · ${report.baseline.verdict === 'unchanged' ? 'unchanged from' : `${report.baseline.verdict} than`} the live résumé before` : ''}`
+      ? `ATS score ${report.score}/100 · ${report.pages ?? '?'} ${plural(report.pages ?? 0, 'page', 'pages')} · ${report.ats?.warnings ?? report.warnings ?? 0} ${plural(report.ats?.warnings ?? report.warnings ?? 0, 'warning', 'warnings')}${report.baseline ? ` · ${report.baseline.verdict === 'unchanged' ? 'unchanged from' : `${report.baseline.verdict} than`} the live résumé before` : ''}`
       : 'No résumé report in this deployment'
   }
   if (ask) summaries.assistant = `${formatUsd(ask.month.costMicro)} of ${formatUsd(ask.budgetUsd * 1_000_000)} this month · ${formatNumber(ask.month.questions)} questions · ${formatNumber(ask.month.gap)} gaps`
-  if (mcp) summaries.mcp = `${formatNumber(mcp.entries.total)} dossier entries across ${mcp.entries.roles} roles · ${formatNumber(mcp.entries.public)} public`
+  if (mcp) summaries.mcp = `${formatNumber(mcp.entries.total)} dossier entries across ${mcp.entries.roles} roles · ${formatNumber(mcp.entries.public)} public${mcp.publicCalls ? ` · ${formatNumber(mcp.publicCalls.total)} public ${plural(mcp.publicCalls.total, 'call', 'calls')}` : ''}`
   return summaries
 }

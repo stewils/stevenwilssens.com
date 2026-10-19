@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
-import { markdownPath, pageJsonLd, pageMeta, pagePath, routes, siteUrl, type Page } from './src/pageMeta.ts'
+import { markdownPath, originTrialTokens, pageJsonLd, pageMeta, pagePath, routes, siteUrl, type Page } from './src/pageMeta.ts'
 
 const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 
@@ -49,11 +49,13 @@ const staticPages = (): Plugin => {
       const scriptHashes = [...inlineScripts].map((code) => `'sha256-${createHash('sha256').update(code).digest('base64')}'`)
       const csp = [
         "default-src 'self'",
-        `script-src 'self' ${scriptHashes.join(' ')}`,
+        // challenges.cloudflare.com is Turnstile, the assistant's human check: its script and the frame it draws in.
+        `script-src 'self' https://challenges.cloudflare.com ${scriptHashes.join(' ')}`,
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data:",
         "font-src 'self' data:",
         "connect-src 'self'",
+        'frame-src https://challenges.cloudflare.com',
         "frame-ancestors 'none'",
         "base-uri 'self'",
         "form-action 'self'",
@@ -65,6 +67,8 @@ const staticPages = (): Plugin => {
         '  X-Frame-Options: DENY',
         '  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()',
         `  Content-Security-Policy: ${csp}`,
+        // One Origin-Trial header per token; a browser takes the one made for it and ignores the rest.
+        ...originTrialTokens.filter(({ token }) => /^[A-Za-z0-9+/=]+$/.test(token)).map(({ token }) => `  Origin-Trial: ${token}`),
         '',
         '# Vite fingerprints these file names, so they never change.',
         '/assets/*',

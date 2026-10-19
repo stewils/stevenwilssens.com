@@ -26,8 +26,21 @@ on:
         description: 'Short title for the branch and the pull request'
         required: true
         type: string
+      proposals:
+        description: 'Ids of the résumé proposals this update applies, comma-separated (the MCP server marks them applied when the pull request merges)'
+        required: false
+        type: string
+        default: ''
+      supersedes:
+        description: 'The number of a pull request this run redoes (it is closed when the new pull request opens)'
+        required: false
+        type: string
+        default: ''
   repository_dispatch:
     types: [building-source-changed]
+
+# The run is named after the title so the MCP server can find it right after starting it.
+run-name: ${{ inputs.title || format('Refresh the Building write-up about {0}', github.event.client_payload.project) }}
 
 concurrency:
   group: site-update
@@ -166,7 +179,7 @@ jobs:
             Rules for this change:
             - Facts about Steven (roles, bullets, headline, summary, skills, impact numbers, selected work, location, authorization) live in src/resume.ts. Change them there, not in App.tsx.
             - After any change to src/resume.ts, run `npm run resume:build`. It regenerates public/steven-wilssens-resume-2026.pdf and refuses a resume that scores worse than the current one; read its findings and fix the data until it passes. Never commit a resume with errors.
-            - The resume on main scores ${{ steps.baseline.outputs.score }}/100 for recruiters (`node scripts/resume-check.mjs` shows the findings). Keep it there or raise it. Never pass `--force` to resume:build. If Steven's instruction cannot be carried out without lowering the score (a bullet he wants removed carried a keyword or a number, say), make the change he asked for, keep the data honest, and say plainly in your summary which check got worse and why: the workflow warns him and he decides.
+            - The resume on main scores ${{ steps.baseline.outputs.score }}/100 with applicant tracking systems: the ATS score (`node scripts/resume-check.mjs` shows the findings and which of them count). Keep it there or raise it. Never pass `--force` to resume:build. If Steven's instruction cannot be carried out without lowering the score (a bullet he wants removed carried a keyword or a number, say), make the change he asked for, keep the data honest, and say plainly in your summary which check got worse and why: the workflow warns him and he decides.
             - If the headline or the photo changed, run `node scripts/og-image.mjs`.
             - Run `npm run lint`, `npm test` and `npm run build` and make them pass.
             - Do not invent numbers or facts. If the instruction needs a fact you do not have, leave a `TODO(steven): question` comment in src/resume.ts and list the question in your final message.
@@ -239,26 +252,41 @@ jobs:
           SCORE_LOWER: ${{ steps.score.outputs.lower }}
           SCORE_BEFORE: ${{ steps.score.outputs.before }}
           SCORE_AFTER: ${{ steps.score.outputs.after }}
+          PROPOSALS: ${{ inputs.proposals }}
+          SUPERSEDES: ${{ inputs.supersedes }}
         run: |
           alias=$(printf '%s' "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | cut -c1-28)
           warning=""
           if [ "$SCORE_LOWER" = true ]; then
-            warning=$(printf '> ⚠️ **This update lowers the resume score from %s to %s.** The resume would read worse to recruiters than the one live today. New findings:\n%s\n\nFix the data on this branch (or ask Claude to) before merging, or merge knowing the trade-off.\n\n' "$SCORE_BEFORE" "$SCORE_AFTER" "$(cat /tmp/resume-new-findings.txt 2>/dev/null || true)")
+            warning=$(printf '> ⚠️ **This update lowers the resume score from %s to %s.** An applicant tracking system would read it worse than the one live today. New findings:\n%s\n\nFix the data on this branch (or ask Claude to) before merging, or merge knowing the trade-off.\n\n' "$SCORE_BEFORE" "$SCORE_AFTER" "$(cat /tmp/resume-new-findings.txt 2>/dev/null || true)")
           fi
-          # The hidden marker is read by the MCP server (site_update_status, merge_site_update) so Claude can warn Steven.
+          # The hidden markers are read by the MCP server (site_update_status, merge_site_update, wait_for_site_update):
+          # the score so Claude can warn Steven, and the request itself (title, instruction, proposals, the pull request
+          # this one supersedes; base64 of JSON so nothing in it can break the comment) so the update can be redone on a
+          # fresh branch when it conflicts and the proposals it carries are marked applied when it merges.
           marker=""
           if [ "$SCORE_AFTER" != unknown ] && [ -n "$SCORE_AFTER" ]; then marker="<!-- resume-score before=${SCORE_BEFORE:-unknown} after=$SCORE_AFTER -->"; fi
-          body=$(printf '%s%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s' \
-            "$warning" \
+          request=$(jq -cn --arg title "$TITLE" --arg instruction "$INSTRUCTION" --arg proposals "$PROPOSALS" --arg supersedes "$SUPERSEDES" \
+            '{title: $title, instruction: $instruction, proposals: ($proposals | split(",") | map(select(test("^[0-9]+$")) | tonumber)), supersedes: (if ($supersedes | test("^[0-9]+$")) then ($supersedes | tonumber) else null end)}' | base64 -w0)
+          proposals_line=""
+          if [ -n "$PROPOSALS" ]; then proposals_line=$(printf '**Résumé proposals:** %s (marked applied in the MCP server when this merges)\n\n' "$(printf '%s' "$PROPOSALS" | sed 's/,/, #/g; s/^/#/')"); fi
+          body=$(printf '%s%s%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s\n%s' \
+            "$warning" "$proposals_line" \
             "**Instruction**" "$INSTRUCTION" \
-            "**Resume score:** ${SCORE_LINE:-unknown} (100 is the best a recruiter, an ATS and an editor would score it; see scripts/resume-check.mjs)" \
+            "**Resume score:** ${SCORE_LINE:-unknown} (the ATS score: 100 means an applicant tracking system parses every part of it; see scripts/resume-check.mjs)" \
             "**Checks in this run:** $CHECKS (lint, tests, build). Preview, once the Deploy workflow for this branch finishes: https://$alias.stevenwilssens.pages.dev" \
             "Merging deploys to production. Review the resume PDF in the branch before merging." \
             "🤖 Generated with [Claude Code](https://claude.com/claude-code) from $ORIGIN." \
-            "$marker")
+            "$marker" \
+            "<!-- site-update-request $request -->")
           url=$(gh pr create --base main --head "$BRANCH" --title "$TITLE" --body "$body")
           # A push made with the built-in token starts no workflow, so start the preview build explicitly.
           gh workflow run deploy.yml --ref "$BRANCH"
+          # A redo closes the pull request it replaces, with a pointer to the new one.
+          if [ -n "$SUPERSEDES" ]; then
+            gh pr comment "$SUPERSEDES" --body "Superseded by $url: the same update, redone on a fresh branch from main." || true
+            gh pr close "$SUPERSEDES" --delete-branch || gh pr close "$SUPERSEDES" || true
+          fi
           echo "### Pull request: $url" >> "$GITHUB_STEP_SUMMARY"
           echo "Preview (a few minutes after the Deploy workflow for the branch finishes): https://$alias.stevenwilssens.pages.dev" >> "$GITHUB_STEP_SUMMARY"
           echo "url=$url" >> "$GITHUB_OUTPUT"
