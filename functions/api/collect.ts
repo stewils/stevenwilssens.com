@@ -1,6 +1,7 @@
 import type { Env } from '../_lib/env'
 import { isBot, parseUserAgent } from '../_lib/useragent'
 import { visitorHash } from '../_lib/visitor'
+import { D1AskStore } from '../_lib/ask/store'
 
 type Payload = {
   type?: string
@@ -86,9 +87,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
   if (Math.random() < 0.02) {
     waitUntil(env.DB.prepare('DELETE FROM events WHERE ts < ?').bind(now - retentionMs).run())
-    // The assistant's log keeps 90 days, also when nobody asks anything for a while (as /privacy says).
-    // Its own statement, so the events cleanup goes on even where the table is missing.
-    waitUntil(env.DB.prepare('DELETE FROM ask_log WHERE ts < ?').bind(now - askLogMs).run().catch(() => null))
+    // What the assistant keeps goes after 90 days also when nobody asks anything for a while (as
+    // /privacy says). Its own statements, so the events cleanup goes on even if they fail.
+    waitUntil(new D1AskStore(env.DB).prune(now - askLogMs).catch(() => null))
   }
 
   return new Response(null, { status: 204 })

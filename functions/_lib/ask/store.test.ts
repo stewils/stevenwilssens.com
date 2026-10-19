@@ -129,6 +129,20 @@ describe.each(stores)('the %s assistant store after 90 days', (_, make) => {
   })
 })
 
+describe.each(stores)('pruning the %s assistant store', (_, make) => {
+  it('keeps everything from the cut on and prunes only what is older', async () => {
+    const store = make()
+    const cut = 100 * day
+    await store.logQuestion({ ts: cut - 1, visitor: 'before', kind: 'question', page: null, question: 'q', answer: null, outcome: 'answered', country: null, asOrg: null }, 1000 * day)
+    await store.logQuestion({ ts: cut, visitor: 'at', kind: 'question', page: null, question: 'q', answer: null, outcome: 'answered', country: null, asOrg: null }, 1000 * day)
+    await store.saveQuestion(question(cut - 1), 1000 * day)
+    await store.saveQuestion(question(cut), 1000 * day)
+    await store.prune(cut)
+    expect((await store.log(0, 10)).map((e) => e.visitor)).toEqual(['at'])
+    expect((await store.questions(0, 10)).map((q) => q.ts)).toEqual([cut])
+  })
+})
+
 describe.each(stores)('the %s assistant log', (_, make) => {
   const entry = (ts: number, visitor = 'v') => ({ ts, visitor, kind: 'question' as const, page: 'home', question: `q at ${ts}`, answer: null, outcome: 'answered' as const, country: null, asOrg: null })
 

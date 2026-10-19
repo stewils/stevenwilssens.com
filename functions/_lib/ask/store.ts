@@ -41,6 +41,9 @@ export interface AskStore {
   allVotes(): Promise<{ helpful: number; unhelpful: number }>
   // Every question with the visitor who asked it; entries older than keepMs go.
   logQuestion(entry: LogInput, keepMs: number): Promise<void>
+  // What /privacy promises for everything older than `before`: the log and open questions
+  // deleted, closed questions stripped to the question. Run on every save and periodically.
+  prune(before: number): Promise<void>
   // The log since `since`, newest first.
   log(since: number, limit: number): Promise<LogEntry[]>
 }
@@ -95,12 +98,7 @@ export class D1AskStore implements AskStore {
   async saveQuestion(q: QuestionInput, keepMs: number) {
     const row = await this.db.prepare('INSERT INTO ask_questions (ts, reason, page, question, answer, country, as_org) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id')
       .bind(q.ts, q.reason, q.page, q.question, q.answer, q.country, q.asOrg).first<{ id: number }>()
-    // Open questions expire; closed ones stay, since the report card counts them, but after
-    // keepMs only the question is left: not the assistant's answer, the page or where it came from.
-    await this.db.batch([
-      this.db.prepare('DELETE FROM ask_questions WHERE ts < ? AND resolved_at IS NULL').bind(q.ts - keepMs),
-      this.db.prepare('UPDATE ask_questions SET page = NULL, answer = NULL, country = NULL, as_org = NULL WHERE ts < ? AND resolved_at IS NOT NULL AND (page IS NOT NULL OR answer IS NOT NULL OR country IS NOT NULL OR as_org IS NOT NULL)').bind(q.ts - keepMs),
-    ])
+    await this.prune(q.ts - keepMs)
     return row!.id
   }
 
@@ -137,9 +135,17 @@ export class D1AskStore implements AskStore {
   }
 
   async logQuestion(e: LogInput, keepMs: number) {
+    await this.db.prepare('INSERT INTO ask_log (ts, visitor, kind, page, question, answer, outcome, country, as_org) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(e.ts, e.visitor, e.kind, e.page, e.question, e.answer, e.outcome, e.country, e.asOrg).run()
+    await this.prune(e.ts - keepMs)
+  }
+
+  async prune(before: number) {
+    // Open questions expire; closed ones stay, since the report card counts them, but only
+    // the question is left: not the assistant's answer, the page or where it came from.
     await this.db.batch([
-      this.db.prepare('INSERT INTO ask_log (ts, visitor, kind, page, question, answer, outcome, country, as_org) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(e.ts, e.visitor, e.kind, e.page, e.question, e.answer, e.outcome, e.country, e.asOrg),
-      this.db.prepare('DELETE FROM ask_log WHERE ts < ?').bind(e.ts - keepMs),
+      this.db.prepare('DELETE FROM ask_log WHERE ts < ?').bind(before),
+      this.db.prepare('DELETE FROM ask_questions WHERE ts < ? AND resolved_at IS NULL').bind(before),
+      this.db.prepare('UPDATE ask_questions SET page = NULL, answer = NULL, country = NULL, as_org = NULL WHERE ts < ? AND resolved_at IS NOT NULL AND (page IS NOT NULL OR answer IS NOT NULL OR country IS NOT NULL OR as_org IS NOT NULL)').bind(before),
     ])
   }
 
@@ -191,8 +197,7 @@ export class MemoryAskStore implements AskStore {
   async saveQuestion(q: QuestionInput, keepMs: number) {
     const id = (this.saved[this.saved.length - 1]?.id ?? 0) + 1
     this.saved.push({ id, ...q, resolvedAt: null, resolution: null, entryId: null })
-    this.saved = this.saved.filter((item) => item.ts >= q.ts - keepMs || item.resolvedAt)
-      .map((item) => item.ts < q.ts - keepMs ? { ...item, page: null, answer: null, country: null, asOrg: null } : item)
+    await this.prune(q.ts - keepMs)
     return id
   }
 
@@ -207,7 +212,12 @@ export class MemoryAskStore implements AskStore {
   async allVotes() { return this.voteRows.reduce((sum, row) => ({ helpful: sum.helpful + row.helpful, unhelpful: sum.unhelpful + row.unhelpful }), { helpful: 0, unhelpful: 0 }) }
   async logQuestion(e: LogInput, keepMs: number) {
     this.entries.push({ id: this.entries.length + 1, ...e })
-    this.entries = this.entries.filter((item) => item.ts >= e.ts - keepMs)
+    await this.prune(e.ts - keepMs)
+  }
+  async prune(before: number) {
+    this.entries = this.entries.filter((item) => item.ts >= before)
+    this.saved = this.saved.filter((item) => item.ts >= before || item.resolvedAt)
+      .map((item) => item.ts < before ? { ...item, page: null, answer: null, country: null, asOrg: null } : item)
   }
   async log(since: number, limit: number) { return this.entries.filter((e) => e.ts >= since).sort((a, b) => b.ts - a.ts).slice(0, limit) }
 }
