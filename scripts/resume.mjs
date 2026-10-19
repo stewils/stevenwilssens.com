@@ -27,6 +27,7 @@ export const layouts = [
   { olderBullets: 1, compact: false },
   { olderBullets: 1, compact: true },
   { olderBullets: 0, compact: true },
+  { olderBullets: 0, compact: true, tight: true },
 ]
 const detailed = experiences.slice(0, 2)
 const condensed = experiences.slice(2).filter((item) => item.company === 'Microsoft')
@@ -44,7 +45,7 @@ const role = (item, points) => `<article class="role">
   </div>
 </article>`
 
-export const resumeHtml = ({ olderBullets = 2, compact = false } = layouts[0]) => `<!doctype html>
+export const resumeHtml = ({ olderBullets = 2, compact = false, tight = false } = layouts[0]) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <title>${esc(profile.name)} · Resume</title>
 <meta name="author" content="${esc(profile.name)}">
@@ -106,8 +107,14 @@ body.compact .role { padding: 5px 0 6px; }
 body.compact .role li { font-size: 8.7pt; line-height: 1.28; }
 body.compact .early div { font-size: 9pt; line-height: 1.3; }
 body.compact .foot { font-size: 8.7pt; }
+/* The tight layout, the last resort: less air between sections and roles, same type. */
+body.tight { line-height: 1.28; }
+body.tight section { margin-top: 6px; }
+body.tight .summary-text { line-height: 1.34; }
+body.tight .role { padding: 4px 0 4px; }
+body.tight .early { gap: 3px; }
 </style></head>
-<body class="${compact ? 'compact' : ''}">
+<body class="${[compact && 'compact', tight && 'tight'].filter(Boolean).join(' ')}">
 <header>
   <div>
     <h1>${esc(profile.name)}</h1>
@@ -205,7 +212,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const result = await buildResume({ out: value('--out') ? resolve(value('--out')) : resumePath, force: args.includes('--force'), html: value('--html') ? resolve(value('--html')) : null })
   if (result.current) console.log(`Current resume\n${formatReport(result.current)}\n`)
   console.log(`New resume\n${formatReport(result.next)}\n`)
-  if (result.layout !== layouts[0]) console.log(`Layout: ${result.layout.olderBullets} bullet${result.layout.olderBullets === 1 ? '' : 's'} on the older Microsoft roles${result.layout.compact ? ', compact type' : ''}, to fit two pages.`)
+  if (result.layout !== layouts[0]) console.log(`Layout: ${result.layout.olderBullets} bullet${result.layout.olderBullets === 1 ? '' : 's'} on the older Microsoft roles${result.layout.compact ? ', compact type' : ''}${result.layout.tight ? ', tight spacing' : ''}, to fit two pages.`)
   if (result.unchanged) console.log('The PDF is already up to date.')
   else if (result.replaced) console.log(`${result.forced ? 'Forced: ' : ''}Wrote ${result.out} (score ${result.current ? `${result.current.score} → ` : ''}${result.next.score}).`)
   else { console.error(`Not replaced: the new resume scores ${result.next.score}, the current one ${result.current.score}. Fix the findings above or pass --force.`); process.exitCode = 1 }
