@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
+import { manifestModule } from './scripts/team-manifest.mjs'
 import { markdownPath, originTrialTokens, pageJsonLd, pageMeta, pagePath, routes, siteUrl, type Page } from './src/pageMeta.ts'
 
 const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
@@ -80,9 +81,27 @@ const staticPages = (): Plugin => {
   }
 }
 
+// The admin's Team page reads the agent team from the orchestration files of the commit being
+// built (scripts/team-manifest.mjs). Only src/admin/ imports it, so it stays in the admin
+// bundle. It never fails the build: what it could not read is printed here and shown on the page.
+const teamManifest = (): Plugin => {
+  const id = 'virtual:team-manifest'
+  const resolved = `\0${id}`
+  return {
+    name: 'team-manifest',
+    resolveId: (source) => (source === id ? resolved : null),
+    load(source) {
+      if (source !== resolved) return null
+      const { code, problems } = manifestModule({ root: import.meta.dirname })
+      for (const problem of problems) this.warn(`Team page: ${problem}`)
+      return code
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), staticPages()],
+  plugins: [react(), staticPages(), teamManifest()],
   build: {
     // Photos stay real files: small ones inlined as data: URIs show up as empty
     // images to scrapers, link previews and AI readers.

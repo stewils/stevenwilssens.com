@@ -1,3 +1,5 @@
+import type { TeamManifest, TeamReads } from './team-types'
+
 // What the admin APIs return. functions/api/stats.ts, functions/api/mcp.ts,
 // functions/api/ask/admin.ts and functions/api/resume.ts write these shapes.
 
@@ -85,5 +87,9 @@ export type ResumeReport = {
 export type ScoreRow = { pdfHash: string; score: number; errors: number; warnings: number; pages: number; bytes: number; commit: string | null; commitMessage: string | null; findings: { severity: string; id: string; message: string }[]; checkedAt: number; firstSeen: number }
 export type ResumeInfo = { report: ResumeReport | null; history: ScoreRow[] }
 
+// The Team page: the manifest from the build, and what Steven has seen (null until
+// /api/team answers, or when it failed: then readsError says why).
+export type TeamData = { manifest: TeamManifest; reads: TeamReads | null; readsError: string }
+
 // Everything the dashboard has loaded; null until each API has answered.
-export type AdminData = { days: number; stats: Stats | null; mcp: McpInfo | null; ask: AskInfo | null; resume: ResumeInfo | null }
+export type AdminData = { days: number; stats: Stats | null; mcp: McpInfo | null; ask: AskInfo | null; resume: ResumeInfo | null; team?: TeamData }

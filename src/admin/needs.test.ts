@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { badgeCounts, computeNeeds, computeSummaries } from './needs'
-import type { AdminData, AskInfo, McpInfo, ResumeInfo, Stats } from './types'
+import { makeTeamManifest, makeTeamReads, makeUpdate, sha } from '../test/admin-fixtures'
+import type { AdminData, AskInfo, McpInfo, ResumeInfo, Stats, TeamData } from './types'
 
 const stats = {
   totals: { visitors: 12, pageviews: 30, downloads: 3, downloaders: 2, contactClicks: 1, avgDurationMs: null, avgScrollPct: null, bounceRate: null },
@@ -91,5 +92,52 @@ describe('what needs Steven', () => {
     expect(one.sources).toBe('No visits in this range yet')
     expect(one.resume).toBe('ATS score 90/100 · ? pages · 1 warning')
     expect(one.mcp).toContain('1 public call')
+  })
+})
+
+describe('the Team page in Needs you, the badge and the tile', () => {
+  const manifest = makeTeamManifest()
+  const team = (reads: TeamData['reads'], extra: Partial<TeamData> = {}): AdminData => ({ days: 30, stats: null, mcp: null, ask: null, resume: null, team: { manifest, reads, readsError: '', ...extra } })
+
+  it('has one Team line with the number not seen, worded for several, and badges the menu', () => {
+    const needs = computeNeeds(team(makeTeamReads()))
+    expect(needs).toEqual([{ key: 'team-unread', page: 'team', n: 2, text: 'changes to your agent team you have not seen, the latest “The panel reviews every draft”' }])
+    expect(badgeCounts(needs)).toEqual({ team: 2 })
+    expect(computeSummaries(team(makeTeamReads())).team).toBe('2 roles · 1 command · last change 19 Oct · 2 not seen')
+  })
+
+  it('words one change on its own', () => {
+    const [need] = computeNeeds(team(makeTeamReads({ read: [sha('3')] })))
+    expect(need).toMatchObject({ n: 1, text: 'change to your agent team you have not seen: “The Team page shows the team”' })
+  })
+
+  it('has no Team line, no badge and no "not seen" on the tile when all are read', () => {
+    const data = team(makeTeamReads({ read: [sha('2'), sha('3')] }))
+    expect(computeNeeds(data)).toEqual([])
+    expect(badgeCounts(computeNeeds(data))).toEqual({})
+    expect(computeSummaries(data).team).toBe('2 roles · 1 command · last change 19 Oct')
+  })
+
+  it('counts a change from before the launch only when it was marked unread', () => {
+    expect(computeNeeds(team(makeTeamReads({ read: [sha('2'), sha('3')], unread: [sha('1')] })))[0]).toMatchObject({ n: 1, text: expect.stringContaining('The editors review every change') })
+  })
+
+  it('counts nothing while the read state is loading or unavailable, without a history or without the launch', () => {
+    expect(computeNeeds(team(null))).toEqual([])
+    expect(computeNeeds(team(null, { readsError: 'HTTP 500' }))).toEqual([])
+    expect(computeSummaries(team(null)).team).toBe('2 roles · 1 command · last change 19 Oct')
+    const noHistory: AdminData = { ...team(makeTeamReads()), team: { manifest: makeTeamManifest({ history: null }), reads: makeTeamReads(), readsError: '' } }
+    expect(computeNeeds(noHistory)).toEqual([])
+    expect(computeSummaries(noHistory).team).toBe('2 roles · 1 command')
+    const noLaunch: AdminData = { ...team(makeTeamReads()), team: { manifest: makeTeamManifest({ launch: null }), reads: makeTeamReads(), readsError: '' } }
+    expect(computeNeeds(noLaunch)).toEqual([])
+  })
+
+  it('quotes the latest summary cut at 80 code points, never inside an emoji', () => {
+    const summary = `${'a'.repeat(79)}😀${'b'.repeat(120)}`
+    const long: AdminData = { ...team(makeTeamReads()), team: { manifest: makeTeamManifest({ history: { updates: [makeUpdate({ summary })], older: 0, truncated: false } }), reads: makeTeamReads(), readsError: '' } }
+    const [need] = computeNeeds(long)
+    expect(need.text).toBe(`change to your agent team you have not seen: “${'a'.repeat(79)}😀…”`)
+    expect(need.text).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/)
   })
 })

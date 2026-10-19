@@ -1,7 +1,7 @@
 // The screenshot script's options (scripts/screenshots-options.mjs): which pages it takes,
 // and that the local admin token never goes to another host.
-import { describe, expect, it } from 'vitest'
-import { normalizePaths, OptionError, parseDevVars, resolveOptions } from './screenshots-options.mjs'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { measureScroller, normalizePaths, OptionError, parseDevVars, resolveOptions, scrollScrollerTo, sliceTops, STICKY, viewportsFor } from './screenshots-options.mjs'
 
 const preview = 'https://review-team.stevenwilssens.pages.dev'
 
@@ -62,5 +62,62 @@ describe('the admin token', () => {
 describe('.dev.vars', () => {
   it('reads KEY=value lines and skips comments, blanks and lines without =', () => {
     expect(parseDevVars('# comment\n\nADMIN_TOKEN=a=b\r\nOTHER = x\nnonsense\n')).toEqual({ ADMIN_TOKEN: 'a=b', 'OTHER ': ' x' })
+  })
+})
+
+describe('the widths', () => {
+  it('takes desktop and phone by default, the phone at 2x with slices, and any other width by its number', () => {
+    expect(viewportsFor()).toEqual([{ name: 'desktop', width: 1440, height: 900, scale: 1 }, { name: 'phone', width: 390, height: 844, scale: 1 }])
+    expect(viewportsFor('1440, 1280,390', true)).toEqual([
+      { name: 'desktop', width: 1440, height: 900, scale: 1 },
+      { name: 'w1280', width: 1280, height: 800, scale: 1 },
+      { name: 'phone', width: 390, height: 844, scale: 2 },
+    ])
+    expect(viewportsFor('320')).toEqual([{ name: 'w320', width: 320, height: 844, scale: 1 }])
+  })
+
+  it('refuses a width that is not a number of pixels a screen has', () => {
+    for (const widths of ['wide', '1280px', '100', '5000', '1440,-1']) expect(() => viewportsFor(widths), widths).toThrow(OptionError)
+  })
+})
+
+// The admin's pane scrolls, the window does not: the shots follow whatever scrolls.
+describe('what the screenshots scroll', () => {
+  const sized = (element, scrollHeight, clientHeight) => {
+    Object.defineProperty(element, 'scrollHeight', { configurable: true, value: scrollHeight })
+    Object.defineProperty(element, 'clientHeight', { configurable: true, value: clientHeight })
+    return element
+  }
+  afterEach(() => { document.body.innerHTML = ''; vi.unstubAllGlobals(); delete document.documentElement.scrollHeight; delete document.documentElement.clientHeight })
+
+  it('measures and scrolls the admin pane when it scrolls', async () => {
+    vi.stubGlobal('requestAnimationFrame', (callback) => setTimeout(callback, 0))
+    const pane = sized(Object.assign(document.createElement('main'), { className: 'main' }), 4000, 860)
+    document.body.append(pane)
+    sized(document.documentElement, 900, 900)
+    expect(measureScroller()).toEqual({ pane: true, scrollHeight: 4000, clientHeight: 860 })
+    expect(await scrollScrollerTo(800)).toBe(800)
+    expect(pane.scrollTop).toBe(800)
+    expect(document.documentElement.scrollTop).toBe(0)
+  })
+
+  it('measures and scrolls the document on a page without a pane, or with one that does not scroll', async () => {
+    vi.stubGlobal('requestAnimationFrame', (callback) => setTimeout(callback, 0))
+    sized(document.documentElement, 3000, 900)
+    expect(measureScroller()).toEqual({ pane: false, scrollHeight: 3000, clientHeight: 900 })
+    const pane = sized(Object.assign(document.createElement('main'), { className: 'main' }), 500, 860)
+    document.body.append(pane)
+    expect(measureScroller()).toEqual({ pane: false, scrollHeight: 3000, clientHeight: 900 })
+    await scrollScrollerTo(900)
+    expect(document.documentElement.scrollTop).toBe(900)
+    expect(pane.scrollTop).toBe(0)
+  })
+
+  it('slices the pane a screen less the sticky bar at a time, the window a screen at a time, ending at the bottom', () => {
+    expect(STICKY).toBe(60)
+    expect(sliceTops({ pane: true, scrollHeight: 2000, clientHeight: 860 })).toEqual([0, 800, 1140])
+    expect(sliceTops({ pane: false, scrollHeight: 2000, clientHeight: 900 })).toEqual([0, 900, 1100])
+    expect(sliceTops({ pane: false, scrollHeight: 600, clientHeight: 900 })).toEqual([0])
+    expect(sliceTops({ pane: true, scrollHeight: 1000, clientHeight: 40 })).toEqual(Array.from({ length: 960 }, (_, top) => top).concat(960))
   })
 })

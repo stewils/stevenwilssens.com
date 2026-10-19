@@ -175,4 +175,12 @@ describe('the team diagram on /building-this-site', () => {
     // It fits a phone without swiping, so its caption drops the swipe hint.
     expect(images[0].closest('figure')).toHaveClass('wx-diagram--fits')
   })
+
+  it('says that changes to the team reach Steven in his admin as unread updates, with no number typed in', () => {
+    render(<SiteArticle />)
+    const step = within(document.getElementById('loop')!.closest('section')!).getByText('Put every change past a team.').closest('li')!
+    const sentence = step.textContent!.match(/[^.]*unread updates[^.]*\./)![0].trim()
+    expect(sentence).toBe('Changes to the agent team itself reach me in my admin as unread updates until I have seen them.')
+    expect(sentence).not.toMatch(/\d/)
+  })
 })

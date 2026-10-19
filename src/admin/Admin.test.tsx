@@ -1,16 +1,16 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import Admin from './Admin'
-import { makeAsk, makeMcp, makeResume, makeStats, NOW } from '../test/admin-fixtures'
+import { makeAsk, makeMcp, makeResume, makeStats, makeTeamReads, NOW, sha } from '../test/admin-fixtures'
 
 // The dashboard against a fake admin API: /api/stats, /api/ask/admin, /api/mcp and
-// /api/resume answer with the shapes the Pages Functions write.
+// /api/resume and /api/team answer with the shapes the Pages Functions write.
 type Answer = { status?: number; body?: unknown } | Error | 'pending'
-type Routes = Partial<Record<'stats' | 'ask' | 'mcp' | 'resume', Answer>>
-const routeOf = (url: string) => (url.startsWith('/api/stats') ? 'stats' : url.startsWith('/api/ask/admin') ? 'ask' : url.startsWith('/api/mcp') ? 'mcp' : 'resume')
-const bodies = { stats: makeStats, ask: makeAsk, mcp: makeMcp, resume: makeResume }
+type Routes = Partial<Record<'stats' | 'ask' | 'mcp' | 'resume' | 'team', Answer>>
+const routeOf = (url: string) => (url.startsWith('/api/stats') ? 'stats' : url.startsWith('/api/ask/admin') ? 'ask' : url.startsWith('/api/mcp') ? 'mcp' : url.startsWith('/api/team') ? 'team' : 'resume')
+const bodies = { stats: makeStats, ask: makeAsk, mcp: makeMcp, resume: makeResume, team: makeTeamReads }
 
-let fetchMock: Mock<(url: string) => Promise<Response>>
+let fetchMock: Mock<(url: string, init?: RequestInit) => Promise<Response>>
 const serve = (routes: Routes = {}) => {
   fetchMock = vi.fn((url: string): Promise<Response> => {
     const route = routeOf(url)
@@ -114,6 +114,7 @@ describe('the dashboard', () => {
       ['resume', 'Résumé', () => screen.getByRole('table', { name: 'Résumé proposals' })],
       ['assistant', 'Ask about Steven', () => screen.getByRole('table', { name: 'Questions waiting' })],
       ['mcp', 'Career MCP', () => screen.getByRole('heading', { name: 'Your career MCP' })],
+      ['team', 'Team', () => screen.getByRole('heading', { name: /How a change gets to main/ })],
       ['links', 'Links', () => screen.getByRole('heading', { name: 'Cloudflare' })],
       ['nowhere', 'Overview', () => screen.getByRole('heading', { name: 'Needs you' })],
     ]
@@ -228,6 +229,165 @@ describe('the dashboard', () => {
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
     act(() => { document.dispatchEvent(new Event('visibilitychange')) })
     expect(urls()).not.toContain('/api/mcp?r=1')
+  })
+})
+
+describe('the Team page', () => {
+  const menu = () => within(screen.getByRole('navigation', { name: 'Admin pages' }))
+  const teamPosts = () => fetchMock.mock.calls.filter(([url, init]) => url === '/api/team' && (init as RequestInit | undefined)?.method === 'POST')
+
+  it('lists Team after Career MCP and before Links and opens it at #team', async () => {
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    const titles = menu().getAllByRole('link').map((link) => link.querySelector('.lbl')!.textContent)
+    expect(titles.slice(titles.indexOf('Career MCP'), titles.indexOf('Links') + 1)).toEqual(['Career MCP', 'Team', 'Links'])
+    expect(menu().getByRole('link', { name: /^Team/ })).toHaveAttribute('href', '#team')
+    go('team')
+    expect(heading()).toHaveTextContent('Team')
+    expect(document.title).toBe('Team · Admin · steven.wilssens.com')
+    expect(screen.getByText(/^The agents that write, build and review every change/)).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Time range' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /How a change gets to main/ })).toBeInTheDocument()
+    expect(urls()).toContain('/api/team?r=0')
+  })
+
+  it('leaves #assistant with the same parts and copy', async () => {
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    go('assistant')
+    expect(heading()).toHaveTextContent('Ask about Steven')
+    const parts = [...document.querySelectorAll<HTMLElement>('.page [data-part]')]
+    expect(parts.map((part) => part.dataset.part)).toEqual(['Use and cost', 'Waiting for you'])
+    expect(parts.map((part) => part.querySelector('h2')!.textContent)).toEqual(['Use and cost', 'Questions waiting for you'])
+  })
+
+  it('shows the number not seen on the menu item, named "Team, N not seen"', async () => {
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    await waitFor(() => expect(menu().getByRole('link', { name: 'Team, 2 not seen' })).toBeInTheDocument())
+    expect(screen.getByRole('link', { name: /changes to your agent team you have not seen, the latest/ })).toHaveAttribute('href', '#team')
+  })
+
+  it('says when what Steven has seen could not be loaded, and the other pages keep working', async () => {
+    serve({ team: { status: 500 } })
+    render(<Admin />)
+    expect(await screen.findByText('Could not load what you have seen on the Team page (HTTP 500).')).toBeInTheDocument()
+    expect(await screen.findByText('40', { selector: 'dd' })).toBeInTheDocument()
+    expect(menu().getByRole('link', { name: 'Team' })).toBeInTheDocument()
+    go('team')
+    expect(screen.getByText('Seen state unavailable')).toBeInTheDocument()
+    go('mcp')
+    expect(screen.getByRole('heading', { name: 'Your career MCP' })).toBeInTheDocument()
+  })
+
+  it('records the changes as seen after 5 seconds on the page, and the badge and the need go', async () => {
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    await waitFor(() => expect(menu().getByRole('link', { name: 'Team, 2 not seen' })).toBeInTheDocument())
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(NOW)
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    go('team')
+    fetchMock.mockImplementation((url: string) => Promise.resolve(new Response(JSON.stringify(url === '/api/team' ? makeTeamReads({ read: [sha('2'), sha('3')] }) : {}), { status: 200 })))
+    await act(async () => { vi.advanceTimersByTime(5000) })
+    expect(teamPosts()).toHaveLength(1)
+    const [, init] = teamPosts()[0] as [string, RequestInit]
+    expect(init.headers).toEqual({ Authorization: 'Bearer secret', 'Content-Type': 'application/json' })
+    expect(JSON.parse(init.body as string)).toEqual({ action: 'readAll', ids: [sha('3'), sha('2')] })
+    expect(screen.getByText('Marked as seen')).toBeInTheDocument()
+    expect(menu().getByRole('link', { name: 'Team' })).not.toHaveTextContent(/\d/)
+    go('overview')
+    expect(screen.queryByText(/your agent team you have not seen/)).not.toBeInTheDocument()
+  })
+
+  it('keeps everything unread when saving fails, and signs out when the token is refused', async () => {
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    await waitFor(() => expect(menu().getByRole('link', { name: 'Team, 2 not seen' })).toBeInTheDocument())
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(NOW)
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    fetchMock.mockImplementation(() => Promise.resolve(new Response('{}', { status: 500 })))
+    go('team')
+    await act(async () => { vi.advanceTimersByTime(5000) })
+    expect(screen.getByText('Could not record that you have seen this; it will be tried again on your next visit.')).toBeInTheDocument()
+    expect(menu().getByRole('link', { name: 'Team, 2 not seen' })).toBeInTheDocument()
+    go('overview')
+    fetchMock.mockImplementation(() => Promise.reject(new Error('offline')))
+    go('team')
+    await act(async () => { vi.advanceTimersByTime(5000) })
+    expect(teamPosts()).toHaveLength(2)
+    expect(screen.getByText(/it will be tried again on your next visit/)).toBeInTheDocument()
+    go('overview')
+    fetchMock.mockImplementation(() => Promise.resolve(new Response('{}', { status: 401 })))
+    go('team')
+    await act(async () => { vi.advanceTimersByTime(5000) })
+    expect(screen.getByText('That token was not accepted.')).toBeInTheDocument()
+  })
+
+  // Answers per route after the first load: GET /api/team as given, POST /api/team as given, the rest as usual.
+  const answer = (get: () => Promise<Response>, post: () => Promise<Response> = () => Promise.resolve(new Response('{}', { status: 500 }))) => {
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/api/team' && init?.method === 'POST') return post()
+      if (url.startsWith('/api/team')) return get()
+      return Promise.resolve(new Response(JSON.stringify(bodies[routeOf(url)]()), { status: 200 }))
+    })
+  }
+  const json = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))
+  const markSeen = async () => {
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    await waitFor(() => expect(menu().getByRole('link', { name: 'Team, 2 not seen' })).toBeInTheDocument())
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(NOW)
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    answer(() => json(makeTeamReads()), () => json(makeTeamReads({ read: [sha('2'), sha('3')] })))
+    go('team')
+    await act(async () => { vi.advanceTimersByTime(5000) })
+    expect(menu().getByRole('link', { name: 'Team' })).not.toHaveTextContent(/\d/)
+  }
+  const refresh = () => act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Refresh' })) })
+
+  it('keeps what was saved while the next load runs, instead of the read state from before it', async () => {
+    await markSeen()
+    answer(() => new Promise<Response>(() => {}))
+    await refresh()
+    expect(screen.getByRole('button', { name: 'Loading…' })).toBeDisabled()
+    expect(menu().getByRole('link', { name: 'Team' })).not.toHaveTextContent(/\d/)
+    go('overview')
+    expect(screen.queryByText(/your agent team you have not seen/)).not.toBeInTheDocument()
+  })
+
+  it('counts nothing as unread when a later load of the read state fails (AC-15)', async () => {
+    await markSeen()
+    answer(() => Promise.resolve(new Response('{}', { status: 500 })))
+    await refresh()
+    // Fake timers: let the answers settle without waitFor.
+    for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve() })
+    expect(screen.getByText('Could not load what you have seen on the Team page (HTTP 500).')).toBeInTheDocument()
+    expect(menu().getByRole('link', { name: 'Team' })).not.toHaveTextContent(/\d/)
+    go('overview')
+    expect(screen.queryByText(/your agent team you have not seen/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the answer to the later of two saves in flight, whichever arrives last', async () => {
+    serve({ team: { body: makeTeamReads({ read: [sha('2'), sha('3')] }) } })
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    go('team')
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Mark as unread' })).toHaveLength(3))
+    const pending: ((response: Response) => void)[] = []
+    answer(() => json(makeTeamReads()), () => new Promise<Response>((resolve) => { pending.push(resolve) }))
+    const row = (summary: string) => screen.getByText(summary).closest('li')!
+    fireEvent.click(within(row('The panel reviews every draft')).getByRole('button', { name: 'Mark as unread' }))
+    fireEvent.click(within(row('The Team page shows the team')).getByRole('button', { name: 'Mark as unread' }))
+    expect(pending).toHaveLength(2)
+    await act(async () => { pending[1](new Response(JSON.stringify(makeTeamReads({ unread: [sha('2'), sha('3')] })), { status: 200 })) })
+    await waitFor(() => expect(menu().getByRole('link', { name: 'Team, 2 not seen' })).toBeInTheDocument())
+    // The first save's answer comes last, and is older than the second's: it does not count.
+    await act(async () => { pending[0](new Response(JSON.stringify(makeTeamReads({ read: [sha('2')], unread: [sha('3')] })), { status: 200 })) })
+    expect(menu().getByRole('link', { name: 'Team, 2 not seen' })).toBeInTheDocument()
+    expect(within(row('The panel reviews every draft')).getByRole('button', { name: 'Marked as unread' })).toBeInTheDocument()
   })
 })
 

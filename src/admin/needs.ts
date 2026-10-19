@@ -2,13 +2,14 @@
 // derived from the loaded data, so they are pure and tested in needs.test.ts.
 import { formatNumber, formatUsd, projectMonth } from './format'
 import type { PageId } from './pages'
+import { cutLine, tileLine, unreadUpdates } from './team-state'
 import type { AdminData } from './types'
 
 export type Need = { key: string; page: PageId; n: number; text: string }
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
 
-export const computeNeeds = ({ stats, mcp, ask, resume }: AdminData, now = new Date()): Need[] => {
+export const computeNeeds = ({ stats, mcp, ask, resume, team }: AdminData, now = new Date()): Need[] => {
   const needs: Need[] = []
   const add = (key: string, page: PageId, n: number, text: string) => { if (n > 0) needs.push({ key, page, n, text }) }
 
@@ -39,6 +40,12 @@ export const computeNeeds = ({ stats, mcp, ask, resume }: AdminData, now = new D
     // The pace only means something once a few days are in; day one would multiply a single question by thirty.
     else if (now.getUTCDate() >= 3 && projected > budget) add('ask-pace', 'assistant', 1, `at this pace the assistant's budget runs out before the month ends (about ${formatUsd(projected)} of ${formatUsd(budget)})`)
   }
+  if (team) {
+    // Changes to the agent team Steven has not seen yet, like unread mail (the Team page).
+    const unread = unreadUpdates(team.manifest, team.reads)
+    const line = unread[0] ? `“${cutLine(unread[0].summary)}”` : ''
+    add('team-unread', 'team', unread.length, unread.length === 1 ? `change to your agent team you have not seen: ${line}` : `changes to your agent team you have not seen, the latest ${line}`)
+  }
   if (stats) {
     const failing = stats.vitals.devices.filter((device) => device.passes === false).length
     add('vitals', 'speed', failing, plural(failing, 'device type fails Core Web Vitals', 'device types fail Core Web Vitals'))
@@ -54,7 +61,7 @@ export const badgeCounts = (needs: Need[]) => {
   return counts
 }
 
-export const computeSummaries = ({ stats, mcp, ask, resume }: AdminData): Partial<Record<PageId, string>> => {
+export const computeSummaries = ({ stats, mcp, ask, resume, team }: AdminData): Partial<Record<PageId, string>> => {
   const summaries: Partial<Record<PageId, string>> = {}
   if (stats) {
     const { totals } = stats
@@ -75,5 +82,6 @@ export const computeSummaries = ({ stats, mcp, ask, resume }: AdminData): Partia
   }
   if (ask) summaries.assistant = `${formatUsd(ask.month.costMicro)} of ${formatUsd(ask.budgetUsd * 1_000_000)} this month · ${formatNumber(ask.month.questions)} questions · ${formatNumber(ask.month.gap)} gaps`
   if (mcp) summaries.mcp = `${formatNumber(mcp.entries.total)} dossier entries across ${mcp.entries.roles} roles · ${formatNumber(mcp.entries.public)} public${mcp.publicCalls ? ` · ${formatNumber(mcp.publicCalls.total)} public ${plural(mcp.publicCalls.total, 'call', 'calls')}` : ''}`
+  if (team) summaries.team = tileLine(team.manifest, unreadUpdates(team.manifest, team.reads).length)
   return summaries
 }

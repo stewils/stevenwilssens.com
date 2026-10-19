@@ -1,6 +1,6 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { makeAsk, makeMcp, makeResume, makeStats, NOW } from '../test/admin-fixtures'
+import { makeAsk, makeMcp, makeResume, makeStats, makeTeamManifest, makeTeamReads, NOW, sha } from '../test/admin-fixtures'
 import { computeNeeds, computeSummaries } from './needs'
 import { Overview } from './Overview'
 import type { AdminData, ResumeReport } from './types'
@@ -38,7 +38,7 @@ describe('Overview', () => {
     expect(need).toHaveAttribute('href', '#speed')
     expect(need).toHaveTextContent('Page speed →')
     const tiles = screen.getByRole('heading', { name: 'Go to' }).closest('section')!
-    expect(within(tiles).getAllByRole('link')).toHaveLength(9)
+    expect(within(tiles).getAllByRole('link')).toHaveLength(10)
     expect(within(tiles).getByRole('link', { name: /Links/ })).toHaveTextContent('Every address for running the site')
     expect(within(tiles).getByRole('link', { name: /Traffic/ })).toHaveTextContent('40 visitors · 120 pageviews · 6 résumé downloads')
   })
@@ -56,6 +56,27 @@ describe('Overview', () => {
     expect(container.querySelector('.needs .skeleton')).not.toBeNull()
     expect(container.querySelectorAll('.kpi-shimmer')).toHaveLength(6)
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('shows a Team tile with the roles, commands and the last change, from the manifest, and how many are not seen', () => {
+    const tile = () => within(screen.getByRole('heading', { name: 'Go to' }).closest('section')!).getByRole('link', { name: /^Team/ })
+    const { unmount } = show(full({ team: { manifest: makeTeamManifest(), reads: makeTeamReads(), readsError: '' } }))
+    expect(tile()).toHaveAttribute('href', '#team')
+    expect(tile()).toHaveTextContent('2 roles · 1 command · last change 19 Oct · 2 not seen')
+    expect(screen.getByRole('link', { name: /changes to your agent team you have not seen, the latest “The panel reviews every draft”/ })).toHaveAttribute('href', '#team')
+    unmount()
+    show(full({ team: { manifest: makeTeamManifest(), reads: makeTeamReads({ read: [sha('2'), sha('3')] }), readsError: '' } }))
+    expect(tile()).toHaveTextContent('2 roles · 1 command · last change 19 Oct')
+    expect(tile()).not.toHaveTextContent('not seen')
+  })
+
+  it('waits for the Team read state, but not forever when it failed', () => {
+    const manifest = makeTeamManifest()
+    const clear = { resume: makeResume({ report: null, history: [] }), mcp: makeMcp({ proposals: [] }), ask: makeAsk({ questions: [] }) }
+    const { container, rerender } = render(<Overview data={full({ ...clear, team: { manifest, reads: null, readsError: '' } })} needs={[]} summaries={{}} />)
+    expect(container.querySelector('.needs .skeleton')).not.toBeNull()
+    rerender(<Overview data={full({ ...clear, team: { manifest, reads: null, readsError: 'HTTP 500' } })} needs={[]} summaries={{}} />)
+    expect(screen.getByText('Nothing is waiting for you.')).toBeInTheDocument()
   })
 
   it('colors the score and words the warnings for older reports', () => {
