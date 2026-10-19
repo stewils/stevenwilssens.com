@@ -37,6 +37,21 @@ flowchart TD
   reviews -- changes requested, max 3 rounds --> fix[Developer fixes] --> reviews
   reviews -- all approve --> pr[Pull request + Review check on GitHub: main's gates and team review]
   pr --> merge([Steven merges]) --> deploy[Deploy to steven.wilssens.com]
+  classDef you stroke-width:3px
+  classDef gate stroke-dasharray:4 3
+  class ask,steven1,merge you
+  class spec,reviews,pr gate
+  %% The admin's Team page draws this chart (scripts/team-manifest.mjs): every numbered step
+  %% below is tied to its node; "you" is where Steven decides, "gate" where a change stops until it passes.
+  %% step 1: ask
+  %% step 2: spec
+  %% step 3: q
+  %% step 4: spec
+  %% step 5: build
+  %% step 6: reviews
+  %% step 7: fix
+  %% step 8: pr
+  %% step 9: merge
 ```
 
 

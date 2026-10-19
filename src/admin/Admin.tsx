@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import teamManifest from 'virtual:team-manifest'
 import { ignoreKey } from '../analytics'
 import { AssistantPage } from './AssistantPage'
 import { AudiencePage } from './AudiencePage'
@@ -14,6 +15,8 @@ import { PageSkeleton } from './Skeleton'
 import { SourcesPage } from './SourcesPage'
 import { SpeedPage } from './SpeedPage'
 import { SubNav } from './SubNav'
+import { TeamPage, type TeamAction } from './TeamPage'
+import type { TeamReads } from './team-types'
 import { TrafficPage } from './TrafficPage'
 import type { AdminData, AskInfo, McpInfo, ResumeInfo, Stats } from './types'
 
@@ -94,6 +97,21 @@ export default function Admin() {
   const ask = useApi<AskInfo>(`/api/ask/admin?days=${days}&r=${refreshCount}`, token, rejected)
   const mcp = useApi<McpInfo>(`/api/mcp?r=${refreshCount}`, token, rejected)
   const resume = useApi<ResumeInfo>(`/api/resume?r=${refreshCount}`, token, rejected)
+  const team = useApi<TeamReads>(`/api/team?r=${refreshCount}`, token, rejected)
+  // What the Team page last saved (seen, undo, mark as unread): the server's answer, until the next load.
+  const [posted, setPosted] = useState<{ reads: TeamReads; refresh: number } | null>(null)
+  const teamReads = posted && posted.refresh === refreshCount ? posted.reads : team.data
+  const postTeam = useCallback(async (action: TeamAction, ids: string[]) => {
+    try {
+      const response = await fetch('/api/team', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ids }) })
+      if (response.status === 401) { rejected(); return false }
+      if (!response.ok) return false
+      setPosted({ reads: (await response.json()) as TeamReads, refresh: refreshCount })
+      return true
+    } catch {
+      return false
+    }
+  }, [token, rejected, refreshCount])
 
   useEffect(() => {
     const onChange = () => setHash(readHash())
@@ -124,13 +142,14 @@ export default function Admin() {
 
   if (!token) return <Login onSubmit={(value) => { storage.set(tokenKey, value); storage.set(ignoreKey, '1'); setIgnored(true); setLoginError(''); setToken(value) }} error={loginError} />
 
-  const data: AdminData = { days, stats: stats.data, mcp: mcp.data, ask: ask.data, resume: resume.data }
+  const data: AdminData = { days, stats: stats.data, mcp: mcp.data, ask: ask.data, resume: resume.data, team: { manifest: teamManifest, reads: teamReads, readsError: team.error } }
   const needs = computeNeeds(data)
   const badges = badgeCounts(needs)
   const summaries = computeSummaries(data)
-  const loading = stats.loading || ask.loading || mcp.loading || resume.loading
-  const errors = [['visitor data', stats.error], ['the assistant', ask.error], ['the MCP', mcp.error], ['the résumé', resume.error]].filter(([, error]) => error).map(([what, error]) => `Could not load ${what} (${error}).`)
-  const version = `${Boolean(stats.data)}${Boolean(ask.data)}${Boolean(mcp.data)}${Boolean(resume.data)}|${days}|${refreshCount}`
+  const loading = stats.loading || ask.loading || mcp.loading || resume.loading || team.loading
+  const errors = [['visitor data', stats.error], ['the assistant', ask.error], ['the MCP', mcp.error], ['the résumé', resume.error], ['what you have seen on the Team page', team.error]].filter(([, error]) => error).map(([what, error]) => `Could not load ${what} (${error}).`)
+  // The section bar reads the parts again when the Team page's read state arrives (its "new" dots).
+  const version = `${Boolean(stats.data)}${Boolean(ask.data)}${Boolean(mcp.data)}${Boolean(resume.data)}${Boolean(teamReads)}|${days}|${refreshCount}`
   const waiting = (what: string, chart = true) => <PageSkeleton what={what} chart={chart} />
 
   const content = () => {
@@ -143,6 +162,7 @@ export default function Admin() {
       case 'resume': return resume.data ? <ResumePage resume={resume.data} proposals={mcp.data?.proposals ?? null} /> : waiting('the résumé report', false)
       case 'assistant': return ask.data ? <AssistantPage info={ask.data} days={days} /> : waiting("the assistant's numbers")
       case 'mcp': return mcp.data ? <McpPage info={mcp.data} /> : waiting('the MCP details', false)
+      case 'team': return <TeamPage manifest={teamManifest} reads={teamReads} readsError={team.error} onPost={postTeam} />
       case 'links': return <LinksPage />
       default: return <Overview data={data} needs={needs} summaries={summaries} />
     }
@@ -154,7 +174,7 @@ export default function Admin() {
         <a className="brand" href="#overview"><span className="mark" aria-hidden="true">SW</span><span>steven.wilssens.com<small>Admin</small></span></a>
         <nav className="tabs" aria-label="Admin pages">
           {pages.map((item) => (
-            <a key={item.id} href={`#${item.id}`} aria-current={item.id === page.id ? 'page' : undefined}>
+            <a key={item.id} href={`#${item.id}`} aria-current={item.id === page.id ? 'page' : undefined} aria-label={item.badgeNote && (badges[item.id] ?? 0) > 0 ? `${item.title}, ${badges[item.id]} ${item.badgeNote}` : undefined}>
               {item.icon}<span className="lbl">{item.title}</span>
               {(badges[item.id] ?? 0) > 0 && <span className="tab-badge">{badges[item.id]! > 99 ? '99+' : badges[item.id]}</span>}
             </a>

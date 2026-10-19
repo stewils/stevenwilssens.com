@@ -1,0 +1,93 @@
+import type { CSSProperties } from 'react'
+import type { DiagramNode, Flow } from './team-types'
+
+// How a change gets to main, drawn from the chart in .claude/team.md (the build-time
+// manifest): an ordered list of the chart's nodes in a figure, laid out with CSS. Wide cards
+// get two lanes (You above, Team below) in the order of the chart; below 700px of card
+// width, or from 11 nodes, one node per row. Every word comes from the manifest; this file
+// only knows the four shapes (a node, a decision, a parallel group, a loop back). The
+// screen reader hears each node as a sentence; arrows and lanes are decoration. Nothing in
+// it takes focus.
+
+const stepWords = (steps: number[]) => (steps.length === 0 ? '' : steps.length === 1 ? `Step ${steps[0]}, ` : `Steps ${steps.slice(0, -1).join(', ')} and ${steps[steps.length - 1]}, `)
+// Class names come from here, never from the manifest.
+const shapeClass: Record<string, string> = { start: 'fd-start', box: 'fd-box', decision: 'fd-decision', group: 'fd-parallel' }
+const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
+
+function Members({ node }: { node: DiagramNode }) {
+  if (!node.members.length) return null
+  const groups: { via: string | null; labels: string[] }[] = []
+  for (const member of node.members) {
+    const last = groups[groups.length - 1]
+    if (last && last.via === member.via) last.labels.push(member.label)
+    else groups.push({ via: member.via, labels: [member.label] })
+  }
+  return (
+    <span className="fd-members">
+      {groups.map((group, index) => (
+        <span className="fd-group" key={index}>
+          {index > 0 && <span className="visually-hidden">; </span>}
+          {group.via && <span className="fd-via">{group.via}: </span>}
+          {group.labels.map((label, i) => <span className="fd-chip" key={i}>{label}{i < group.labels.length - 1 && <span className="visually-hidden">, </span>}</span>)}
+        </span>
+      ))}
+      <span className="visually-hidden">. </span>
+    </span>
+  )
+}
+
+export function FlowDiagram({ flow, changed, labelledBy }: { flow: Flow; changed: Set<string>; labelledBy: string }) {
+  const stepId = new Map(flow.steps.map((step) => [step.n, step.id]))
+  const isChanged = (steps: number[]) => steps.some((n) => changed.has(stepId.get(n) ?? ''))
+  if (!flow.diagram) {
+    return (
+      <>
+        <p className="empty">The diagram could not be drawn from {flow.file}; the steps are listed in order.</p>
+        <ol className="fd-plain">
+          {flow.steps.map((step) => (
+            <li key={step.n} data-changed={isChanged([step.n]) ? '' : undefined}>
+              <span className="fd-n">{step.n}</span> <strong>{step.title}</strong>
+              {isChanged([step.n]) && <><span className="visually-hidden">, new</span> <span className="badge new" aria-hidden="true">New</span></>}
+            </li>
+          ))}
+        </ol>
+      </>
+    )
+  }
+  const nodes = flow.diagram.nodes
+  const labelOf = (id: string) => nodes.find((node) => node.id === id)?.label ?? id
+  return (
+    <figure className={`fd${nodes.length > 10 ? ' fd-long' : ''}`} aria-labelledby={labelledBy}>
+      <figcaption>From your ask to the live site. You: the steps that wait for you. Gate: the change stops until it passes.</figcaption>
+      <div className="fd-frame">
+        <ol className="fd-steps" aria-label="The steps, in order" style={{ '--fd-cols': nodes.length } as CSSProperties}>
+          {nodes.map((node, index) => {
+            const isNew = isChanged(node.steps)
+            return (
+              <li key={node.id} className={`fd-node ${shapeClass[node.shape] ?? 'fd-box'} ${node.lane === 'you' ? 'fd-you' : 'fd-team'}`} data-changed={isNew ? '' : undefined} style={{ '--fd-col': index + 2 } as CSSProperties}>
+                <span className="fd-title">
+                  <span className="visually-hidden">{stepWords(node.steps)}</span>
+                  {node.steps.length > 0 && <span className="fd-n" aria-hidden="true">{node.steps.join(', ')}</span>}
+                  <strong className="fd-label">{node.label}</strong>
+                  {isNew && <><span className="visually-hidden">, new</span><span className="badge new" aria-hidden="true">New</span></>}
+                  <span className="visually-hidden">. </span>
+                </span>
+                <Members node={node} />
+                {node.next.filter((edge) => edge.label).map((edge) => <span className="fd-branch" key={edge.to}>{capital(edge.label!)}: {labelOf(edge.to)}. </span>)}
+                {node.loop && <span className="fd-loop"><span aria-hidden="true">↺ </span>Back to {labelOf(node.loop.to)}{node.loop.label ? `: ${node.loop.label}` : ''}. </span>}
+                {(node.lane === 'you' || node.gate) && (
+                  <span className="fd-badges">
+                    {node.lane === 'you' && <span className="badge you">You</span>}
+                    {node.lane === 'you' && node.gate && <span className="visually-hidden">, </span>}
+                    {node.gate && <span className="badge">Gate</span>}
+                    <span className="visually-hidden">.</span>
+                  </span>
+                )}
+              </li>
+            )
+          })}
+        </ol>
+      </div>
+    </figure>
+  )
+}

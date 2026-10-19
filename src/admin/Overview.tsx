@@ -20,7 +20,8 @@ export function Overview({ data, needs, summaries }: { data: AdminData; needs: N
   const titleOf = (id: PageId) => pages.find((page) => page.id === id)?.title ?? ''
   const previous = stats?.previous
   // "Nothing is waiting" only once every API has answered; before that, a placeholder.
-  const pending = [stats, ask, resume, data.mcp].some((part) => part === null)
+  // A failed Team read state counts as answered (it shows its own banner), so this never waits forever on it.
+  const pending = [stats, ask, resume, data.mcp].some((part) => part === null) || (data.team !== undefined && data.team.reads === null && !data.team.readsError)
   return (
     <>
       <dl className="kpis card" aria-label="Headline numbers">

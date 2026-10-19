@@ -128,6 +128,23 @@ describe('the section bar', () => {
     expect(cancelAnimationFrame).toHaveBeenCalled()
   })
 
+  it('puts a dot on the chip of a part marked new and names it changed', () => {
+    const { container } = render(<Pane><section data-part="Flow" data-new="">a</section><section data-part="Roles">b</section></Pane>)
+    expect(screen.getByRole('button', { name: 'Flow, changed' })).toHaveTextContent('Flow')
+    expect(screen.getByRole('button', { name: 'Roles' })).toBeInTheDocument()
+    const dots = container.querySelectorAll('.subnav-dot')
+    expect(dots).toHaveLength(1)
+    expect(dots[0]).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('drops the dot when the part is no longer new and the parts are read again', () => {
+    const { rerender } = render(<Pane version="1"><section data-part="Flow" data-new="">a</section><section data-part="Roles">b</section></Pane>)
+    expect(screen.getByRole('button', { name: 'Flow, changed' })).toBeInTheDocument()
+    rerender(<Pane version="2"><section data-part="Flow">a</section><section data-part="Roles">b</section></Pane>)
+    expect(screen.getByRole('button', { name: 'Flow' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Flow, changed' })).not.toBeInTheDocument()
+  })
+
   it('does nothing without a pane', () => {
     function Detached() {
       const scroller = useRef<HTMLDivElement>(null)

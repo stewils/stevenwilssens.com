@@ -3,8 +3,9 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 // The section bar: the parts of the page shown (elements with data-part="Label") as a
 // sticky row of chips at the top of the pane. Clicking one scrolls there; the chip of
 // the part being read lights up. Shown once a page has two or more parts. The parts
-// are read from the DOM after each render, so they follow whatever the page shows.
-type Part = { label: string; el: HTMLElement }
+// are read from the DOM after each render, so they follow whatever the page shows. A part
+// marked data-new (something in it Steven has not seen) gets a dot on its chip.
+type Part = { label: string; el: HTMLElement; isNew: boolean }
 
 export function SubNav({ scroller, page, version }: { scroller: RefObject<HTMLElement | null>; page: string; version: string }) {
   const [parts, setParts] = useState<Part[]>([])
@@ -16,8 +17,8 @@ export function SubNav({ scroller, page, version }: { scroller: RefObject<HTMLEl
   const collect = () => {
     const root = scroller.current
     if (!root) return
-    const found = [...root.querySelectorAll<HTMLElement>('.page [data-part]')].filter((el) => el.getClientRects().length > 0).map((el) => ({ label: el.dataset.part ?? '', el }))
-    setParts((previous) => (previous.length === found.length && previous.every((part, index) => part.el === found[index].el) ? previous : found))
+    const found = [...root.querySelectorAll<HTMLElement>('.page [data-part]')].filter((el) => el.getClientRects().length > 0).map((el) => ({ label: el.dataset.part ?? '', el, isNew: el.dataset.new !== undefined }))
+    setParts((previous) => (previous.length === found.length && previous.every((part, index) => part.el === found[index].el && part.isNew === found[index].isNew) ? previous : found))
   }
   useEffect(collect, [page, version])
 
@@ -52,7 +53,7 @@ export function SubNav({ scroller, page, version }: { scroller: RefObject<HTMLEl
   return (
     <nav ref={nav} className={`subnav ${stuck ? 'stuck' : ''}`} aria-label="On this page">
       {parts.map((part, index) => (
-        <button type="button" key={`${part.label}-${index}`} aria-current={index === current ? 'true' : undefined} onClick={() => part.el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' })}>{part.label}</button>
+        <button type="button" key={`${part.label}-${index}`} aria-current={index === current ? 'true' : undefined} aria-label={part.isNew ? `${part.label}, changed` : undefined} onClick={() => part.el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' })}>{part.label}{part.isNew && <span className="subnav-dot" aria-hidden="true" />}</button>
       ))}
     </nav>
   )

@@ -1,5 +1,7 @@
 // Realistic answers from the admin APIs (functions/api/stats.ts, mcp.ts, ask/admin.ts,
-// resume.ts), for the dashboard's tests (src/admin/*.test.tsx). Each builder takes overrides.
+// resume.ts, team.ts) and the Team page's build-time manifest, for the dashboard's tests
+// (src/admin/*.test.tsx). Each builder takes overrides.
+import type { TeamManifest, TeamReads, TeamUpdate } from '../admin/team-types'
 import type { AskInfo, McpInfo, ResumeInfo, Stats } from '../admin/types'
 
 // The tests run on a fixed clock: Monday 19 October 2026, noon local time.
@@ -140,3 +142,69 @@ export const makeResume = (overrides: Partial<ResumeInfo> = {}): ResumeInfo => (
   ],
   ...overrides,
 })
+
+// The Team page's manifest (scripts/team-manifest.mjs), with made-up roles, jobs and steps so
+// the tests prove the page shows what the manifest says, not text typed into a component.
+// Three updates, newest first: the newest two are from the launch on (unread with no D1
+// rows), the oldest is from before it (read).
+export const sha = (digit: string) => digit.repeat(40)
+export const makeUpdate = (overrides: Partial<TeamUpdate> = {}): TeamUpdate => ({ sha: sha('3'), date: '2026-10-19T09:00:00.000Z', summary: 'The panel reviews every draft', pr: 41, sections: ['flow', 'checks'], roles: [], commands: [], steps: ['draft'], removedSteps: [], beforeLaunch: false, ...overrides })
+export const makeTeamManifest = (overrides: Partial<TeamManifest> = {}): TeamManifest => ({
+  schema: 'team-manifest/1',
+  repo: 'https://github.com/example/site',
+  commit: sha('c'),
+  generatedAt: '2026-10-19T10:00:00.000Z',
+  launch: sha('2'),
+  files: ['.team/flow.md', '.team/agents/chief-editor.md', '.team/agents/fact-checker.md', '.team/commands/publish.md', '.ci/panel.yml', '.ci/site.yml', 'scripts/proof-gate.mjs'],
+  flow: {
+    file: '.team/flow.md',
+    steps: [
+      { n: 1, id: 'intake', title: 'Intake', who: 'lead', text: 'Restate the ask.', people: ['lead'], checks: [] },
+      { n: 2, id: 'draft', title: 'Draft', who: 'chief-editor', text: 'Write the draft.', people: ['chief-editor'], checks: [] },
+      { n: 3, id: 'questions', title: 'Questions', who: null, text: 'Ask the owner once.', people: [], checks: [] },
+      { n: 4, id: 'publish', title: 'Publish', who: null, text: 'The proof and panel jobs pass.', people: [], checks: ['proof', 'panel'] },
+    ],
+    diagram: {
+      nodes: [
+        { id: 'ask', label: 'The owner asks', shape: 'start', members: [], steps: [1], lane: 'you', gate: false, next: [{ to: 'draft', label: null }], loop: null },
+        { id: 'draft', label: 'Draft: drafts/slug.md', shape: 'group', members: [{ label: 'Editor', via: null }, { label: 'Proofreader', via: null }, { label: 'Lawyer: risks', via: 'adds' }], steps: [2], lane: 'team', gate: true, next: [{ to: 'check', label: null }], loop: null },
+        { id: 'check', label: 'Questions only the owner can answer?', shape: 'decision', members: [], steps: [3], lane: 'team', gate: false, next: [{ to: 'answer', label: 'yes, asked once' }, { to: 'publish', label: 'no' }], loop: null },
+        { id: 'answer', label: 'The owner answers', shape: 'start', members: [], steps: [], lane: 'you', gate: false, next: [{ to: 'redo', label: null }], loop: null },
+        { id: 'redo', label: 'Editor fixes', shape: 'box', members: [], steps: [], lane: 'team', gate: false, next: [], loop: { to: 'draft', label: 'changes requested, twice at most' } },
+        { id: 'publish', label: 'Publish to the site', shape: 'box', members: [], steps: [4], lane: 'team', gate: true, next: [], loop: null },
+      ],
+    },
+  },
+  sections: {
+    roles: {
+      file: '.team/flow.md',
+      items: [
+        { id: 'lead', title: 'Lead (the session)', agent: null, owns: 'the flow', signsOff: 'nothing alone', description: '', headings: [], file: null },
+        { id: 'chief-editor', title: 'Chief editor', agent: 'chief-editor', owns: 'the draft', signsOff: 'the draft', description: 'Writes the draft from the ask.', headings: ['Writing', 'Checking'], file: '.team/agents/chief-editor.md' },
+        { id: 'fact-checker', title: 'Fact checker', agent: 'fact-checker', owns: 'the facts', signsOff: 'the merge', description: 'Checks every fact against its source. '.repeat(10).trim(), headings: [], file: '.team/agents/fact-checker.md' },
+      ],
+    },
+    checks: {
+      file: '.ci/panel.yml',
+      jobs: [{ key: 'proof', name: null, needs: [], steps: ['Spell check', 'Build'] }, { key: 'panel', name: 'The panel', needs: ['proof'], steps: ['Panel reviews'] }],
+      levels: [{ level: 'stop', meaning: 'must not publish.' }, { level: 'note', meaning: 'optional.' }],
+      scripts: ['scripts/proof-gate.mjs'],
+      protection: 'Protection on main requires proof and panel.',
+    },
+    commands: { items: [{ id: 'publish', name: 'publish', description: 'Run the editors on an ask.', hint: '<the ask>', file: '.team/commands/publish.md' }] },
+    siteUpdate: { file: '.ci/site.yml', steps: [{ name: 'Let the editor write', lines: ['Draft first.', 'Then the panel.'], tools: ['Read', 'Edit'] }] },
+  },
+  history: {
+    updates: [
+      makeUpdate(),
+      makeUpdate({ sha: sha('2'), date: '2026-10-18T09:00:00.000Z', summary: 'The Team page shows the team', pr: null, sections: ['roles'], roles: ['fact-checker'], steps: [] }),
+      makeUpdate({ sha: sha('1'), date: '2026-10-12T09:00:00.000Z', summary: 'The editors review every change', pr: null, sections: ['commands'], commands: ['publish'], steps: [], beforeLaunch: true }),
+    ],
+    older: 0,
+    truncated: false,
+  },
+  problems: [],
+  ...overrides,
+})
+
+export const makeTeamReads = (overrides: Partial<TeamReads> = {}): TeamReads => ({ read: [], unread: [], ...overrides })

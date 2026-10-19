@@ -40,7 +40,11 @@ Any criterion not met is a `major`. A change to the agent orchestration (`.claud
 the Review or Site update workflow, a gate script) that does not update
 `/building-this-site` ("The loop", `src/articles/site/SiteArticle.tsx`) to match, including
 its diagram (`TeamFlowDiagram`) and the Mermaid chart in `.claude/team.md`, is a
-`major` too (CLAUDE.md, The team). Then return the verdict block.
+`major` too (CLAUDE.md, The team). On such a change, also open the branch's Team page
+(`/admin#team` on the preview, or the built admin) and check that the changed sections and
+flow steps are marked New, and that the coverage and real-repository tests in
+`scripts/team-manifest.test.mjs` pass (every orchestration file listed or ignored, no part
+the generator cannot read); a miss is a `major`. Then return the verdict block.
 
 ## Output
 

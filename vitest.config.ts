@@ -1,8 +1,11 @@
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [react()],
+  // The Team page's build-time manifest (vite.config.ts): the tests get a fixed one, never this repository's history.
+  resolve: { alias: { 'virtual:team-manifest': fileURLToPath(new URL('./src/test/team-manifest.fixture.ts', import.meta.url)) } },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
@@ -14,7 +17,7 @@ export default defineConfig({
     // screenshot options): a CI gate needs tests like the site does.
     coverage: {
       provider: 'v8',
-      include: ['src/**/*.{ts,tsx}', 'functions/**/*.ts', 'scripts/recruiter-compare.mjs', 'scripts/resume-gate.mjs', 'scripts/screenshots-options.mjs'],
+      include: ['src/**/*.{ts,tsx}', 'functions/**/*.ts', 'scripts/recruiter-compare.mjs', 'scripts/resume-gate.mjs', 'scripts/screenshots-options.mjs', 'scripts/team-manifest.mjs'],
       exclude: ['**/*.test.{ts,tsx}', '**/*.d.ts', 'src/test/**', 'functions/_lib/testing/**', 'src/main.tsx', 'src/admin/main.tsx', 'src/entry-server.tsx'],
       reporter: ['text-summary', 'json-summary', 'json'],
       thresholds: { perFile: true, statements: 90, branches: 90, functions: 90, lines: 90 },

@@ -3,8 +3,9 @@ import type { ReactNode } from 'react'
 // The dashboard's pages: one per area, chosen by the URL hash (#traffic, #resume, …),
 // listed in the menu on the left and as tiles on the overview. `range` pages react to
 // the 7/30/90-day switch.
-export type PageId = 'overview' | 'traffic' | 'sources' | 'audience' | 'crawlers' | 'speed' | 'resume' | 'assistant' | 'mcp' | 'links'
-export type PageDef = { id: PageId; title: string; sub: string; range: boolean; icon: ReactNode }
+export type PageId = 'overview' | 'traffic' | 'sources' | 'audience' | 'crawlers' | 'speed' | 'resume' | 'assistant' | 'mcp' | 'team' | 'links'
+// badgeNote says what the menu badge counts, for screen readers ("Team, 2 not seen").
+export type PageDef = { id: PageId; title: string; sub: string; range: boolean; icon: ReactNode; badgeNote?: string }
 
 const icon = (d: string) => <svg viewBox="0 0 24 24" aria-hidden="true"><path d={d} /></svg>
 
@@ -18,6 +19,7 @@ export const pages: PageDef[] = [
   { id: 'resume', title: 'Résumé', sub: 'The ATS score, what to fix, the proposals from Claude, and how the score moved with every update', range: false, icon: icon('M6 2h8l5 5v15H6zm7 1.5V8h4.5zM8 12h8v2H8zm0 4h8v2H8z') },
   { id: 'assistant', title: 'Ask about Steven', sub: 'The assistant on the site: use, cost, and the questions the dossier could not answer', range: true, icon: icon('M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1h-7l-5 4v-4H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm7 9v2h2v-2zm1-7a3 3 0 0 0-3 3h2a1 1 0 1 1 1 1h-1v2h2v-.2A3 3 0 0 0 12 6z') },
   { id: 'mcp', title: 'Career MCP', sub: 'Your private workspace in Claude: the link to add and the dossier it keeps', range: false, icon: icon('M9 2h2v4h2V2h2v4h2v4a5 5 0 0 1-4 4.9V22h-2v-7.1A5 5 0 0 1 7 10V6h2z') },
+  { id: 'team', title: 'Team', sub: 'The agents that write, build and review every change: the roles, the flow, the gates and the commands, read from the repository at each build.', range: false, badgeNote: 'not seen', icon: icon('M12 12.75c1.63 0 3.07.39 4.24.9 1.08.48 1.76 1.56 1.76 2.73V18H6v-1.61c0-1.18.68-2.26 1.76-2.73 1.17-.52 2.61-.91 4.24-.91zM4 13a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm1.13 1.1A6.9 6.9 0 0 0 4 14c-.99 0-1.93.21-2.78.58A2 2 0 0 0 0 16.43V18h4.5v-1.61c0-.83.23-1.61.63-2.29zM20 13a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm4 3.43c0-.81-.48-1.53-1.22-1.85A6.95 6.95 0 0 0 20 14c-.39 0-.76.04-1.13.1.4.68.63 1.46.63 2.29V18H24zM12 6a3 3 0 1 1 0 6 3 3 0 0 1 0-6z') },
   { id: 'links', title: 'Links', sub: 'Every address for running the site: Cloudflare, GitHub, the résumé files and outside checks', range: false, icon: icon('M10.6 13.4a1 1 0 0 1 0-1.4l3.5-3.5a1 1 0 1 1 1.4 1.4L12 13.4a1 1 0 0 1-1.4 0zM8 21a5 5 0 0 1-3.5-8.5l2.8-2.8a1 1 0 1 1 1.4 1.4l-2.8 2.8a3 3 0 0 0 4.2 4.2l2.8-2.8a1 1 0 1 1 1.4 1.4l-2.8 2.8A5 5 0 0 1 8 21zm9.3-7.3a1 1 0 0 1-.7-1.7l2.8-2.8a3 3 0 0 0-4.2-4.2l-2.8 2.8a1 1 0 1 1-1.4-1.4l2.8-2.8a5 5 0 0 1 7 7L18 13.4a1 1 0 0 1-.7.3z') },
 ]
 
