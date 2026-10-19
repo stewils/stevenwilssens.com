@@ -235,6 +235,10 @@ tr.clickable { cursor: pointer; }
 tr.clickable:hover td { background: var(--paper); }
 tr.detail td { background: var(--paper); }
 tr.detail p { margin: 0 0 4px; }
+.row-toggle { margin: 0 6px 0 0; padding: 0 2px; border: 0; background: none; color: var(--muted); font: inherit; line-height: 1; cursor: pointer; }
+.row-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+td ol { margin: 0; padding-left: 1.2em; }
+.trends + .tbl-tools, .trends + .table-scroll, .trends + .empty { margin-top: 16px; }
 .plain { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
 .badge { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 700; background: var(--series-track); color: var(--green); white-space: nowrap; }
 .badge.download, .badge.ai-assistant, .badge.approved, .badge.applied { background: var(--green); color: var(--on-green); }

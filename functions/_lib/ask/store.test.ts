@@ -111,6 +111,26 @@ describe('the D1 assistant store', () => {
   })
 })
 
+describe.each(stores)('the %s assistant log', (_, make) => {
+  const entry = (ts: number, visitor = 'v') => ({ ts, visitor, kind: 'question' as const, page: 'home', question: `q at ${ts}`, answer: null, outcome: 'answered' as const, country: null, asOrg: null })
+
+  it('deletes entries older than the retention when a new one comes in, as /privacy promises', async () => {
+    const store = make()
+    const now = 200 * day
+    await store.logQuestion(entry(now - 91 * day, 'old'), 90 * day)
+    await store.logQuestion(entry(now - 89 * day, 'kept'), 90 * day)
+    await store.logQuestion(entry(now, 'new'), 90 * day)
+    expect((await store.log(0, 100)).map((e) => e.visitor)).toEqual(['new', 'kept'])
+  })
+
+  it('reads the log since a time, newest first, up to a limit', async () => {
+    const store = make()
+    for (const at of [1, 2, 3, 4]) await store.logQuestion(entry(at * day), 90 * day)
+    expect((await store.log(2 * day, 10)).map((e) => e.ts)).toEqual([4 * day, 3 * day, 2 * day])
+    expect((await store.log(0, 2)).map((e) => e.ts)).toEqual([4 * day, 3 * day])
+  })
+})
+
 describe('the memory assistant store', () => {
   it('counts closed questions by resolution and keeps them past their expiry', async () => {
     const store = new MemoryAskStore()

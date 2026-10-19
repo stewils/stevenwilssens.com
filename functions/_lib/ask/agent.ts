@@ -114,10 +114,13 @@ const historyIsOurs = async (env: Env, messages: Turn[]) => {
   return true
 }
 
-/** What is saved for /admin: no email addresses, phone or card numbers, keys. */
+/** What is saved for /admin: no email addresses, phone or card numbers, keys or tokens. */
 export const redact = (text: string) => text
   .replace(/[^\s@<>()"']+@[^\s@<>()"']+\.[a-z]{2,}/gi, '[email]')
-  .replace(/\b(?:sk|ghp|xox[a-z])[-_][A-Za-z0-9_-]{8,}/g, '[key]')
+  .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, 'Bearer [key]')
+  .replace(/\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g, '[key]')
+  .replace(/\b(?:github_pat_|gh[opsur]_|sk[-_]|xox[a-z]-)[A-Za-z0-9_-]{8,}/g, '[key]')
+  .replace(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, '[key]')
   .replace(/\+?\d[\d\s().-]{7,}\d/g, '[number]')
 
 /** A job description is not kept; what /admin shows for a vote on a fit check is its size and its first words. */
@@ -308,7 +311,9 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
   const where = { page: parsed.page, country: (cf.country as string | undefined) ?? null, asOrg: (cf.asOrganization as string | undefined) ?? null }
   // Who asked what, for /admin: the analytics' visitor code for the day, so people are counted
   // like visitors. Not on preview deployments (they share the database) or when the browser opted out.
-  const visitor = optedOut(request) || new URL(request.url).hostname.endsWith('.pages.dev') ? null
+  // Under GPC or DNT nothing about the visitor is kept, not even an unanswered question (as /privacy says).
+  const optOut = optedOut(request)
+  const visitor = optOut || new URL(request.url).hostname.endsWith('.pages.dev') ? null
     : await visitorHash(env.HASH_SALT ?? '', day, request.headers.get('CF-Connecting-IP') ?? '', request.headers.get('User-Agent') ?? '')
   const logAs = async (outcome: Outcome, answer: string) => {
     if (!visitor) return
@@ -366,7 +371,9 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
         await send('delta', { text: state.answer })
       }
       let id: number | null = null
-      if (state.scope === 'in' && fit) {
+      if (optOut) {
+        // Nothing kept: the answer is not saved as a question for Steven either.
+      } else if (state.scope === 'in' && fit) {
         // The requirements the record does not show are the questions Steven should answer next; the posting itself is not kept.
         for (const requirement of missingRequirements(state.answer)) await store.saveQuestion({ ts: started, reason: 'fit', question: requirement, answer: null, ...where }, KEEP_MS).catch(() => null)
       } else if (state.scope === 'in' && !state.sources.length && state.answer.trim()) {
@@ -405,7 +412,7 @@ export async function feedback(request: Request, { env, store, now = Date.now }:
   if (!question || !answer || !(await answerIsOurs(env, question, { content: answer, sources, id, sig: str(body.sig, 100) }))) return json({ ok: false }, 400)
   await store.addHit(`${hash}:vote`, started)
   await store.recordVote(dayOf(started), body.helpful)
-  if (!body.helpful && id === null) {
+  if (!body.helpful && id === null && !optedOut(request)) {
     const page = str(body.page, 40)
     await store.saveQuestion({ ts: started, reason: 'unhelpful', page: /^[a-z0-9-]{1,40}$/.test(page) ? page : null, question: describeQuestion(question), answer: redact(answer), country: null, asOrg: null }, KEEP_MS)
   }

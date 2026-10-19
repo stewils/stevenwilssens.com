@@ -7,6 +7,10 @@ import { isAdmin } from '../../_lib/auth'
 import { budgetMicro, checkAfterMicro, DEFAULT_BUDGET_USD, humanCheck, MODEL } from '../../_lib/ask/agent'
 import { D1AskStore, dayOf, monthStart } from '../../_lib/ask/store'
 
+// The log keeps 90 days and the card shows at most this many questions.
+const LOG_DAYS = 90
+const LOG_LIMIT = 2000
+
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
@@ -16,7 +20,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const store = new D1AskStore(env.DB)
   const sinceDay = dayOf(now - days * 86_400_000)
   const ninetyDays = now - 90 * 86_400_000
-  const [daily, votes, questions, resolved, monthRows, check, log] = await Promise.all([store.daily(sinceDay), store.votes(sinceDay), store.questions(ninetyDays, 200), store.resolvedCounts(ninetyDays), store.daily(monthStart(now)), humanCheck(env, store, now, null), store.log(now - days * 86_400_000, 2000).catch((err: unknown) => { console.error('ask log', err); return null })])
+  const [daily, votes, questions, resolved, monthRows, check, log] = await Promise.all([store.daily(sinceDay), store.votes(sinceDay), store.questions(ninetyDays, 200), store.resolvedCounts(ninetyDays), store.daily(monthStart(now)), humanCheck(env, store, now, null), store.log(now - Math.min(days, LOG_DAYS) * 86_400_000, LOG_LIMIT).catch((err: unknown) => { console.error('ask log', err); return null })])
   const month = { questions: 0, answered: 0, gap: 0, off: 0, limited: 0, failed: 0, costMicro: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
   for (const row of monthRows) {
     month.questions += row.questions
@@ -43,5 +47,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     questions,
     resolved,
     log: log ?? undefined,
+    logDays: Math.min(days, LOG_DAYS),
+    logCapped: log ? log.length >= LOG_LIMIT : undefined,
   })
 }

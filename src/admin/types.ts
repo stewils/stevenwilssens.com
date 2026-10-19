@@ -72,6 +72,9 @@ export type AskInfo = {
   resolved: { answered: number; dismissed: number }
   // Every question in the range (kept 90 days), newest first, with the analytics' visitor code of the day.
   log?: AskLogEntry[]
+  // The days the log covers (at most 90), and whether it stopped at its row limit.
+  logDays?: number
+  logCapped?: boolean
 }
 export type AskLogEntry = { id: number; ts: number; visitor: string; kind: 'question' | 'fit'; page: string | null; question: string; answer: string | null; outcome: 'answered' | 'gap' | 'off' | 'limited' | 'failed'; country: string | null; asOrg: string | null }
 

@@ -16,7 +16,7 @@ const questionColumns: Column<Question>[] = [
 ]
 
 const outcomeLabel: Record<AskLogEntry['outcome'], string> = { answered: 'answered', gap: 'not covered', off: 'off topic', limited: 'turned away', failed: 'failed' }
-const outcomeBadge: Record<AskLogEntry['outcome'], string> = { answered: '', gap: 'gap', off: 'info', limited: 'warn', failed: 'error' }
+const outcomeBadge: Record<AskLogEntry['outcome'], string> = { answered: '', gap: 'warn', off: 'info', limited: 'warn', failed: 'error' }
 const askerColumns: Column<Asker>[] = [
   { key: 'ts', label: 'When', value: (row) => row.lastTs, render: (row) => formatTime(row.firstTs) },
   { key: 'count', label: 'Questions', value: (row) => row.entries.length, num: true },
@@ -91,12 +91,14 @@ export function AssistantPage({ info, days, visitors }: { info: AskInfo; days: n
   const followedUp = people.filter((person) => person.entries.length > 1).length
   const fitChecks = people.filter((person) => person.fit > 0).length
   const visits = new Map((visitors ?? []).map((row) => [row.visitor, row]))
-  const peopleSeries = fillDays(peopleDaily, days, new Date(), (day): PeopleDay => ({ day, people: 0, questions: 0 }))
+  // The log keeps 90 days, so a longer range shows those 90.
+  const logDays = info.logDays ?? Math.min(days, 90)
+  const peopleSeries = fillDays(peopleDaily, logDays, new Date(), (day): PeopleDay => ({ day, people: 0, questions: 0 }))
   return (
     <>
       <section className="card" data-part="People">
         <div className="card-head"><h2>People who asked</h2></div>
-        <p className="note">Everyone who asked the assistant something in the last {days} days, and what they asked. A person counts once a day, like a visitor on Traffic, so someone who comes back the next day counts again. Email addresses and phone numbers are redacted, a pasted job description is kept as its first words, and nothing is kept for browsers that send Global Privacy Control or Do Not Track. Open a row for the answers and, when the traffic data has it, the visit.{!info.log && <strong> The deployed API does not send the log yet.</strong>}</p>
+        <p className="note">Everyone who asked the assistant something in the last {logDays} days{logDays < days && ' (the log keeps 90)'}, and what they asked. A person counts once a day, like a visitor on Traffic, so someone who comes back the next day counts again. Email addresses, phone numbers and keys are redacted, a job description pasted for a fit check is kept as its first words, and nothing is kept for browsers that send Global Privacy Control or Do Not Track. Open a row for the answers and, when the traffic data has it, the visit.{!info.log && <strong> The log could not be read, so this card is empty.</strong>}{info.logCapped && <strong> Only the latest {formatNumber(logged)} questions are shown.</strong>}</p>
         <div className="stats">
           <div className={people.length ? 'highlight' : ''}><span>People</span><strong>{formatNumber(people.length)}</strong><small>asked at least one question</small></div>
           <div><span>Questions</span><strong>{formatNumber(logged)}</strong><small>{people.length ? (logged / people.length).toFixed(1) : '0'} per person</small></div>
@@ -104,9 +106,9 @@ export function AssistantPage({ info, days, visitors }: { info: AskInfo; days: n
           <div><span>Checked a job</span><strong>{formatNumber(fitChecks)}</strong><small>pasted a job description</small></div>
         </div>
         <div className="trends">
-          <TrendChart title={`People per day (${days} days)`} unit="people" points={peopleSeries.map((row) => ({ key: row.day, label: dayLabel(row.day), value: row.people, detail: `${formatNumber(row.people)} people · ${formatNumber(row.questions)} questions` }))} />
+          <TrendChart title={`People per day (${logDays} days)`} unit="people" points={peopleSeries.map((row) => ({ key: row.day, label: dayLabel(row.day), value: row.people, detail: `${formatNumber(row.people)} people · ${formatNumber(row.questions)} questions` }))} />
         </div>
-        <DataTable columns={askerColumns} rows={people} rowKey={(row) => row.visitor} empty={`Nobody asked the assistant anything in the last ${days} days.`} label="People who asked" expand={(row) => <Conversation person={row} visit={visits.get(row.visitor)} />} />
+        <DataTable columns={askerColumns} rows={people} rowKey={(row) => row.visitor} empty={info.log ? `Nobody asked the assistant anything in the last ${logDays} days.` : 'No log to show.'} label="People who asked" expand={(row) => <Conversation person={row} visit={visits.get(row.visitor)} />} />
       </section>
 
       <section className="card" data-part="Use and cost">

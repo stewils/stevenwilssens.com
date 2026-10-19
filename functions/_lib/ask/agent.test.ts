@@ -132,6 +132,10 @@ describe('parsing and signing', () => {
 
   it('redacts what should not be kept and prices tokens', () => {
     expect(redact('Mail me at jane@example.com or +1 425 555 0100')).toBe('Mail me at [email] or [number]')
+    expect(redact('github_pat_11ABCDEFG0123456789_abcdefghij and ghp_abcdefghijklmnop and sk-ant-api03-abcdefgh')).toBe('[key] and [key] and [key]')
+    expect(redact('AKIAIOSFODNN7EXAMPLE')).toBe('[key]')
+    expect(redact('Authorization: Bearer abc.def-ghi_jkl')).toBe('Authorization: Bearer [key]')
+    expect(redact('token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dozjgNryP4J3jVmNHl0w5N')).toBe('token [key]')
     expect(costMicro({ input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 })).toBe(4_000_000)
     expect(costMicro({ input: 100, output: 50, cacheRead: 10_000, cacheWrite: 0 })).toBe(400 + 1000 + 2000)
     expect(HEADER.exec('[[in: role:csx-data, site:patents]]\n\nHello')?.[2]).toBe('role:csx-data, site:patents')
@@ -281,6 +285,30 @@ describe('answering', () => {
     await run(asked('q', '192.0.2.1', {}, 'https://branch.stevenwilssens.pages.dev/api/ask'))
     expect(store.entries).toHaveLength(3)
     expect(store.rows[0]).toMatchObject({ questions: 6 })
+  })
+
+  it('still answers when the log cannot be written', async () => {
+    const store = new MemoryAskStore()
+    store.logQuestion = async () => { throw new Error('D1_ERROR: no such table: ask_log') }
+    const list = await events(await ask(post({ messages: [{ role: 'user', content: 'What did he ship?' }] }), deps(scripted('[[in: site:about]]\n\nHe did.'), store)))
+    expect(answerOf(list)).toBe('He did.')
+    expect(list[list.length - 1]).toMatchObject({ event: 'done', data: { scope: 'in' } })
+    expect(store.rows[0]).toMatchObject({ outcome: 'answered' })
+  })
+
+  it('keeps no unanswered question and no voted-down answer under Global Privacy Control', async () => {
+    const store = new MemoryAskStore()
+    const request = new Request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '203.0.113.9', 'Sec-GPC': '1' }, body: JSON.stringify({ messages: [{ role: 'user', content: 'How many people did he hire?' }] }) })
+    const list = await events(await ask(request, deps(scripted('[[in: none]]\n\nNot shared here.'), store)))
+    const done = list[list.length - 1]
+    expect(done.data.id).toBeNull()
+    expect(store.saved).toEqual([])
+    expect(store.entries).toEqual([])
+    expect(store.rows[0]).toMatchObject({ outcome: 'gap' })
+    const vote = new Request(`${url}/feedback`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '203.0.113.9', DNT: '1' }, body: JSON.stringify({ helpful: false, question: 'How many people did he hire?', answer: answerOf(list), sources: [], id: null, sig: done.data.sig, page: 'home' }) })
+    expect(await (await feedback(vote, { env, store, now: () => now })).json()).toEqual({ ok: true })
+    expect(store.voteRows).toEqual([{ day: dayOf(now), helpful: 0, unhelpful: 1 }])
+    expect(store.saved).toEqual([])
   })
 
   it('refuses a conversation with an answer that is not ours', async () => {

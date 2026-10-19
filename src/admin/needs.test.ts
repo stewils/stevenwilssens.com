@@ -56,6 +56,9 @@ describe('what needs Steven', () => {
     expect(summaries.speed).toBe('phone passes · desktop fails')
     expect(summaries.resume).toBe('ATS score 85/100 · 2 pages · 3 warnings · lower than the live résumé before')
     expect(summaries.assistant).toBe('$1.25 of $25.00 this month · 10 questions · 2 gaps')
+    const logged = (visitors: string[]) => computeSummaries({ ...data, days: 7, ask: { ...ask, log: visitors.map((visitor, id) => ({ id, ts: id, visitor, kind: 'question' as const, page: null, question: 'q', answer: null, outcome: 'answered' as const, country: null, asOrg: null })) } }).assistant
+    expect(logged(['a', 'a'])).toBe('$1.25 of $25.00 this month · 10 questions · 2 gaps · 1 person asked in 7 days')
+    expect(logged(['a', 'b', 'a'])).toBe('$1.25 of $25.00 this month · 10 questions · 2 gaps · 2 people asked in 7 days')
     expect(summaries.mcp).toBe('40 dossier entries across 6 roles · 8 public · 12 public calls')
     expect(computeSummaries({ days: 30, stats: null, mcp: null, ask: null, resume: { report: null, history: [] } }).resume).toBe('No résumé report in this deployment')
   })

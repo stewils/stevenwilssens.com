@@ -135,7 +135,7 @@ describe('Ask about Steven page', () => {
       fireEvent.click(rows[0])
       expect(screen.getByText(/\/ → \/work → \/about \(from linkedin\.com\) · downloaded the résumé/)).toBeInTheDocument()
       expect(screen.getByText('Answer 1')).toBeInTheDocument()
-      expect(screen.getByText('fit check')).toBeInTheDocument()
+      expect(screen.getByText('fit check')).toHaveClass('badge', 'warn')
       fireEvent.click(within(table).getAllByRole('row').find((row) => row.textContent?.includes('Write me a poem'))!)
       expect(screen.getByText('off topic')).toHaveClass('badge', 'info')
       expect(screen.queryByText(/^Visit:/)).not.toBeInTheDocument()
@@ -143,13 +143,21 @@ describe('Ask about Steven page', () => {
 
     it('says when the API sends no log, and when nobody asked', () => {
       const { rerender } = render(<AssistantPage info={makeAsk()} days={7} />)
-      expect(screen.getByText(/The deployed API does not send the log yet/)).toBeInTheDocument()
+      expect(screen.getByText(/The log could not be read, so this card is empty/)).toBeInTheDocument()
+      expect(screen.getByText('No log to show.')).toBeInTheDocument()
       expect(asked('People')).not.toHaveClass('highlight')
       expect(asked('Questions')).toHaveTextContent('00 per person')
       expect(asked('Asked a follow-up')).toHaveTextContent('00% of the people')
       rerender(<AssistantPage info={makeAsk({ log: [] })} days={7} />)
-      expect(screen.queryByText(/does not send the log/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/could not be read/)).not.toBeInTheDocument()
       expect(screen.getByText('Nobody asked the assistant anything in the last 7 days.')).toBeInTheDocument()
+    })
+  
+    it('shows 90 days for a longer range, and says when the log stopped at its limit', () => {
+      render(<AssistantPage info={makeAsk({ log, logDays: 90, logCapped: true })} days={365} />)
+      expect(screen.getByText(/in the last 90 days \(the log keeps 90\)/)).toBeInTheDocument()
+      expect(screen.getByText(/Only the latest 3 questions are shown/)).toBeInTheDocument()
+      expect(screen.getByRole('img', { name: /People per day \(90 days\)/ })).toBeInTheDocument()
     })
   })
 })

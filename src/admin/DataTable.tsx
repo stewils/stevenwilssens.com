@@ -63,10 +63,12 @@ export function DataTable<T>({ columns, rows, rowKey, empty = 'No data yet', lab
               return (
                 <Fragment key={key}>
                   <tr className={classes(expand && 'clickable')} onClick={expand ? () => setOpen(isOpen ? null : key) : undefined}>
-                    {columns.map((column) => {
+                    {columns.map((column, at) => {
                       const value = column.value(row)
                       return (
                         <td key={column.key} data-label={column.label} className={classes(column.num && 'num', column.strong && 'strong', column.className)}>
+                          {/* The keyboard way in: a button in the first cell opens the row like a click on it does. */}
+                          {expand && at === 0 && <button type="button" className="row-toggle" aria-expanded={isOpen} aria-label={isOpen ? 'Close details' : 'Open details'} onClick={(event) => { event.stopPropagation(); setOpen(isOpen ? null : key) }}>{isOpen ? '▾' : '▸'}</button>}
                           {column.render ? column.render(row) : typeof value === 'number' ? formatNumber(value) : value || '—'}
                         </td>
                       )
