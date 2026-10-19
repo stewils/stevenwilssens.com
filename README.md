@@ -49,6 +49,10 @@ rather than a failure, so the gate still catches the admin, the core pages and a
 | `scripts/resume.mjs`, `scripts/resume-check.mjs` | Build the resume PDF from `src/resume.ts` and analyse it (see Updating the resume) |
 | `functions/_lib/review/` | The recruiter review and the LinkedIn import and comparison behind the MCP tools |
 | `.github/workflows/site-update.yml` | Claude Code changes the site on a branch and opens a pull request, started from the MCP server |
+| `.claude/team.md`, `.claude/agents/`, `.claude/skills/` | Steven's product team as Claude Code agents (product manager, recruiter, designer, developer, security engineer, tester), `/feature` and `/team-review` |
+| `specs/` | One spec per feature, written by the team before the build (`specs/TEMPLATE.md`), also in the Site update workflow (`specs/<branch>.md`, linked from the pull request with Steven's open questions) |
+| `.github/workflows/review.yml` | The gate before main on every pull request: `gates` (lint, 90% coverage overall and per file, build, then main's checkers on the pull request's data: the recruiter check against main, the ATS score against the live site, which fails on a drop or an unreadable live report; Steven's label `accept-lower-score` accepts a drop) and `team` (the team review by main's rules, with screenshots of the branch and of main, Steven's replies on the pull request as his decisions, and the sign-offs; Dependabot's own updates get `gates` only) |
+| `scripts/recruiter-check.mjs`, `scripts/screenshots.mjs` | The recruiter's "not worse than main" check and the designer's screenshots (desktop and phone, light and dark) |
 | `src/pageMeta.ts` | Routes plus each page's title and description |
 | `src/analytics.ts` | Browser tracker: pageviews, time on page, scroll depth, clicks, Core Web Vitals |
 | `src/webmcp.ts` | WebMCP: the pages register their data as tools for an agent running in the visitor's browser; the assistant adds `ask_about_steven` (see WebMCP below) |

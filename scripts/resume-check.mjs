@@ -6,12 +6,18 @@
 // PDF must match src/resume.ts, so a content change always comes with a new resume)
 // and the build (dist/resume-report.json, which the MCP server's check_resume reads).
 //
-//   node scripts/resume-check.mjs [path/to/resume.pdf] [--json path/to/report.json] [--baseline report.json|https://…/resume-report.json]
+//   node scripts/resume-check.mjs [path/to/resume.pdf] [--json path/to/report.json] [--baseline report.json|https://…/resume-report.json] [--fail-on-drop]
 //
 // --baseline (or the RESUME_BASELINE environment variable) compares the score with an
 // earlier report: what main scored before a change, or the live site's
 // /resume-report.json. The workflows use it to warn when an update would lower the
 // score recruiters see today; the comparison is written into the report (baseline).
+//
+// Exit codes (scripts/resume-gate.mjs): 0 fine; 1 the PDF has errors, or with
+// --fail-on-drop the score is lower than the baseline's; 2 with --fail-on-drop when the
+// baseline was given but could not be read (missing file, 404, network), so an outage of
+// the live report never passes the Review workflow's gate as "not lower". Without
+// --fail-on-drop an unreadable baseline is only reported: a build must not fail on it.
 import { execSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
@@ -19,6 +25,7 @@ import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { education, experiences, impact, profile, skills } from '../src/resume.ts'
+import { gateExit, unavailableMessages } from './resume-gate.mjs'
 
 export const resumePath = resolve('public', profile.resumePdf.slice(1))
 
@@ -212,12 +219,14 @@ export const formatReport = (report) => [
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const args = process.argv.slice(2)
   const option = (flag) => { const index = args.indexOf(flag); return index >= 0 ? args.splice(index, 2)[1] : null }
+  const flag = (name) => { const index = args.indexOf(name); if (index >= 0) args.splice(index, 1); return index >= 0 }
+  const failOnDrop = flag('--fail-on-drop')
   const jsonPath = option('--json')
   const baselineSource = option('--baseline') ?? process.env.RESUME_BASELINE ?? null
   const report = { ...(await analyzeResume(args[0] ? resolve(args[0]) : resumePath)), ...commitInfo() }
   if (baselineSource) {
     report.baseline = compareScores(report, await readBaseline(baselineSource))
-    if (!report.baseline) console.log(`No baseline could be read from ${baselineSource}; the score is not compared.`)
+    if (!report.baseline && !failOnDrop) console.log(`No baseline could be read from ${baselineSource}; the score is not compared.`)
   }
   console.log(formatReport(report))
   if (report.baseline) {
@@ -226,5 +235,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     if (report.baseline.lower && process.env.GITHUB_ACTIONS) console.log(`::warning title=Resume score dropped::${formatComparison(report)}`)
   }
   if (jsonPath) { writeFileSync(resolve(jsonPath), JSON.stringify(report, null, 2)); console.log(`Wrote ${jsonPath}`) }
-  process.exitCode = report.errors ? 1 : 0
+  // --fail-on-drop (the Review workflow's gate): a lower ATS score than the baseline fails
+  // too, and a baseline that could not be read refuses the comparison (exit 2).
+  const code = gateExit({ report, baselineRequested: Boolean(baselineSource), failOnDrop })
+  if (code === 2) for (const line of unavailableMessages(baselineSource, { githubActions: Boolean(process.env.GITHUB_ACTIONS) })) console.error(line)
+  process.exitCode = code
 }

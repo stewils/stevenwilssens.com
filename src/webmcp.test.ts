@@ -92,3 +92,42 @@ describe('WebMCP', () => {
     expect(fetchMock).toHaveBeenCalledWith('/about.md', expect.objectContaining({ headers: { Accept: 'text/markdown' } }))
   })
 })
+
+describe('WebMCP in browsers that misbehave', () => {
+  it('ignores a registerTool that throws or rejects, and an unregisterTool that throws', async () => {
+    ;(document as Host).modelContext = { registerTool: () => { throw new Error('not allowed') } }
+    const none = registerTool(tool('about_steven'))
+    expect(none).not.toThrow()
+
+    const unregisterTool = vi.fn(() => { throw new Error('already gone') })
+    ;(document as Host).modelContext = { registerTool: () => Promise.reject(new Error('denied')), unregisterTool }
+    const remove = registerTool(tool('about_steven'))
+    await Promise.resolve()
+    expect(remove).not.toThrow()
+    expect(unregisterTool).toHaveBeenCalledWith('about_steven')
+  })
+
+  it('treats a modelContext without registerTool as no WebMCP at all', () => {
+    ;(document as Host).modelContext = { somethingElse: true }
+    expect(registerTool(tool('about_steven'))).toBeTypeOf('function')
+  })
+
+  it('takes a missing or non-text role or page as no role and an unknown page', async () => {
+    expect((await run('get_experience', { role: 42 })).roles).toEqual(experiences)
+    expect(await tool('read_site_page').execute({ page: 7 })).toMatch(/^Unknown page ""/)
+  })
+
+  it('says a page is not available when the network fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('offline') }))
+    const controller = new AbortController()
+    expect(await tool('read_site_page').execute({ page: 'privacy' }, { signal: controller.signal })).toBe('https://steven.wilssens.com/privacy.md is not available right now.')
+  })
+
+  it('gives every selected work case its role, and a link or source only where it has one', async () => {
+    const cases = (await run('get_selected_work')).cases as { link: string | null; source: unknown }[]
+    for (const item of cases) {
+      expect(item.link === null || item.link.startsWith('https://steven.wilssens.com/')).toBe(true)
+      expect(item.source === null || typeof item.source === 'object' || typeof item.source === 'string').toBe(true)
+    }
+  })
+})

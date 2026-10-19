@@ -89,7 +89,7 @@ export default function AskAssistant({ page }: { page: string }) {
   const [posting, setPosting] = useState('')
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
-  const [copied, setCopied] = useState<number | null>(null)
+  const [copied, setCopied] = useState<{ index: number; ok: boolean } | null>(null)
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [docked, setDocked] = useState(false)
   const [phone, setPhone] = useState(false)
@@ -98,6 +98,7 @@ export default function AskAssistant({ page }: { page: string }) {
   const logRef = useRef<HTMLDivElement>(null)
   const fabRef = useRef<HTMLButtonElement>(null)
   const turnstileRef = useRef<HTMLDivElement>(null)
+  const copiedTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const turnstileToken = useRef('')
   const turnstileId = useRef('')
   const turnstileWaiters = useRef<((token: string) => void)[]>([])
@@ -330,7 +331,19 @@ export default function AskAssistant({ page }: { page: string }) {
     setTurns((current) => current.map((turn, i) => (i === index && turn.role === 'assistant' ? { ...turn, vote: up ? 'up' : 'down' } : turn)))
     await fetch('/api/ask/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ helpful: up, question: question.content, answer: answer.content, sources: answer.sources.map((source) => source.id), id: answer.id, sig: answer.sig, page }) }).catch(() => {})
   }
-  const copy = (index: number, text: string) => { void navigator.clipboard?.writeText(text).then(() => { setCopied(index); setTimeout(() => setCopied(null), 1600) }) }
+  // "Copied", or "Copy failed" when the browser refuses the clipboard (permission) or has
+  // none (no secure context, an old browser): never a button that silently does nothing.
+  // A second click restarts the 1.6 s, so an earlier timer never cuts the newer label short.
+  const copy = (index: number, text: string) => {
+    const show = (ok: boolean) => {
+      clearTimeout(copiedTimer.current)
+      setCopied({ index, ok })
+      copiedTimer.current = setTimeout(() => setCopied(null), 1600)
+    }
+    if (!navigator.clipboard?.writeText) return show(false)
+    navigator.clipboard.writeText(text).then(() => show(true), () => show(false))
+  }
+  useEffect(() => () => clearTimeout(copiedTimer.current), [])
 
   const streaming = busy && turns[turns.length - 1]?.role === 'assistant'
   const waiting = streaming && !turns[turns.length - 1]?.content
@@ -389,7 +402,7 @@ export default function AskAssistant({ page }: { page: string }) {
                       </div>
                     )}
                     <div className="ask-actions">
-                      <button type="button" className="ask-mini" onClick={() => copy(index, turn.content)} aria-label="Copy answer" title="Copy"><CopyIcon />{copied === index && <span>Copied</span>}</button>
+                      <button type="button" className="ask-mini" onClick={() => copy(index, turn.content)} aria-label="Copy answer" title="Copy"><CopyIcon />{copied?.index === index && <span>{copied.ok ? 'Copied' : 'Copy failed'}</span>}</button>
                       {turn.scope === 'in' && <>
                         <button type="button" className={`ask-mini ${turn.vote === 'up' ? 'is-on' : ''}`} onClick={() => void vote(index, true)} aria-label="Helpful" title="Helpful" aria-pressed={turn.vote === 'up'} disabled={Boolean(turn.vote)}><Up /></button>
                         <button type="button" className={`ask-mini ${turn.vote === 'down' ? 'is-on' : ''}`} onClick={() => void vote(index, false)} aria-label="Not helpful" title="Not helpful" aria-pressed={turn.vote === 'down'} disabled={Boolean(turn.vote)}><Down /></button>

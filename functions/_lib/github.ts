@@ -42,8 +42,13 @@ export type GitHub = {
 // but letters, digits and dashes becomes a dash, cut to 28 characters.
 export const previewUrl = (branch: string, project = 'stevenwilssens') => `https://${branch.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 28)}.${project}.pages.dev`
 
+// The workflow writes its own markers at the very end of the body, after the instruction and
+// the spec's open questions it copies in. A marker planted in that copied text comes earlier,
+// so every marker parser takes the last match, never the first.
+const lastMatch = (pattern: RegExp, body: string | null | undefined) => [...(body ?? '').matchAll(pattern)].at(-1) ?? null
+
 export const resumeScoreFromBody = (body: string | null | undefined): ResumeScore | null => {
-  const match = /<!--\s*resume-score\s+before=(\d+|unknown)\s+after=(\d+)\s*-->/.exec(body ?? '')
+  const match = lastMatch(/<!--\s*resume-score\s+before=(\d+|unknown)\s+after=(\d+)\s*-->/g, body)
   if (!match) return null
   const before = match[1] === 'unknown' ? null : Number(match[1])
   const after = Number(match[2])
@@ -59,7 +64,7 @@ export const encodeUpdateRequest = (request: UpdateRequest) => {
   return `<!-- site-update-request ${btoa(binary)} -->`
 }
 export const updateRequestFromBody = (body: string | null | undefined): UpdateRequest | null => {
-  const match = /<!--\s*site-update-request\s+([A-Za-z0-9+/=]+)\s*-->/.exec(body ?? '')
+  const match = lastMatch(/<!--\s*site-update-request\s+([A-Za-z0-9+/=]+)\s*-->/g, body)
   if (match) {
     try {
       const binary = atob(match[1])
@@ -96,7 +101,11 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
     })
     if (response.status === 204) return null
     const text = await response.text()
-    const body = text ? JSON.parse(text) as Record<string, unknown> : null
+    // An error page from a proxy (a 502 in HTML) is not JSON: keep the status and the text.
+    let body: Record<string, unknown> | null = null
+    try { body = text ? JSON.parse(text) as Record<string, unknown> : null } catch {
+      throw new GitHubError(`GitHub ${response.status} on ${path}: ${response.ok ? 'the answer is not JSON' : text.slice(0, 200)}`, response.status)
+    }
     if (!response.ok) throw new GitHubError(`GitHub ${response.status} on ${path}: ${(body?.message as string) ?? text}`, response.status)
     return body
   }

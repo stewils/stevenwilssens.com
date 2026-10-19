@@ -38,12 +38,15 @@ const hostOf = (url: string | null) => {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return null }
 }
 
+const originHost = (url: string) => { try { return new URL(url).host } catch { return null } }
+
 const retentionMs = 395 * 86_400_000 // 13 months, as stated on /privacy
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   const requestUrl = new URL(request.url)
   const origin = request.headers.get('Origin')
-  if (origin && new URL(origin).host !== requestUrl.host) return new Response(null, { status: 403 })
+  // Origin "null" (sandboxed frames, some redirects) or anything unparsable is not this site either.
+  if (origin && originHost(origin) !== requestUrl.host) return new Response(null, { status: 403 })
 
   // Preview deployments share this database; only production and local dev count.
   if (requestUrl.hostname.endsWith('.pages.dev')) return new Response(null, { status: 204 })

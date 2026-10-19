@@ -78,7 +78,7 @@ export function ResumePage({ resume, proposals }: { resume: ResumeInfo; proposal
         {!report && <p className="empty">No report to show.</p>}
         {notes.length > 0 && (
           <details className="notes">
-            <summary>{notes.length} {notes.length === 1 ? 'note' : 'notes'} that do not change the score</summary>
+            <summary>{notes.length === 1 ? '1 note that does not' : `${notes.length} notes that do not`} change the score</summary>
             <ul>{notes.map((note) => <li key={note.id}>{note.message}</li>)}</ul>
           </details>
         )}

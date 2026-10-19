@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatAgo, niceMax, periodBefore, projectMonth, trendOf } from './format'
+import { dayAxis, formatAgo, formatDuration, formatVital, niceMax, periodBefore, projectMonth, rateVital, trendOf } from './format'
 
 describe('chart and comparison helpers', () => {
   it('rounds an axis up to a clean maximum', () => {
@@ -22,10 +22,30 @@ describe('chart and comparison helpers', () => {
   })
 
   it('says how long ago the numbers were loaded', () => {
-    const now = Date.parse('2026-10-17T12:00:00Z')
+    // Noon local time: two days back is 15 October in every time zone.
+    const now = new Date(2026, 9, 17, 12).getTime()
     expect(formatAgo(now - 10_000, now)).toBe('just now')
     expect(formatAgo(now - 4 * 60_000, now)).toBe('4 min ago')
     expect(formatAgo(now - 3 * 3_600_000, now)).toBe('3 h ago')
     expect(formatAgo(now - 2 * 86_400_000, now)).toMatch(/Oct 15/)
+  })
+})
+
+describe('formatting for the tables', () => {
+  it('writes durations in seconds, minutes or hours', () => {
+    expect([0, 4_000, 95_000, 3_725_000].map(formatDuration)).toEqual(['—', '4s', '1m 35s', '1h 2m'])
+  })
+
+  it('rates and writes web vitals, and treats an unknown metric as good', () => {
+    expect(rateVital('LCP', 2000)).toBe('good')
+    expect(rateVital('INP', 300)).toBe('needs-improvement')
+    expect(rateVital('XYZ', 99_999)).toBe('good')
+    expect([formatVital('LCP', undefined), formatVital('LCP', 850), formatVital('TTFB', 1200), formatVital('CLS', 0.123)]).toEqual(['—', '850ms', '1.20s', '0.12'])
+  })
+
+  it('labels the first, middle and last day under a chart', () => {
+    expect(dayAxis([{ day: '2026-10-01' }, { day: '2026-10-02' }, { day: '2026-10-03' }])).toEqual(['Oct 1', 'Oct 2', 'Oct 3'])
+    expect(dayAxis([{ day: '2026-10-01' }])).toEqual(['Oct 1'])
+    expect(dayAxis([])).toEqual([])
   })
 })

@@ -58,4 +58,38 @@ describe('what needs Steven', () => {
     expect(summaries.mcp).toBe('40 dossier entries across 6 roles · 8 public · 12 public calls')
     expect(computeSummaries({ days: 30, stats: null, mcp: null, ask: null, resume: { report: null, history: [] } }).resume).toBe('No résumé report in this deployment')
   })
+
+  it('flags a missing report, a PDF that drifted, a single finding or question, and an assistant that is not live', () => {
+    expect(computeNeeds({ ...data, resume: { report: null, history: [] } }, midMonth).find((need) => need.page === 'resume')?.text).toBe('no résumé report in this deployment; deploy main again')
+    const drifted: AdminData = { ...data, mcp: { ...mcp, proposals: [mcp.proposals[0], mcp.proposals[1], { ...mcp.proposals[1], id: 9 }] }, ask: { ...ask, configured: false, questions: [...ask.questions, ask.questions[0]] }, resume: { report: { ...resume.report!, matchesSite: false, baseline: undefined, findings: [resume.report!.findings[0]], questions: [...resume.report!.questions, resume.report!.questions[0]] }, history: [] } }
+    const needs = computeNeeds(drifted, midMonth)
+    expect(needs.map((need) => need.text)).toEqual(expect.arrayContaining([
+      'the résumé PDF does not match src/resume.ts: run npm run resume:build',
+      'résumé finding to fix in the data',
+      'questions the résumé data raises for you',
+      'résumé proposal waiting for your decision in Claude',
+      'approved résumé edits not yet on the site',
+      'questions from the site wait for your answers; your career MCP will offer them when a session starts',
+      'the assistant is not live: set the ANTHROPIC_API_KEY secret and redeploy',
+    ]))
+    expect(needs.map((need) => need.key)).not.toContain('resume-lower')
+    // In mock mode the assistant answers without a key.
+    expect(computeNeeds({ ...data, ask: { ...ask, configured: false, mock: true } }, midMonth).map((need) => need.key)).not.toContain('ask-off')
+    const oneEach: AdminData = { ...data, stats: { ...stats, crawlTotals: { ...stats.crawlTotals, errors: 1 }, vitals: { ...stats.vitals, devices: [{ device: 'phone', visits: 1, passes: false }, { device: 'desktop', visits: 1, passes: false }] } } }
+    expect(computeNeeds(oneEach, midMonth).filter((need) => need.page === 'speed' || need.page === 'crawlers').map((need) => need.text)).toEqual(['device types fail Core Web Vitals', 'named crawler request got an error answer'])
+  })
+
+  it('writes the tiles for an empty range, an old report and an MCP without public calls', () => {
+    const quiet = { ...stats, channels: [{ name: 'Direct', visitors: 1 }], organizations: [{ name: 'Unknown', visitors: 1 }], countries: [{ name: 'Belgium', visitors: 1 }, { name: 'United States', visitors: 1 }], vitals: { ...stats.vitals, devices: [{ device: 'phone', visits: 1, passes: null }] } } as Stats
+    const summaries = computeSummaries({ days: 30, stats: quiet, mcp: { ...mcp, publicCalls: undefined as unknown as McpInfo['publicCalls'] }, ask: null, resume: { report: { score: 70, findings: [], questions: [], pages: 1, baseline: { source: 'main', score: 70, change: 0, lower: false, verdict: 'unchanged' } }, history: [] } })
+    expect(summaries.sources).toBe('Direct leads with 1 visitors · 1 channel')
+    expect(summaries.audience).toBe('No organization known yet · 2 countries')
+    expect(summaries.speed).toBe('Not enough measurements yet')
+    expect(summaries.resume).toBe('ATS score 70/100 · 1 page · 0 warnings · unchanged from the live résumé before')
+    expect(summaries.mcp).toBe('40 dossier entries across 6 roles · 8 public')
+    const one = computeSummaries({ days: 30, stats: { ...quiet, channels: [] }, mcp: { ...mcp, publicCalls: { ...mcp.publicCalls, total: 1 } }, ask: null, resume: { report: { score: 90, findings: [], questions: [], ats: { errors: 0, warnings: 1 } }, history: [] } })
+    expect(one.sources).toBe('No visits in this range yet')
+    expect(one.resume).toBe('ATS score 90/100 · ? pages · 1 warning')
+    expect(one.mcp).toContain('1 public call')
+  })
 })
