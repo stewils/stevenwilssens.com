@@ -146,7 +146,7 @@ export default function JuniorTrackCyclingArticle() {
             <li><strong>Weekly planning closes the loop.</strong> The planner proposes a week, and afterwards matches each planned session to the ride that followed it, so the next plan starts from what happened, not from what was intended.</li>
             <li><strong>Previews, then confirmation.</strong> No tool that changes data acts on its first call. It returns a preview and a confirmation code; the person says yes; the second call does the work.</li>
           </ul>
-          <p>The reason to build it was to find out whether an AI coach for juniors could be done responsibly. The answer so far is: only with the gates in the section above, and with them, yes. An answer about a week of training that is grounded in the actual rides, with the guard rails visible in the conversation, is a different thing from a chatbot with a training plan. {/* TODO(steven): a sentence on how you use it yourself, as a parent or coach, if you want one here. */}</p>
+          <p>The reason to build it was to find out whether an AI coach for juniors could be done responsibly. The answer so far is: only with the gates in the section above, and with them, yes. An answer about a week of training that is grounded in the actual rides, with the guard rails visible in the conversation, is a different thing from a chatbot with a training plan. Leo is on a break and about to start training again, and I am using it to build out his weekly schedule, fine-tuning the coach as we go.</p>
         </section>
 
         <section aria-labelledby="gates">
