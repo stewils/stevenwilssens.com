@@ -11,13 +11,14 @@
 //
 // --pages is a dist folder (default dist) or a site address. --baseline-ref checks the
 // ref out in a worktree under .review/ (ignored by git, and inside the repository so
-// packages resolve), copies this script, scripts/recruiter-compare.mjs and this branch's
+// packages resolve), copies this script, scripts/recruiter-compare.mjs and this checkout's
 // functions/_lib/review/ in (both sides are scored by the same checker), and reviews the
 // ref's src/resume.ts on --baseline-pages (default the live site): "main's data on the
 // live pages", not a build of main. --compare reads a baseline written with --json.
 // Exit code 1 when worse; 2 when the baseline is unavailable (a page or the resume
-// report could not be read, or the baseline run failed), so an outage never passes as
-// "not worse".
+// report could not be read, the --compare file could not be read, or the baseline run
+// failed), so an outage never passes as "not worse". scripts/recruiter-check.test.mjs
+// runs the script on fixture pages for each exit code.
 import { execFileSync } from 'node:child_process'
 import { appendFileSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { registerHooks } from 'node:module'
@@ -73,7 +74,7 @@ const unavailable = (why) => {
   process.exit(2)
 }
 
-// The baseline: the ref's own src/resume.ts, scored by this branch's script and recruiter review, on --baseline-pages.
+// The baseline: the ref's own src/resume.ts, scored by this checkout's script and recruiter review, on --baseline-pages.
 const baselineFromRef = (ref) => {
   mkdirSync(join(root, '.review'), { recursive: true })
   const dir = mkdtempSync(join(root, '.review', '.recruiter-base-'))
@@ -98,8 +99,9 @@ if (options.json) writeFileSync(options.json, JSON.stringify(current, null, 2))
 
 let baseline = null
 let label = 'the baseline'
-if (options.compare) baseline = JSON.parse(readFileSync(options.compare, 'utf8'))
-else if (options['baseline-ref'] || !options.json) {
+if (options.compare) {
+  try { baseline = JSON.parse(readFileSync(options.compare, 'utf8')) } catch (error) { unavailable(`could not read ${options.compare}: ${error.message.split('\n')[0]}`) }
+} else if (options['baseline-ref'] || !options.json) {
   const ref = options['baseline-ref'] ?? 'origin/main'
   baseline = baselineFromRef(ref)
   label = `${ref.replace(/^origin\//, '')}'s data on ${/^https?:\/\//.test(options['baseline-pages']) ? 'the live pages' : options['baseline-pages']}`

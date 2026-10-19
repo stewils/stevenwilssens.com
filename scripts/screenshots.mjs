@@ -7,41 +7,47 @@
 //   node scripts/screenshots.mjs --base https://<branch>.stevenwilssens.pages.dev --token <t> --out shots/branch home
 //
 // Without --base it serves dist with wrangler on --port for the run (like
-// scripts/site-check.mjs) and stops it afterwards; it refuses a port that is already in
-// use, so it never photographs a stale server. The admin needs the local D1 migrated
-// once: npx wrangler d1 migrations apply stevenwilssens-analytics --local.
+// scripts/site-check.mjs) and stops it afterwards, also on Ctrl-C or SIGTERM; it refuses
+// a port that is already in use, so it never photographs a stale server. The admin needs
+// the local D1 migrated once: npx wrangler d1 migrations apply stevenwilssens-analytics --local.
 // The theme is the site's own choice in localStorage (sw-theme, sw-admin-theme), not the
 // browser's colour scheme; a light shot identical to its dark one fails the run.
+// GET /api/ask answers { ready: true } in the shots, so the "Ask about Steven" button
+// shows as on the live site (locally and in CI the model key is missing); questions
+// (POST) still reach the server. --slices takes each screen by scrolling to it, so fixed
+// and sticky parts (the Ask button, an article's contents bar) sit where a visitor sees them.
 // Admin pages (/admin…) need a token: --token, or for a local server ADMIN_TOKEN or
-// .dev.vars (never sent to another host). A shot of the admin sign-in card fails the run.
+// .dev.vars (never sent to another host; the rules are in scripts/screenshots-options.mjs,
+// with tests). A shot of the admin sign-in card fails the run.
 // Writes <out>/<page>-<desktop|phone>-<light|dark>.png, with --slices also
 // <page>-<viewport>-<theme>-<n>.png per screen height; default out is screenshots/ (ignored by git).
+// Errors print one line ("screenshots: …") and exit 1.
 import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { connect } from 'node:net'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { chromium } from 'playwright-core'
+import { parseDevVars, resolveOptions } from './screenshots-options.mjs'
 
-const { values: options, positionals } = parseArgs({ allowPositionals: true, options: {
-  base: { type: 'string' },
-  token: { type: 'string' },
-  out: { type: 'string', default: 'screenshots' },
-  port: { type: 'string', default: '8789' },
-  slices: { type: 'boolean', default: false },
-} })
-// Without the leading slash too (experience, admin#resume): Git Bash rewrites /experience into a Windows path.
-const paths = (positionals.length ? positionals : ['/']).map((path) => path === 'home' ? '/' : path.startsWith('/') ? path : `/${path}`)
-const viewports = [{ name: 'desktop', width: 1440, height: 900, scale: 1 }, { name: 'phone', width: 390, height: 844, scale: options.slices ? 2 : 1 }]
+const fail = (message) => { console.error(`screenshots: ${message}`); process.exit(1) }
 
-const base = options.base ?? `http://127.0.0.1:${options.port}`
-const local = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(base).hostname)
-const devVars = existsSync('.dev.vars') ? Object.fromEntries(readFileSync('.dev.vars', 'utf8').split('\n').map((line) => line.trim()).filter((line) => line && !line.startsWith('#')).map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)])) : {}
-// The implicit token only goes to a local server: a branch preview runs that branch's code.
-const token = options.token ?? (local ? process.env.ADMIN_TOKEN ?? devVars.ADMIN_TOKEN : undefined) ?? ''
-if (!token && paths.some((path) => path.startsWith('/admin'))) {
-  throw new Error(local ? 'Admin pages need a token: pass --token, set ADMIN_TOKEN or put it in .dev.vars' : `Admin pages on ${base} need --token (the local token is only used for a local server)`)
+let options, base, paths, token
+try {
+  const parsed = parseArgs({ allowPositionals: true, options: {
+    base: { type: 'string' },
+    token: { type: 'string' },
+    out: { type: 'string', default: 'screenshots' },
+    port: { type: 'string', default: '8789' },
+    slices: { type: 'boolean', default: false },
+  } })
+  options = parsed.values
+  const devVars = existsSync('.dev.vars') ? parseDevVars(readFileSync('.dev.vars', 'utf8')) : {}
+  ;({ base, paths, token } = resolveOptions({ ...options, positionals: parsed.positionals, env: process.env, devVars }))
+} catch (error) {
+  fail(error.message)
 }
+const viewports = [{ name: 'desktop', width: 1440, height: 900, scale: 1 }, { name: 'phone', width: 390, height: 844, scale: options.slices ? 2 : 1 }]
 
 const portInUse = (port) => new Promise((done) => {
   const socket = connect({ host: '127.0.0.1', port: Number(port) })
@@ -59,6 +65,8 @@ const stopServer = () => {
     try { process.kill(-server.pid, 'SIGTERM') } catch { server.kill() }
   }
 }
+// `finally` does not run on a signal: stop the server here, or it keeps the port.
+for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]]) process.once(signal, () => { stopServer(); process.exit(code) })
 
 const launch = async () => {
   let last
@@ -67,6 +75,11 @@ const launch = async () => {
   }
   throw last
 }
+
+// The assistant's status says ready, so its button renders; a question (POST) goes to the server as usual.
+const askReady = (route) => route.request().method() === 'GET'
+  ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ready: true, siteKey: null }) })
+  : route.continue()
 
 const shoot = async (browser) => {
   const taken = new Map()
@@ -78,6 +91,7 @@ const shoot = async (browser) => {
       localStorage.setItem('sw-admin-theme', scheme)
       if (token) localStorage.setItem('sw-admin-token', token)
     }, { scheme, token })
+    await context.route((url) => url.pathname === '/api/ask', askReady)
     const page = await context.newPage()
     for (const path of paths) {
       await page.goto(`${base}${path}`, { waitUntil: 'networkidle' }).catch(() => {})
@@ -94,10 +108,17 @@ const shoot = async (browser) => {
       if (other && other.equals(image)) throw new Error(`${name}: the light and the dark shot are identical, so the theme did not switch`)
       taken.set(name, image)
       if (options.slices) {
+        // One screen at a time, scrolled to as a visitor would: fixed and sticky parts are
+        // drawn where they really are. The browser stops the last scroll at the bottom.
         const height = await page.evaluate(() => document.documentElement.scrollHeight)
         for (let y = 0, n = 1; y < height; y += viewport.height, n++) {
           const slice = join(options.out, `${name}-${scheme}-${n}.png`)
-          await page.screenshot({ path: slice, fullPage: true, clip: { x: 0, y, width: viewport.width, height: Math.min(viewport.height, height - y) } })
+          await page.evaluate((top) => new Promise((done) => {
+            window.scrollTo({ top, left: 0, behavior: 'instant' })
+            requestAnimationFrame(() => requestAnimationFrame(done))
+          }), y)
+          await page.waitForTimeout(100)
+          await page.screenshot({ path: slice })
           console.log(slice)
         }
       }
@@ -123,6 +144,9 @@ try {
   }
   browser = await launch()
   await shoot(browser)
+} catch (error) {
+  console.error(`screenshots: ${error.message}`)
+  process.exitCode = 1
 } finally {
   await browser?.close()
   stopServer()

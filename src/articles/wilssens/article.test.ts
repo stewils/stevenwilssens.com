@@ -303,10 +303,30 @@ describe('enhanceArticle', () => {
       vi.advanceTimersByTime(1800)
       expect(button).toHaveTextContent('Copy link')
 
-      writeText.mockRejectedValueOnce(new Error('denied'))
+    } finally {
+      Reflect.deleteProperty(navigator, 'clipboard')
+    }
+  })
+
+  it('says "Copy failed" when the browser refuses the clipboard or has none, then shows the label again', async () => {
+    vi.useFakeTimers()
+    const writeText = vi.fn(async () => { throw new Error('denied') })
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    try {
+      const root = article({ feed: null })
+      const stop = enhanceArticle(root)
+      const button = root.querySelector<HTMLButtonElement>('[data-copy]')!
       button.click()
-      await settle()
+      await vi.waitFor(() => expect(button).toHaveTextContent('Copy failed'))
+      vi.advanceTimersByTime(1800)
       expect(button).toHaveTextContent('Copy link')
+
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })
+      button.click()
+      await vi.waitFor(() => expect(button).toHaveTextContent('Copy failed'))
+      stop() // a timer still running is cleared with the rest
+      vi.advanceTimersByTime(1800)
+      expect(button).toHaveTextContent('Copy failed')
     } finally {
       Reflect.deleteProperty(navigator, 'clipboard')
     }
@@ -321,10 +341,13 @@ describe('enhanceArticle', () => {
       const button = root.querySelector<HTMLButtonElement>('[data-copy]')!
       button.click()
       await vi.waitFor(() => expect(button).toHaveTextContent('Copied ✓'))
+      vi.advanceTimersByTime(1000)
       button.click()
       await settle()
       expect(button).toHaveTextContent('Copied ✓')
-      vi.advanceTimersByTime(1800)
+      vi.advanceTimersByTime(1000) // the first click's timer would have put the label back by now
+      expect(button).toHaveTextContent('Copied ✓')
+      vi.advanceTimersByTime(800)
       expect(button).toHaveTextContent('Copy link')
       vi.advanceTimersByTime(1800)
       expect(button).toHaveTextContent('Copy link')

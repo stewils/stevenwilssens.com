@@ -42,10 +42,14 @@ Target: $ARGUMENTS
 When the prompt says you run in the Review workflow:
 
 - Never push, never fix (it is `--no-fix`), never merge, never write outside `.review/`.
-- The workflow has already: checked out the pull request, restored `CLAUDE.md` and
-  `.claude/` from main (the PR is judged by main's rules), built `dist/`, served a build
-  of main on `http://127.0.0.1:8790` for the designer's "main" screenshots, put the admin
-  token in `.dev.vars`, and emptied `.review/`. Reviewers do not rebuild; each passes its
+- The workflow has already: checked out the pull request, built `dist/`, restored
+  `CLAUDE.md` and `.claude/` from main and removed any other `CLAUDE.md`,
+  `CLAUDE.local.md`, `.mcp.json` or `.claude/` folder main does not have (the PR is judged
+  by main's rules; read the PR's own versions with `git show HEAD:<path>`, never from
+  disk), served a build of main on `http://127.0.0.1:8790` for the designer's "main"
+  screenshots (when `.review/main-unavailable` exists it could not: the designer takes
+  main's public pages from `--base https://steven.wilssens.com` and says so), put the
+  admin token in `.dev.vars`, and emptied `.review/`. Reviewers do not rebuild; each passes its
   own coverage folder (`.review/cov-<role>`); the designer writes screenshots to
   `.review/screenshots/branch` and `.review/screenshots/main` (uploaded as the run's
   `screenshots` artifact, which the PR comment links) and names in its summary the two to

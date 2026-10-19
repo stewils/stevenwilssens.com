@@ -132,16 +132,23 @@ export function enhanceArticle(root: HTMLElement): () => void {
   dialog?.addEventListener('click', onBackdrop)
   cleanups.push(() => { root.removeEventListener('click', onZoom); dialog?.removeEventListener('click', onBackdrop) })
 
-  // Copy link, with a short "Copied" in place of the label. The label is kept once, so a
-  // second click while "Copied" shows does not make "Copied" the label.
+  // Copy link, with a short "Copied ✓" in place of the label, or "Copy failed" when the
+  // browser refuses the clipboard or has none (as the assistant says). The label is kept
+  // once, so a second click while either shows does not make it the label, and a second
+  // click restarts the 1.8 s.
+  const copyTimers = new Map<HTMLButtonElement, ReturnType<typeof setTimeout>>()
   const onCopy = async (event: Event) => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-copy]')
     if (!button) return
     const label = button.dataset.label ??= button.textContent ?? ''
-    try { await navigator.clipboard.writeText(button.dataset.copy!); button.textContent = 'Copied ✓'; setTimeout(() => { button.textContent = label }, 1800) } catch { /* clipboard unavailable */ }
+    let said = 'Copied ✓'
+    try { await navigator.clipboard.writeText(button.dataset.copy!) } catch { said = 'Copy failed' }
+    button.textContent = said
+    clearTimeout(copyTimers.get(button))
+    copyTimers.set(button, setTimeout(() => { button.textContent = label; copyTimers.delete(button) }, 1800))
   }
   root.addEventListener('click', onCopy)
-  cleanups.push(() => root.removeEventListener('click', onCopy))
+  cleanups.push(() => { root.removeEventListener('click', onCopy); copyTimers.forEach((timer) => clearTimeout(timer)) })
 
   return () => { cleanups.forEach((cleanup) => cleanup()); delete root.dataset.wxMotion }
 }

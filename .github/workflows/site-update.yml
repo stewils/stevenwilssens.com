@@ -72,6 +72,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: main
+          persist-credentials: false
       - id: brief
         env:
           EVENT: ${{ github.event_name }}
@@ -86,10 +87,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
+      # No token is left in .git/config for Claude to find: the push below passes it for that one command.
       - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-node@v7
         with:
@@ -127,6 +130,8 @@ jobs:
           token: ${{ secrets.BUILDING_TOKEN }}
           path: sources/${{ needs.brief.outputs.project }}
           fetch-depth: 0
+          # Only read locally afterwards: BUILDING_TOKEN stays out of sources/<project>/.git/config.
+          persist-credentials: false
       - name: What changed in the project
         if: needs.brief.outputs.project != ''
         env:
@@ -199,6 +204,7 @@ jobs:
       - name: Check, commit and push
         id: commit
         env:
+          GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ steps.branch.outputs.branch }}
           TITLE: ${{ needs.brief.outputs.title }}
           INSTRUCTION: ${{ needs.brief.outputs.instruction }}
@@ -214,7 +220,9 @@ jobs:
           (npm run lint && npm run test:coverage && npm run build) || status=failed
           git add -A
           git commit -m "$TITLE" -m "$INSTRUCTION" -m "Requested through $ORIGIN; made by Claude Code in the Site update workflow (run ${GITHUB_RUN_ID})." -m "Co-Authored-By: Claude <noreply@anthropic.com>"
-          git push -u origin "$BRANCH"
+          # The checkout keeps no credentials, so the token goes in for this push only (as actions/checkout does it).
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" push -u origin "$BRANCH"
           echo "changed=true" >> "$GITHUB_OUTPUT"
           echo "checks=$status" >> "$GITHUB_OUTPUT"
 
@@ -267,17 +275,22 @@ jobs:
           SPEC: ${{ steps.branch.outputs.spec }}
         run: |
           alias=$(printf '%s' "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | cut -c1-28)
+          # Text copied into the body (the instruction, the spec's open questions, the new findings) cannot open or
+          # close an HTML comment: a hidden marker planted in it would otherwise read as the workflow's own
+          # (functions/_lib/github.ts also takes the last marker, which is the workflow's).
+          neutralise() { sed 's/<!--/\&lt;!--/g; s/-->/--\&gt;/g'; }
+          instruction=$(printf '%s' "$INSTRUCTION" | neutralise)
           # The team's spec and the questions it left for Steven (its "Open questions" section, when it has any).
           spec_line="**Spec:** none was written (see the run log)."
           questions=""
           if [ -f "$SPEC" ]; then
             spec_line="**Spec:** [$SPEC]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$BRANCH/$SPEC), written by the team before the build."
-            questions=$(awk '/^## Open questions/{on=1; next} /^## /{on=0} on' "$SPEC" | sed '/^[[:space:]]*$/d' | grep -v '^1\. …$' || true)
+            questions=$(awk '/^## Open questions/{on=1; next} /^## /{on=0} on' "$SPEC" | sed '/^[[:space:]]*$/d' | grep -v '^1\. …$' | neutralise || true)
             if [ -n "$questions" ]; then spec_line=$(printf '%s\n\n**Open questions for Steven** (answer by replying on this pull request):\n\n%s' "$spec_line" "$questions"); fi
           fi
           warning=""
           if [ "$SCORE_LOWER" = true ]; then
-            warning=$(printf '> ⚠️ **This update lowers the resume score from %s to %s.** An applicant tracking system would read it worse than the one live today. New findings:\n%s\n\nFix the data on this branch (or ask Claude to) before merging, or merge knowing the trade-off.\n\n' "$SCORE_BEFORE" "$SCORE_AFTER" "$(cat /tmp/resume-new-findings.txt 2>/dev/null || true)")
+            warning=$(printf '> ⚠️ **This update lowers the resume score from %s to %s.** An applicant tracking system would read it worse than the one live today. New findings:\n%s\n\nFix the data on this branch (or ask Claude to) before merging, or merge knowing the trade-off.\n\n' "$SCORE_BEFORE" "$SCORE_AFTER" "$(cat /tmp/resume-new-findings.txt 2>/dev/null | neutralise || true)")
           fi
           # The hidden markers are read by the MCP server (site_update_status, merge_site_update, wait_for_site_update):
           # the score so Claude can warn Steven, and the request itself (title, instruction, proposals, the pull request
@@ -291,7 +304,7 @@ jobs:
           if [ -n "$PROPOSALS" ]; then proposals_line=$(printf '**Résumé proposals:** %s (marked applied in the MCP server when this merges)\n\n' "$(printf '%s' "$PROPOSALS" | sed 's/,/, #/g; s/^/#/')"); fi
           body=$(printf '%s%s%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s\n%s' \
             "$warning" "$proposals_line" \
-            "**Instruction**" "$INSTRUCTION" \
+            "**Instruction**" "$instruction" \
             "**Resume score:** ${SCORE_LINE:-unknown} (the ATS score: 100 means an applicant tracking system parses every part of it; see scripts/resume-check.mjs)" \
             "**Checks in this run:** $CHECKS (lint, tests, build). Preview, once the Deploy workflow for this branch finishes: https://$alias.stevenwilssens.pages.dev" \
             "$spec_line" \

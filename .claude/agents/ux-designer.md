@@ -39,6 +39,9 @@ to `.review/screenshots/` instead of `screenshots/`.
    part the change touches. Phone shots with `--slices`, so each image is one readable
    screen:
    `npm run screenshots -- --out screenshots/branch --slices home <page> admin admin#<part>`
+   (locally, in a new worktree for the branch: copy `.dev.vars` into it and run
+   `npx wrangler d1 migrations apply stevenwilssens-analytics --local` there first, or the
+   admin shots fail for want of a token and a database)
    and main's build served on another port (locally: copy `.dev.vars` into main's
    worktree, then in it `npx wrangler d1 migrations apply stevenwilssens-analytics --local`
    and `npx wrangler pages dev dist --port 8790` in the background; in CI it is already

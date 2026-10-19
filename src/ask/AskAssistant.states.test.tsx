@@ -250,41 +250,67 @@ describe('asking', () => {
     expect(fetchMock.mock.calls.some((call) => call[0] === '/api/ask/feedback')).toBe(false)
   })
 
-  it('copies an answer and says so for a moment', async () => {
-    const writeText = vi.fn(async () => {})
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+  // Fake timers that still let real time pass (userEvent and the stream need it); the
+  // 1.6 s of the label are skipped with advanceTimersByTime instead of waited for.
+  const withClipboard = async (clipboard: unknown, body: () => Promise<void>) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: clipboard })
     try {
       await openPanel()
       await ask('Hello')
       await screen.findByText('An answer.')
-      await userEvent.click(screen.getByRole('button', { name: 'Copy answer' }))
-      expect(writeText).toHaveBeenCalledWith('An answer.')
-      expect(await screen.findByText('Copied')).toBeInTheDocument()
-      await waitFor(() => expect(screen.queryByText('Copied')).not.toBeInTheDocument(), { timeout: 2500 })
+      await body()
     } finally {
       Reflect.deleteProperty(navigator, 'clipboard')
+      vi.useRealTimers()
     }
+  }
+  const copyAnswer = () => userEvent.click(screen.getByRole('button', { name: 'Copy answer' }))
+  const pass = (ms: number) => act(() => { vi.advanceTimersByTime(ms) })
+
+  it('copies an answer and says so for a moment', async () => {
+    const writeText = vi.fn(async () => {})
+    await withClipboard({ writeText }, async () => {
+      await copyAnswer()
+      expect(writeText).toHaveBeenCalledWith('An answer.')
+      expect(await screen.findByText('Copied')).toBeInTheDocument()
+      await pass(1600)
+      expect(screen.queryByText('Copied')).not.toBeInTheDocument()
+    })
   })
 
-  it('says the copy failed when the browser refuses the clipboard, or has none', async () => {
+  it('keeps "Copied" for the full moment after a second click', async () => {
+    await withClipboard({ writeText: vi.fn(async () => {}) }, async () => {
+      await copyAnswer()
+      await screen.findByText('Copied')
+      await pass(1000)
+      await copyAnswer()
+      await pass(1000) // the first click's timer would have cleared it by now
+      expect(screen.getByText('Copied')).toBeInTheDocument()
+      await pass(600)
+      expect(screen.queryByText('Copied')).not.toBeInTheDocument()
+    })
+  })
+
+  it('says the copy failed when the browser refuses the clipboard', async () => {
     const writeText = vi.fn(async () => { throw new Error('denied') })
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
-    try {
-      await openPanel()
-      await ask('Hello')
-      await screen.findByText('An answer.')
-      await userEvent.click(screen.getByRole('button', { name: 'Copy answer' }))
+    await withClipboard({ writeText }, async () => {
+      await copyAnswer()
       expect(writeText).toHaveBeenCalledWith('An answer.')
       expect(await screen.findByText('Copy failed')).toBeInTheDocument()
       expect(screen.queryByText('Copied')).not.toBeInTheDocument()
-      await waitFor(() => expect(screen.queryByText('Copy failed')).not.toBeInTheDocument(), { timeout: 2500 })
+      await pass(1600)
+      expect(screen.queryByText('Copy failed')).not.toBeInTheDocument()
+    })
+  })
 
-      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })
-      await userEvent.click(screen.getByRole('button', { name: 'Copy answer' }))
+  it('says the copy failed when the browser has no clipboard (no secure context)', async () => {
+    await withClipboard(undefined, async () => {
+      await copyAnswer()
       expect(await screen.findByText('Copy failed')).toBeInTheDocument()
-    } finally {
-      Reflect.deleteProperty(navigator, 'clipboard')
-    }
+      await pass(1600)
+      expect(screen.queryByText('Copy failed')).not.toBeInTheDocument()
+    })
   })
 
   it('starts a new conversation', async () => {

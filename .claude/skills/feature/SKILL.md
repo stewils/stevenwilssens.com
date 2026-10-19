@@ -16,7 +16,10 @@ The ask: $ARGUMENTS
 
 - `git fetch origin && git log --oneline -5 origin/main`: main moves while you work.
 - If the working tree has changes that are not yours, work in a worktree:
-  `git worktree add -b <slug> ../stevenwilssens-<slug> origin/main`. Otherwise
+  `git worktree add -b <slug> ../stevenwilssens-<slug> origin/main`, then make the
+  admin screenshots work there: copy `.dev.vars` from the main checkout into the new
+  worktree and run `npm ci && npx wrangler d1 migrations apply stevenwilssens-analytics --local`
+  in it (a new worktree has neither the token nor a local database). Otherwise
   `git switch -c <slug> origin/main`.
 - Pick a short kebab-case slug. Classify the ask: surfaces touched (public pages, admin,
   `src/resume.ts`, Pages Functions, assistant, MCP, workflows) and size (trivial / normal).

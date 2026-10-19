@@ -36,8 +36,10 @@ describe('the recruiter comparison', () => {
   })
 
   it('lists a new medium finding at an equal score as needing a look, without failing', () => {
-    const result = compareReviews(review(80, [finding('message', 'medium', 'Mixed pitch.')]), review(80, [finding('now', 'medium')]))
+    const result = compareReviews(review(80, [finding('message', 'medium', 'Mixed pitch.'), finding('tense:a', 'low', 'Present tense.')]), review(80, [finding('now', 'medium')]))
     expect(result.worse).toBe(false)
+    // A new low finding is listed as new, but it does not ask the recruiter for a look.
+    expect(result.added.map((item) => item.finding)).toEqual(['Mixed pitch.', 'Present tense.'])
     expect(result.needsALook.map((item) => item.finding)).toEqual(['Mixed pitch.'])
     expect(result.fixed.map((item) => item.area)).toEqual(['now'])
   })
