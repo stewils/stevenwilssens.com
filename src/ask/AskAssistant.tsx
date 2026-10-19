@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type Keyboard
 import profileImage from '../assets/profile.jpg'
 import { renderMarkdown } from './markdown'
 import { pickSuggestions } from './suggestions'
+import { waits } from './waits'
 import { registerTool } from '../webmcp'
 import './ask.css'
 
@@ -32,8 +33,7 @@ const openKey = 'sw-ask-open'
 const maxQuestion = 1000
 export const maxJobDescription = 8000
 const maxTurns = 24
-/** How long a send waits for the human check's token before posting without one. */
-const tokenWait = 8000
+const tickTheBox = 'Tick the box below and your question goes through.'
 export const fitChip = 'Check a job description against his record'
 
 const storage = {
@@ -82,6 +82,7 @@ export default function AskAssistant({ page }: { page: string }) {
   const turnstileToken = useRef('')
   const turnstileId = useRef('')
   const turnstileWaiters = useRef<((token: string) => void)[]>([])
+  const turnstileInteractive = useRef(false) // Cloudflare has put the checkbox in front of the visitor
   const controller = useRef<AbortController | null>(null)
   const pending = useRef('')
   const paint = useRef(0)
@@ -148,11 +149,17 @@ export default function AskAssistant({ page }: { page: string }) {
     turnstileWaiters.current.push(done)
   })
   const freshToken = () => { turnstileToken.current = ''; if (turnstileId.current && window.turnstile) window.turnstile.reset(turnstileId.current) }
+  // The token for a send: a short wait normally, a long one once the visitor has a box to tick.
+  const tokenForSend = async () => {
+    let token = await awaitToken(waits.token)
+    if (!token && turnstileInteractive.current) { setNotice(tickTheBox); token = await awaitToken(waits.interactive); setNotice('') }
+    return token
+  }
   // The server asks for the check only when the assistant looks under attack, so the
   // widget comes up when the status says so, or mid-conversation when an answer does.
   const ensureWidget = (key: string) => new Promise<void>((resolve) => {
     const mount = () => {
-      if (window.turnstile && turnstileRef.current && !turnstileId.current) turnstileId.current = window.turnstile.render(turnstileRef.current, { sitekey: key, size: 'flexible', appearance: 'interaction-only', callback: gotToken, 'expired-callback': () => { turnstileToken.current = '' }, 'error-callback': () => { turnstileToken.current = '' }, 'timeout-callback': () => { turnstileToken.current = '' } })
+      if (window.turnstile && turnstileRef.current && !turnstileId.current) turnstileId.current = window.turnstile.render(turnstileRef.current, { sitekey: key, size: 'flexible', appearance: 'interaction-only', callback: gotToken, 'expired-callback': () => { turnstileToken.current = '' }, 'error-callback': () => { turnstileToken.current = '' }, 'timeout-callback': () => { turnstileToken.current = '' }, 'before-interactive-callback': () => { turnstileInteractive.current = true }, 'after-interactive-callback': () => { turnstileInteractive.current = false } })
       resolve()
     }
     if (window.turnstile) return mount()
@@ -205,7 +212,7 @@ export default function AskAssistant({ page }: { page: string }) {
       }),
     })
     try {
-      let response = await post(await awaitToken(tokenWait))
+      let response = await post(await tokenForSend())
       if (response.status === 403) {
         // The check is on and the token was missing, spent or stale: bring up the widget if
         // it is not there yet, or ask it for a new token, and try once more.
@@ -213,7 +220,7 @@ export default function AskAssistant({ page }: { page: string }) {
         if (data.error === 'human' && (turnstileId.current || data.siteKey)) {
           if (turnstileId.current) freshToken()
           else { setSiteKey(data.siteKey!); await ensureWidget(data.siteKey!) }
-          response = await post(await awaitToken(tokenWait))
+          response = await post(await tokenForSend())
         }
       }
       if (!response.ok || !response.body) {

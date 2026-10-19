@@ -2,6 +2,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AskAssistant from './AskAssistant'
+import { waits } from './waits'
 import { renderInline, safeHref } from './markdown'
 import { openAsk } from './open'
 
@@ -92,8 +93,8 @@ describe('AskAssistant', () => {
 
   // A fake Turnstile: render() keeps the callback, the test hands out tokens when it likes.
   const fakeTurnstile = () => {
-    const fake = { giveToken: null as ((token: string) => void) | null, resets: 0, rendered: 0 }
-    const turnstile = { render: (_el: HTMLElement, options: Record<string, unknown>) => { fake.rendered++; fake.giveToken = options.callback as (token: string) => void; return 'w1' }, reset: () => { fake.resets++ } }
+    const fake = { giveToken: null as ((token: string) => void) | null, showBox: null as (() => void) | null, resets: 0, rendered: 0 }
+    const turnstile = { render: (_el: HTMLElement, options: Record<string, unknown>) => { fake.rendered++; fake.giveToken = options.callback as (token: string) => void; fake.showBox = options['before-interactive-callback'] as () => void; return 'w1' }, reset: () => { fake.resets++ } }
     Object.defineProperty(window, 'turnstile', { configurable: true, writable: true, value: turnstile })
     return fake
   }
@@ -146,6 +147,32 @@ describe('AskAssistant', () => {
     expect(posted).toEqual(['', 'token-2'])
     expect(screen.queryByText('Not a person.')).not.toBeInTheDocument()
     Reflect.deleteProperty(window, 'turnstile')
+  })
+
+  it('tells the visitor to tick the box when Cloudflare puts one up, and keeps waiting for the token', async () => {
+    const fake = fakeTurnstile()
+    const posted: string[] = []
+    const before = waits.token
+    waits.token = 20
+    try {
+      fetchMock.mockImplementation(humanCheckServer(posted, 'site-key'))
+      render(<AskAssistant page="home" />)
+      await userEvent.click(await screen.findByRole('button', { name: /ask about steven/i }))
+      await waitFor(() => expect(fake.showBox).not.toBeNull())
+      act(() => fake.showBox!())
+      await userEvent.type(screen.getByLabelText('Your question'), 'Hello{enter}')
+      // The short wait passes with no token and the box is up: the panel says so and does not post.
+      await screen.findByRole('status')
+      expect(screen.getByRole('status')).toHaveTextContent('Tick the box below')
+      expect(posted).toEqual([])
+      await act(async () => { fake.giveToken!('token-2') })
+      await screen.findByText('Answered.')
+      expect(posted).toEqual(['token-2'])
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    } finally {
+      waits.token = before
+      Reflect.deleteProperty(window, 'turnstile')
+    }
   })
 
   it('opens from anywhere on the site with a question typed in, and closes on Escape', async () => {
