@@ -43,7 +43,7 @@ export const words = {
   tooLong: 'That question is too long for me. Could you shorten it?',
   busy: 'Too many questions from this connection in the last hour. Please try again later, or email steven@wilssens.com.',
   budget: "The assistant has reached this month's budget. You can still read everything on the site, or email Steven at steven@wilssens.com.",
-  human: 'Please complete the quick check below and send your question again.',
+  human: 'I could not confirm you are a person, so I did not answer. Please send your question again, or email Steven at steven@wilssens.com.',
   unavailable: 'The assistant is not available right now.',
 }
 
