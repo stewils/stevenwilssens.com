@@ -1,10 +1,10 @@
 {
   "project": "site",
-  "asOf": "2026-10-19T07:55:53.346Z",
+  "asOf": "2026-10-19T13:59:42.168Z",
   "numbers": {
     "countries": 12,
-    "vitalsGoodPercent": 92,
+    "vitalsGoodPercent": 91,
     "proposalsApproved": 28,
-    "pullRequestsMerged": 9
+    "pullRequestsMerged": 13
   }
 }
