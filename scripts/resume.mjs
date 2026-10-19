@@ -34,7 +34,7 @@ const early = experiences.slice(2).filter((item) => item.company !== 'Microsoft'
 const granted = grantedPatents.flatMap((item) => item.records).length
 const published = patentApplications.flatMap((item) => item.records).length
 
-const role = (item, points) => `<article class="role">
+const role = (item, points, kind = '') => `<article class="role${kind ? ` ${kind}` : ''}">
   <div class="when">${esc(item.dates)}</div>
   <div>
     <h3>${esc(item.role)}</h3>
@@ -81,6 +81,10 @@ h2::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .skills span { padding: 2px 7px; border: 1px solid var(--line); border-radius: 999px; font-size: 8.3pt; font-weight: 600; }
 .role { display: grid; grid-template-columns: 1.3in 1fr; gap: 12px; padding: 5px 0 5px; border-top: 1px solid var(--line); break-inside: avoid; }
 .role:first-of-type { border-top: 0; padding-top: 0; }
+/* The two latest roles carry every bullet; one may run over a page break between bullets rather than leave half a page empty. */
+.role.detailed { break-inside: auto; }
+.role.detailed li { break-inside: avoid; }
+.role.detailed .where, .role.detailed .summary { break-after: avoid; }
 .when { font-family: 'DM Mono', monospace; font-size: 7.6pt; color: var(--muted); padding-top: 2px; white-space: nowrap; }
 h3 { margin: 0; font-size: 10.8pt; font-weight: 700; letter-spacing: -0.2pt; line-height: 1.25; }
 .where { margin: 1px 0 4px; font-size: 8.8pt; color: var(--muted); }
@@ -98,12 +102,12 @@ h3 { margin: 0; font-size: 10.8pt; font-weight: 700; letter-spacing: -0.2pt; lin
 .foot li { margin: 1px 0; }
 .foot .honors { line-height: 1.45; }
 /* The compact layout, used only when the roomier one runs past two pages. */
-body.compact { font-size: 9.2pt; line-height: 1.33; }
-body.compact section { margin-top: 8px; }
-body.compact .summary-text { font-size: 9.5pt; line-height: 1.4; }
+body.compact { font-size: 9.2pt; line-height: 1.25; }
+body.compact section { margin-top: 7px; }
+body.compact .summary-text { font-size: 9.5pt; line-height: 1.38; }
 body.compact .summary { font-size: 9.1pt; }
-body.compact .role { padding: 5px 0 6px; }
-body.compact .role li { font-size: 8.7pt; line-height: 1.28; }
+body.compact .role { padding: 4px 0 4px; }
+body.compact .role li { font-size: 8.7pt; line-height: 1.24; }
 body.compact .early div { font-size: 9pt; line-height: 1.3; }
 body.compact .foot { font-size: 8.7pt; }
 </style></head>
@@ -143,7 +147,7 @@ body.compact .foot { font-size: 8.7pt; }
 
 <section>
   <h2>Experience</h2>
-  ${detailed.map((item) => role(item, item.points)).join('')}
+  ${detailed.map((item) => role(item, item.points, 'detailed')).join('')}
   ${condensed.map((item) => role(item, item.points.slice(0, olderBullets))).join('')}
 </section>
 
