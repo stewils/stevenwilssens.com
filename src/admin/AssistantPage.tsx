@@ -1,7 +1,8 @@
 import { TrendChart } from './Charts'
 import { DataTable, type Column } from './DataTable'
 import { dayLabel, fillDays, formatDuration, formatNumber, formatTime, formatUsd, monthName, projectMonth } from './format'
-import type { AskInfo } from './types'
+import { askPeople, type Asker, type PeopleDay } from './askPeople'
+import type { AskInfo, AskLogEntry, VisitorRow } from './types'
 
 type Question = AskInfo['questions'][number]
 const reasonLabel: Record<Question['reason'], string> = { gap: 'not covered', unhelpful: 'not helpful', fit: 'job requirement' }
@@ -13,6 +14,31 @@ const questionColumns: Column<Question>[] = [
   { key: 'page', label: 'Page', value: (row) => row.page },
   { key: 'network', label: 'Network', value: (row) => [row.asOrg, row.country].filter(Boolean).join(', ') },
 ]
+
+const outcomeLabel: Record<AskLogEntry['outcome'], string> = { answered: 'answered', gap: 'not covered', off: 'off topic', limited: 'turned away', failed: 'failed' }
+const outcomeBadge: Record<AskLogEntry['outcome'], string> = { answered: '', gap: 'gap', off: 'info', limited: 'warn', failed: 'error' }
+const askerColumns: Column<Asker>[] = [
+  { key: 'ts', label: 'When', value: (row) => row.lastTs, render: (row) => formatTime(row.firstTs) },
+  { key: 'count', label: 'Questions', value: (row) => row.entries.length, num: true },
+  { key: 'asked', label: 'What they asked', value: (row) => row.entries.map((entry) => entry.question).join(' · '), strong: true, render: (row) => row.entries.length === 1 ? row.entries[0].question : <ol>{row.entries.map((entry) => <li key={entry.id}>{entry.question}</li>)}</ol> },
+  { key: 'page', label: 'Page', value: (row) => row.pages },
+  { key: 'network', label: 'Network', value: (row) => row.network },
+]
+
+// One person's conversation, and their visit that day when the traffic data has it.
+function Conversation({ person, visit }: { person: Asker; visit?: VisitorRow }) {
+  return (
+    <>
+      {visit && <p><b>Visit:</b> {visit.journey}{visit.referrer ? ` (from ${visit.referrer})` : ''}{visit.downloaded ? ' · downloaded the résumé' : ''}</p>}
+      {person.entries.map((entry) => (
+        <div key={entry.id}>
+          <p><b>{formatTime(entry.ts)}{entry.page ? ` on ${entry.page}` : ''}:</b> {entry.question} <span className={`badge ${outcomeBadge[entry.outcome]}`}>{entry.kind === 'fit' ? 'fit check' : outcomeLabel[entry.outcome]}</span></p>
+          {entry.answer && <p className="muted">{entry.answer}</p>}
+        </div>
+      ))}
+    </>
+  )
+}
 
 type Day = { day: string; questions: number; costMicro: number; off: number; gap: number }
 
@@ -43,7 +69,7 @@ function BudgetMeter({ spent, budgetUsd, now = new Date() }: { spent: number; bu
 // questions and cost per day, votes, and the questions that wait for Steven (what the
 // dossier could not answer, the job requirements his record does not show, the answers
 // voted down), which he closes in an MCP session.
-export function AssistantPage({ info, days }: { info: AskInfo; days: number }) {
+export function AssistantPage({ info, days, visitors }: { info: AskInfo; days: number; visitors?: VisitorRow[] }) {
   const perDay = new Map<string, Day>()
   for (const row of info.daily) {
     const entry = perDay.get(row.day) ?? { day: row.day, questions: 0, costMicro: 0, off: 0, gap: 0 }
@@ -60,8 +86,29 @@ export function AssistantPage({ info, days }: { info: AskInfo; days: number }) {
   const cacheShare = info.month.cacheReadTokens + info.month.inputTokens ? Math.round((info.month.cacheReadTokens / (info.month.cacheReadTokens + info.month.inputTokens)) * 100) : 0
   const resolved = info.resolved ?? { answered: 0, dismissed: 0 }
   const requirements = info.questions.filter((row) => row.reason === 'fit').length
+  const { people, daily: peopleDaily } = askPeople(info.log ?? [])
+  const logged = people.reduce((sum, person) => sum + person.entries.length, 0)
+  const followedUp = people.filter((person) => person.entries.length > 1).length
+  const fitChecks = people.filter((person) => person.fit > 0).length
+  const visits = new Map((visitors ?? []).map((row) => [row.visitor, row]))
+  const peopleSeries = fillDays(peopleDaily, days, new Date(), (day): PeopleDay => ({ day, people: 0, questions: 0 }))
   return (
     <>
+      <section className="card" data-part="People">
+        <div className="card-head"><h2>People who asked</h2></div>
+        <p className="note">Everyone who asked the assistant something in the last {days} days, and what they asked. A person counts once a day, like a visitor on Traffic, so someone who comes back the next day counts again. Email addresses and phone numbers are redacted, a pasted job description is kept as its first words, and nothing is kept for browsers that send Global Privacy Control or Do Not Track. Open a row for the answers and, when the traffic data has it, the visit.{!info.log && <strong> The deployed API does not send the log yet.</strong>}</p>
+        <div className="stats">
+          <div className={people.length ? 'highlight' : ''}><span>People</span><strong>{formatNumber(people.length)}</strong><small>asked at least one question</small></div>
+          <div><span>Questions</span><strong>{formatNumber(logged)}</strong><small>{people.length ? (logged / people.length).toFixed(1) : '0'} per person</small></div>
+          <div><span>Asked a follow-up</span><strong>{formatNumber(followedUp)}</strong><small>{people.length ? Math.round((followedUp / people.length) * 100) : 0}% of the people</small></div>
+          <div><span>Checked a job</span><strong>{formatNumber(fitChecks)}</strong><small>pasted a job description</small></div>
+        </div>
+        <div className="trends">
+          <TrendChart title={`People per day (${days} days)`} unit="people" points={peopleSeries.map((row) => ({ key: row.day, label: dayLabel(row.day), value: row.people, detail: `${formatNumber(row.people)} people · ${formatNumber(row.questions)} questions` }))} />
+        </div>
+        <DataTable columns={askerColumns} rows={people} rowKey={(row) => row.visitor} empty={`Nobody asked the assistant anything in the last ${days} days.`} label="People who asked" expand={(row) => <Conversation person={row} visit={visits.get(row.visitor)} />} />
+      </section>
+
       <section className="card" data-part="Use and cost">
         <div className="card-head"><h2>Use and cost</h2></div>
         <p className="note">Claude ({info.model}) answers from the résumé data and the public dossier entries, and compares pasted job descriptions with them.{!info.configured && !info.mock && <strong> Not live yet: set the ANTHROPIC_API_KEY secret and redeploy.</strong>}{info.mock && <strong> Mock mode (ASK_MOCK=1): canned answers, no API calls.</strong>}</p>

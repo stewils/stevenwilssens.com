@@ -1,5 +1,6 @@
 import type { Env } from '../_lib/env'
 import { isBot, parseUserAgent } from '../_lib/useragent'
+import { visitorHash } from '../_lib/visitor'
 
 type Payload = {
   type?: string
@@ -27,11 +28,6 @@ const metrics = new Set(['LCP', 'INP', 'CLS', 'FCP', 'TTFB'])
 const ratings = new Set(['good', 'needs-improvement', 'poor'])
 const text = (value: unknown, max = 300) => (typeof value === 'string' && value ? value.slice(0, max) : null)
 const int = (value: unknown, max: number) => (typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(Math.round(value), max)) : null)
-
-const hash = async (value: string) => {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
-  return [...new Uint8Array(digest).slice(0, 8)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
-}
 
 const hostOf = (url: string | null) => {
   if (!url) return null
@@ -63,7 +59,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   const now = Date.now()
   const day = new Date(now).toISOString().slice(0, 10)
   const ip = request.headers.get('CF-Connecting-IP') ?? ''
-  const visitor = await hash(`${env.HASH_SALT ?? ''}|${day}|${ip}|${userAgent}`)
+  const visitor = await visitorHash(env.HASH_SALT ?? '', day, ip, userAgent)
   const agent = parseUserAgent(userAgent)
   const cf = (request.cf ?? {}) as IncomingRequestCfProperties
   const referrer = text(payload.referrer, 500)

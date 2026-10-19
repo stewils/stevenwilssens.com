@@ -19,6 +19,7 @@ import type { Env } from '../env'
 import type { DossierStore } from '../mcp/store'
 import { contact, jdPrefix, loadArticles, sources as allSources, systemPrompt, type Articles, type Source } from './prompt'
 import { dayOf, monthStart, type AskStore, type Outcome, type Usage } from './store'
+import { optedOut, visitorHash } from '../visitor'
 
 export const MODEL = 'claude-opus-5-5'
 /** Micro-dollars per token (claude-opus-5-5: $4 / $20 per MTok; cache read $0.20, cache write with a 1-hour lifetime $8). */
@@ -304,6 +305,16 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
     : { role: 'user', content: turn.kind === 'fit' ? `${jdPrefix}\n\n${turn.content}` : turn.content })
   const question = last.content
   const cf = ((request as Request & { cf?: IncomingRequestCfProperties }).cf ?? {}) as Partial<IncomingRequestCfProperties>
+  const where = { page: parsed.page, country: (cf.country as string | undefined) ?? null, asOrg: (cf.asOrganization as string | undefined) ?? null }
+  // Who asked what, for /admin: the analytics' visitor code for the day, so people are counted
+  // like visitors. Not on preview deployments (they share the database) or when the browser opted out.
+  const visitor = optedOut(request) || new URL(request.url).hostname.endsWith('.pages.dev') ? null
+    : await visitorHash(env.HASH_SALT ?? '', day, request.headers.get('CF-Connecting-IP') ?? '', request.headers.get('User-Agent') ?? '')
+  const logAs = async (outcome: Outcome, answer: string) => {
+    if (!visitor) return
+    const asked = fit ? `Job description (${question.length} characters): ${redact(question).slice(0, 240).trim()}…` : redact(question).slice(0, MAX_QUESTION)
+    await store.logQuestion({ ts: started, visitor, kind: fit ? 'fit' : 'question', question: asked, answer: answer ? redact(answer).slice(0, MAX_ANSWER) : null, outcome, ...where }, KEEP_MS).catch((err: unknown) => console.error('ask log', err))
+  }
   const makeStream = stream ?? (env.ASK_MOCK === '1' ? mockStream : claudeStream(env))
   const maxSources = fit ? MAX_SOURCES_FIT : MAX_SOURCES
 
@@ -355,7 +366,6 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
         await send('delta', { text: state.answer })
       }
       let id: number | null = null
-      const where = { page: parsed.page, country: (cf.country as string | undefined) ?? null, asOrg: (cf.asOrganization as string | undefined) ?? null }
       if (state.scope === 'in' && fit) {
         // The requirements the record does not show are the questions Steven should answer next; the posting itself is not kept.
         for (const requirement of missingRequirements(state.answer)) await store.saveQuestion({ ts: started, reason: 'fit', question: requirement, answer: null, ...where }, KEEP_MS).catch(() => null)
@@ -373,6 +383,7 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
       const outcome: Outcome = state.failed ? 'failed' : state.scope === 'out' ? 'off' : state.sources.length ? 'answered' : 'gap'
       const done = now()
       await store.recordUsage(day, outcome, usage, costMicro(usage), (firstAt || done) - started, done - started).catch((err: unknown) => console.error('ask usage', err))
+      await logAs(outcome, state.failed ? '' : state.answer)
       await writer.close().catch(() => {})
     }
   }
