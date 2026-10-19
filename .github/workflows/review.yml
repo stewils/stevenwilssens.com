@@ -156,7 +156,7 @@ jobs:
           # this run and the head commit is Dependabot's (Dependabot's runs get no Anthropic secret). A commit
           # someone else pushes onto it, a re-run by someone else, or a dispatched run, gets the full team.
           dependabot=false
-          if [ "$AUTHOR" = 'dependabot[bot]' ] && [ "$GITHUB_ACTOR" = 'dependabot[bot]' ] && [[ "$HEAD_REF" == dependabot/* ]]; then
+          if [ "$AUTHOR" = 'dependabot[bot]' ] && [ "$GITHUB_ACTOR" = 'dependabot[bot]' ] && [ "${GITHUB_TRIGGERING_ACTOR:-$GITHUB_ACTOR}" = 'dependabot[bot]' ] && [[ "$HEAD_REF" == dependabot/* ]]; then
             commit_author=$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA" --jq '.author.login // ""' || true)
             if [ "$commit_author" = 'dependabot[bot]' ]; then dependabot=true; fi
           fi
@@ -221,6 +221,9 @@ jobs:
           # own versions of these files with `git show HEAD:<path>`. User-level settings the install, tests or
           # build may have written in the home folder are removed too.
           rm -rf "$HOME/.claude" "$HOME/.claude.json"
+          sudo rm -rf /etc/claude-code
+          # A value planted in $GITHUB_ENV by an earlier step would reach the review; pin it.
+          echo "CLAUDE_CONFIG_DIR=$HOME/.claude" >> "$GITHUB_ENV"
           if ! git cat-file -e origin/main:.claude/team.md 2>/dev/null; then
             echo "::warning::main has no .claude/team.md yet; the team reviews by the pull request's own rules."
             exit 0

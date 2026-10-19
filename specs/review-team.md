@@ -31,6 +31,10 @@ Every change to `main` has a spec, is built by a senior developer from it, and i
 - AC-14: Dependabot's own pull requests (opened by Dependabot, on a `dependabot/` branch, the head commit by Dependabot) run `gates`; the `team` job reports success with "skipped for a dependency update". Anything else, a commit pushed onto such a pull request included, gets the full team.
 - AC-15: `gates` fails when the résumé's ATS score drops below the live site's, unless the repository owner put the label `accept-lower-score` on the pull request (the last time it was added, he added it), and fails too when the live site's report cannot be read (exit 2), so an outage never passes as "not lower".
 - AC-16: The checkers come from main, the data from the pull request: `gates` runs main's `scripts/recruiter-check.mjs` with `recruiter-compare.mjs`, `resume-check.mjs` with `resume-gate.mjs` (each pair only when main has both) and `functions/_lib/review/` on the pull request's `src/resume.ts`, PDF and build (the bootstrap pull request, when main lacks a pair, uses its own). The team reviews by main's `CLAUDE.md` and `.claude/`; any other `CLAUDE.md`, `CLAUDE.local.md`, `.mcp.json` or `.claude/` folder is main's or removed. The reviewing model may write only under `.review/` and run a fixed list of commands; a `.review/result.json` in the pull request is discarded before the review.
+- AC-17 (Steven, later on 2026-10-19: "the agents write-up needs to be updated if we change our agent orchestration"): `CLAUDE.md` says a change to the agent orchestration (a role, a bar, a gate or check, how `/feature`, `/team-review`, the Review or the Site update workflow hand work between agents and Steven) updates `/building-this-site` ("The loop", `src/articles/site/SiteArticle.tsx`) in the same pull request; the PM's acceptance check (`.claude/agents/product-manager.md`) makes a missing update a `major`; the write-up's refresh notices an orchestration change made without it (`src/articles/sources.json` lists the orchestration files as sources of the `site` write-up, and `building-notify.yml` dispatches on a push that touches them); and this branch, which changes the orchestration, updates the write-up to match.
+- AC-18 (Steven, later on 2026-10-19: "when we explain how the AI agent workflow works, include a diagram or diagrams"): `CLAUDE.md` says every explanation of the agent workflow comes with a diagram that changes with the flow; `.claude/team.md` has a Mermaid chart of the flow that parses as valid Mermaid (GitHub renders it); the write-up's "The loop" has a diagram of the team flow (an image with an accessible name and description, across on a wide screen and stacked on a phone); this spec, which changes the flow, points to that chart (below).
+
+The flow this spec sets up is the chart in `.claude/team.md` ("The flow") and, for readers, the team diagram in `/building-this-site` ("The loop", `TeamFlowDiagram` in `src/articles/site/Diagrams.tsx`). One chart, kept with the rules it draws, rather than a copy here that would drift.
 
 ## Out of scope
 
@@ -81,6 +85,8 @@ As built: agents, skills and `team.md` under `.claude/`; `review.yml`; `scripts/
 | AC-12 | The first MCP ask after the merge: its pull request links `specs/<branch>.md`; `updateRequestFromBody` and `resumeScoreFromBody` read the workflow's own (last) marker when an earlier one is planted in the copied text (`functions/_lib/github.test.ts`) | unit + CI |
 | AC-15 | The exit decision of the ATS gate: drop, equal, higher, an unreadable baseline (exit 2) and errors, with and without `--fail-on-drop` (`scripts/resume-gate.test.mjs`); the recruiter gate's exit codes 0, 1 and 2 (`scripts/recruiter-check.test.mjs`); the Review run on this pull request, whose gates step fails on exit 1 and 2 | unit + CI |
 | AC-13, AC-14, AC-16 | Read of `review.yml`; the Review run on this pull request and on the first Dependabot pull request; `python -c 'import yaml'` parse of the workflows and `bash -n` of their scripts | CI |
+| AC-17 | Read of `CLAUDE.md` ("The team"), `.claude/agents/product-manager.md` (check), `src/articles/sources.json` (`site.sources`) and `.github/workflows/building-notify.yml` (`paths`); the write-up diff on this branch; the PM's acceptance check on every later orchestration change | review |
+| AC-18 | `mermaid.parse` of the chart in `.claude/team.md`; "the team diagram on /building-this-site" in `src/articles/articles.test.tsx` (two images, name, description, step labels, in the loop section); the designer's screenshots of `/building-this-site` at 1440 and 390 | unit + review + site-check |
 
 ## Open questions for Steven
 
@@ -99,7 +105,7 @@ All answered by Steven on 2026-10-19, in round 1:
 
 | Role | Spec | Merge | Notes |
 |---|---|---|---|
-| Product manager | APPROVE r2 (written after the build; Steven's four answers are AC-12..AC-16) | APPROVE r2 | AC-1..AC-10 and AC-12..AC-16 met in code; AC-11 pending (lead applies branch protection after the merge with Steven's go-ahead); AC-4, 12, 13, 14 still to be seen on a real GitHub run |
+| Product manager | APPROVE r4 (written after the build; Steven's four answers are AC-12..AC-16; his two later asks are AC-17, AC-18) | CHANGES_REQUESTED r4 | AC-1..AC-10, AC-12..AC-16 and AC-18 met; AC-17 not met: `building-notify.yml` dispatches only on `CLAUDE.md`/`README.md`, so the refresh does not notice a change to `.claude/team.md` or `review.yml` as `CLAUDE.md` claims (`.review/review-team/product-manager-r4.md`); AC-11 pending (branch protection after the merge with Steven's go-ahead); AC-4, 12, 13, 14 still to be seen on a real GitHub run |
 | Senior recruiter | | | |
 | Senior designer | | | |
 | Senior developer | (feasibility) | | |

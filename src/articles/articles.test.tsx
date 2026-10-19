@@ -161,7 +161,7 @@ describe('the team diagram on /building-this-site', () => {
     expect(images.map((image) => image.getAttribute('class'))).toEqual(['wx-flow-wide', 'wx-flow-tall'])
     for (const image of images) {
       expect(image).toHaveAccessibleDescription(/Six reviews run in parallel.*at most three rounds.*main’s gates and the team review\. Steven merges/)
-      for (const label of ['Spec', 'My questions', 'Build', 'Six reviews, in parallel', 'tests, 90% a file', 'recruiter: not worse', 'PM: acceptance', 'Pull request', 'I merge', 'Deploy']) expect(within(image).getByText(label)).toBeInTheDocument()
+      for (const label of ['Spec', 'My questions', 'Build', 'Six reviews, in parallel', 'tests, 90% a file', 'recruiter: not worse', 'PM: acceptance', 'all approve', 'Pull request', 'I merge', 'Deploy']) expect(within(image).getByText(label)).toBeInTheDocument()
     }
   })
 
@@ -169,6 +169,10 @@ describe('the team diagram on /building-this-site', () => {
     render(<SiteArticle />)
     const loop = document.getElementById('loop')!.closest('section')!
     expect(within(loop).getByText('Put every change past a team.')).toBeInTheDocument()
-    expect(within(loop).getAllByRole('img', { name: /a team of AI agents, and Steven deciding/ })).toHaveLength(2)
+    expect(within(loop).getByText(/it does five things/)).toBeInTheDocument()
+    const images = within(loop).getAllByRole('img', { name: /a team of AI agents, and Steven deciding/ })
+    expect(images).toHaveLength(2)
+    // It fits a phone without swiping, so its caption drops the swipe hint.
+    expect(images[0].closest('figure')).toHaveClass('wx-diagram--fits')
   })
 })
