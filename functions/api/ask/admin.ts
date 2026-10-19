@@ -1,5 +1,6 @@
 // GET /api/ask/admin?days=30: what the dashboard shows about the assistant: this
-// month against the budget, questions and cost per day and outcome, votes, the
+// month against the budget, questions and cost per day and outcome, votes, every
+// question in the range with the visitor who asked it (the people who used it), the
 // open questions it could not answer, and how many Steven has closed (admin token).
 import type { Env } from '../../_lib/env'
 import { isAdmin } from '../../_lib/auth'
@@ -15,7 +16,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const store = new D1AskStore(env.DB)
   const sinceDay = dayOf(now - days * 86_400_000)
   const ninetyDays = now - 90 * 86_400_000
-  const [daily, votes, questions, resolved, monthRows, check] = await Promise.all([store.daily(sinceDay), store.votes(sinceDay), store.questions(ninetyDays, 200), store.resolvedCounts(ninetyDays), store.daily(monthStart(now)), humanCheck(env, store, now, null)])
+  const [daily, votes, questions, resolved, monthRows, check, log] = await Promise.all([store.daily(sinceDay), store.votes(sinceDay), store.questions(ninetyDays, 200), store.resolvedCounts(ninetyDays), store.daily(monthStart(now)), humanCheck(env, store, now, null), store.log(now - days * 86_400_000, 2000).catch((err: unknown) => { console.error('ask log', err); return null })])
   const month = { questions: 0, answered: 0, gap: 0, off: 0, limited: 0, failed: 0, costMicro: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
   for (const row of monthRows) {
     month.questions += row.questions
@@ -41,5 +42,6 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     votes,
     questions,
     resolved,
+    log: log ?? undefined,
   })
 }
