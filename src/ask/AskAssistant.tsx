@@ -33,6 +33,25 @@ const openKey = 'sw-ask-open'
 const maxQuestion = 1000
 export const maxJobDescription = 8000
 const maxTurns = 24
+/** What the server accepts with a question (functions/_lib/ask/agent.ts: 12 turns, 30,000 characters): the newest exchanges that fit go with it, the oldest are left behind. */
+const sentTurns = 11
+const sentChars = 30_000
+/** The exchanges to send with a new question: complete question-and-answer pairs (a failed answer and its question are left out), newest first until the server's limits are reached, in order. */
+const conversation = (turns: Turn[], asked: Turn): Turn[] => {
+  const kept: Turn[] = [asked]
+  let chars = asked.content.length
+  for (let i = turns.length - 1; i > 0; i--) {
+    const answer = turns[i]
+    const question = turns[i - 1]
+    if (answer.role !== 'assistant' || question.role !== 'user') continue
+    i-- // this pair is handled
+    if (answer.error || !answer.content) continue
+    if (kept.length + 2 > sentTurns || chars + question.content.length + answer.content.length > sentChars) break
+    kept.unshift(question, answer)
+    chars += question.content.length + answer.content.length
+  }
+  return kept
+}
 const tickTheBox = 'Tick the box below and your question goes through.'
 export const fitChip = 'Check a job description against his record'
 
@@ -208,7 +227,7 @@ export default function AskAssistant({ page }: { page: string }) {
       body: JSON.stringify({
         page,
         turnstileToken: token,
-        messages: ([...history, asked] as Turn[]).map((turn) => turn.role === 'user' ? { role: 'user', content: turn.content, ...(turn.kind ? { kind: turn.kind } : {}) } : { role: 'assistant', content: turn.content, sources: turn.sources.map((source) => source.id), id: turn.id, sig: turn.sig }),
+        messages: conversation(history, asked).map((turn) => turn.role === 'user' ? { role: 'user', content: turn.content, ...(turn.kind ? { kind: turn.kind } : {}) } : { role: 'assistant', content: turn.content, sources: turn.sources.map((source) => source.id), id: turn.id, sig: turn.sig }),
       }),
     })
     try {

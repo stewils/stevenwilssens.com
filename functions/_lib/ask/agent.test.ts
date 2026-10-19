@@ -108,6 +108,13 @@ describe('parsing and signing', () => {
     expect(parseBody({ messages: [] })).toBe('tooLong')
     expect(parseBody({ messages: [{ role: 'assistant', content: 'x' }] })).toBe('failed')
     expect(parseBody({ messages: [{ role: 'user', content: 'x'.repeat(1001) }] })).toBe('tooLong')
+    // Too much history is a different complaint from a long question: the panel never sends it, other clients might.
+    const pair = [{ role: 'user', content: 'q' }, { role: 'assistant', content: 'a', sources: [], id: null, sig: 's' }]
+    expect(parseBody({ messages: [...Array(6).fill(pair).flat(), { role: 'user', content: 'q' }] })).toBe('longConversation')
+    expect(parseBody({ messages: [...Array(5).fill(pair).flat(), { role: 'user', content: 'q' }] })).toMatchObject({ page: 'home' })
+    const heavy = [{ role: 'user', content: 'x'.repeat(8000), kind: 'fit' }, { role: 'assistant', content: 'y'.repeat(6000), sources: [], id: null, sig: 's' }]
+    expect(parseBody({ messages: [...Array(3).fill(heavy).flat(), { role: 'user', content: 'q' }] })).toBe('longConversation')
+    expect(words.longConversation).toContain('+ button')
     expect(parseBody({ messages: [{ role: 'user', content: 'a' }, { role: 'assistant', content: 'b', sources: ['role:csx-data', 'bogus'], id: 3, sig: 's' }] })).toBe('tooLong')
     const two = parseBody({ messages: [{ role: 'user', content: 'a' }, { role: 'assistant', content: 'b', sources: ['role:csx-data', 'bogus'], id: 3, sig: 's' }, { role: 'user', content: 'c' }] })
     expect(two).toMatchObject({ messages: [{ role: 'user' }, { role: 'assistant', sources: ['role:csx-data'], id: 3, sig: 's' }, { role: 'user' }] })
