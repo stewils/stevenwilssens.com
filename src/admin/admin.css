@@ -408,7 +408,7 @@ a.team-link:hover { text-decoration: underline; }
 .fd figcaption { margin: 0 0 10px; font-size: 13px; color: var(--muted); line-height: 1.5; }
 .fd-frame { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
 .fd-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 22px; }
-.fd-node { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.fd-node { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 13px; line-height: 1.4; overflow-wrap: break-word; hyphens: auto; }
 .fd-node.fd-you { background: color-mix(in srgb, var(--yellow) 10%, var(--card)); }
 .fd-node.fd-decision { border-style: dashed; }
 .fd-node[data-changed] { border: 2px solid var(--yellow); box-shadow: inset 4px 0 0 var(--yellow); }
@@ -416,7 +416,7 @@ a.team-link:hover { text-decoration: underline; }
 .fd-node:not(:last-child)::after { content: '\2193'; content: '\2193' / ''; position: absolute; left: 50%; bottom: -21px; transform: translateX(-50%); color: var(--muted); font-size: 14px; font-weight: 800; line-height: 1; }
 .fd-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
 .fd-n { font: 500 12px 'DM Mono', monospace; color: var(--muted); }
-.fd-label { font-weight: 700; }
+.fd-label { font-weight: 700; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .fd-badges { display: flex; flex-wrap: wrap; gap: 4px; }
 .fd-members { display: flex; flex-direction: column; gap: 4px; }
 .fd-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
@@ -427,13 +427,15 @@ a.team-link:hover { text-decoration: underline; }
 .fd-plain { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; font-size: 13px; }
 .fd-plain li[data-changed] { border-left: 4px solid var(--yellow); padding-left: 8px; }
 @container (min-width: 700px) {
-  .fd:not(.fd-long) .fd-steps { grid-template-columns: 40px repeat(var(--fd-cols), minmax(0, 1fr)); grid-template-rows: auto auto; gap: 16px 18px; align-items: start; }
+  .fd:not(.fd-long) .fd-steps { grid-template-columns: 40px repeat(var(--fd-cols), minmax(0, 1fr)); grid-template-rows: auto auto; grid-auto-columns: minmax(0, 1fr); gap: 14px 16px; align-items: start; }
   .fd:not(.fd-long) .fd-steps::before, .fd:not(.fd-long) .fd-steps::after { grid-column: 1; align-self: center; font: 500 11px 'DM Mono', monospace; color: var(--muted); letter-spacing: 0.5px; text-transform: uppercase; }
   .fd:not(.fd-long) .fd-steps::before { content: 'You'; content: 'You' / ''; grid-row: 1; }
   .fd:not(.fd-long) .fd-steps::after { content: 'Team'; content: 'Team' / ''; grid-row: 2; }
-  .fd:not(.fd-long) .fd-node { grid-column: var(--fd-col); grid-row: 2; padding: 8px; font-size: 12px; }
+  .fd:not(.fd-long) .fd-node { grid-column: var(--fd-col) / span 2; grid-row: 2; padding: 8px 10px; font-size: 12px; }
   .fd:not(.fd-long) .fd-node.fd-you { grid-row: 1; }
-  .fd:not(.fd-long) .fd-node:not(:last-child)::after { content: '\2192'; content: '\2192' / ''; left: auto; right: -15px; top: 12px; bottom: auto; transform: none; }
+  .fd:not(.fd-long) .fd-you::after, .fd:not(.fd-long) .fd-tail::after { content: none; }
+  .fd:not(.fd-long) .fd-chip { padding: 0 5px; font-size: 11px; }
+  .fd:not(.fd-long) .fd-team:not(.fd-tail)::after { content: '\2192'; content: '\2192' / ''; left: auto; right: -15px; top: 12px; bottom: auto; transform: none; }
   .fd:not(.fd-long) .fd-badges { order: -1; }
 }
 @media (max-width: 600px) {

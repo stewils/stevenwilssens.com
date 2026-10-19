@@ -6,17 +6,17 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const root = resolve(import.meta.dirname, '../..')
-const posix = (path: string) => relative(root, path).split('\\').join('/')
-const walk = (dir: string): string[] => readdirSync(dir).flatMap((name) => {
+const root = resolve(import.meta.dirname, '..')
+const posix = (path) => relative(root, path).split('\\').join('/')
+const walk = (dir) => readdirSync(dir).flatMap((name) => {
   const path = join(dir, name)
   return statSync(path).isDirectory() ? walk(path) : [path]
 })
-const isSource = (path: string) => /\.(ts|tsx|mjs|js)$/.test(path) && !/\.test\.(ts|tsx|mjs)$/.test(path) && !path.endsWith('.d.ts')
+const isSource = (path) => /\.(ts|tsx|mjs|js)$/.test(path) && !/\.test\.(ts|tsx|mjs)$/.test(path) && !path.endsWith('.d.ts')
 
 // The static imports of a file: `import … from '…'`, `export … from '…'` and `import('…')`.
-const importsOf = (text: string) => [...text.matchAll(/(?:import|export)\s[^'"]*?from\s*['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)|^\s*import\s*['"]([^'"]+)['"]/gm)].map((match) => match[1] ?? match[2] ?? match[3])
-const resolveImport = (from: string, specifier: string) => {
+const importsOf = (text) => [...text.matchAll(/(?:import|export)\s[^'"]*?from\s*['"]([^'"]+)['"]|import\(\s*['"]([^'"]+)['"]\s*\)|^\s*import\s*['"]([^'"]+)['"]/gm)].map((match) => match[1] ?? match[2] ?? match[3])
+const resolveImport = (from, specifier) => {
   if (!specifier.startsWith('.')) return specifier
   const base = resolve(dirname(from), specifier)
   for (const candidate of [base, `${base}.ts`, `${base}.tsx`, `${base}.mjs`, `${base}.js`, join(base, 'index.ts'), join(base, 'index.tsx')]) if (existsSync(candidate) && statSync(candidate).isFile()) return candidate
@@ -24,12 +24,12 @@ const resolveImport = (from: string, specifier: string) => {
 }
 
 // Every file reachable through static imports from the entries, and whether one of them is the manifest or the admin.
-const reach = (entries: string[]) => {
-  const seen = new Set<string>()
-  const hits: string[] = []
+const reach = (entries) => {
+  const seen = new Set()
+  const hits = []
   const queue = [...entries]
   while (queue.length) {
-    const file = queue.pop()!
+    const file = queue.pop()
     if (seen.has(file)) continue
     seen.add(file)
     const name = posix(file)
@@ -50,6 +50,15 @@ describe('the Team page renders text only', () => {
   })
 })
 
+describe('the flow diagram lays itself out from the card width', () => {
+  it('has two lanes only in a container of 700px or more, and never from 11 nodes', () => {
+    const css = readFileSync(join(root, 'src/admin/admin.css'), 'utf8')
+    expect(css).toMatch(/\.fd \{[^}]*container-type: inline-size/)
+    const wide = css.slice(css.indexOf('@container (min-width: 700px)'))
+    expect(wide).toMatch(/^@container \(min-width: 700px\) \{\s+\.fd:not\(\.fd-long\) \.fd-steps \{ grid-template-columns/)
+  })
+})
+
 describe('the manifest stays in the admin', () => {
   it('is imported by nothing outside src/admin', () => {
     const files = [...walk(join(root, 'src')), ...walk(join(root, 'functions'))].filter(isSource).filter((path) => !posix(path).startsWith('src/admin/'))
@@ -63,16 +72,17 @@ describe('the manifest stays in the admin', () => {
     const entries = [
       'src/main.tsx', 'src/entry-server.tsx', 'src/webmcp.ts',
       ...walk(join(root, 'src/ask')).map(posix), ...walk(join(root, 'src/articles')).map(posix), ...walk(join(root, 'functions')).map(posix),
-    ].filter((path) => isSource(path)).map((path) => join(root, path))
+    ].filter(isSource).map((path) => join(root, path))
     const { hits, seen } = reach(entries)
     expect(hits).toEqual([])
     // The walk does follow imports (it would have seen the manifest).
     expect([...seen].some((file) => posix(file) === 'src/resume.ts')).toBe(true)
   })
 
-  it('would be found if a public module imported the admin', () => {
-    const { hits } = reach([join(root, 'src/admin/Admin.tsx')])
-    expect(hits).toEqual(['src/admin/Admin.tsx'])
+  it('would be found if a public module imported the admin, even through another module', () => {
+    // The test fixture is outside src/admin and reaches it through admin-fixtures.ts: the walk sees that.
+    const { hits } = reach([join(root, 'src/test/team-manifest.fixture.ts')])
+    expect(hits.sort()).toEqual(['src/admin/team-types.ts', 'src/admin/types.ts'])
     expect(importsOf("import manifest from 'virtual:team-manifest'\nconst x = import('./a')\nimport './side.css'\nexport { y } from './b'")).toEqual(['virtual:team-manifest', './a', './side.css', './b'])
   })
 })

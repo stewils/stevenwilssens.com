@@ -1,5 +1,4 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
-import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
 import { makeTeamManifest } from '../test/admin-fixtures'
 import { FlowDiagram } from './FlowDiagram'
@@ -67,16 +66,14 @@ describe('the flow diagram', () => {
     expect(container.querySelector('.fd-loop [aria-hidden="true"]')).toHaveTextContent('↺')
   })
 
-  it('switches to the one-column form from 11 nodes, and draws lanes only from CSS', () => {
+  // The lanes themselves are CSS, a container query (checked in scripts/team-safety.test.mjs): jsdom lays nothing out.
+  it('switches to the one-column form from 11 nodes', () => {
     const many: Flow = { ...flow, diagram: { nodes: Array.from({ length: 11 }, (_, index): DiagramNode => ({ id: `n${index}`, label: `Node ${index}`, shape: 'box', members: [], steps: [], lane: 'team', gate: false, next: [], loop: null })) } }
     const { unmount } = show([], many)
     expect(screen.getByRole('figure')).toHaveClass('fd', 'fd-long')
     unmount()
     show()
     expect(screen.getByRole('figure')).not.toHaveClass('fd-long')
-    const css = readFileSync('src/admin/admin.css', 'utf8')
-    expect(css).toMatch(/@container \(min-width: 700px\)/)
-    expect(css).toMatch(/\.fd:not\(\.fd-long\)/)
   })
 
   it('lists the numbered steps in order when the chart and the steps disagree', () => {
@@ -87,6 +84,25 @@ describe('the flow diagram', () => {
     expect(items.map((item) => item.querySelector('strong')!.textContent)).toEqual(['Intake', 'Draft', 'Questions', 'Publish'])
     expect(items[2]).toHaveAttribute('data-changed')
     expect(items[2]).toHaveTextContent('Questions, new')
+  })
+
+  it('places the team lane side by side and each You node above the boundary it comes at, for the wide layout', () => {
+    show()
+    const steps = screen.getByRole('list', { name: 'The steps, in order' })
+    expect(steps.style.getPropertyValue('--fd-cols')).toBe('8')
+    expect(nodes().map((item) => [item.style.getPropertyValue('--fd-col'), item.classList.contains('fd-you'), item.classList.contains('fd-tail')])).toEqual([
+      ['2', true, false], ['2', false, false], ['4', false, false], ['5', true, false], ['6', false, false], ['8', false, true],
+    ])
+  })
+
+  it('puts two You nodes in a row side by side, and a chart of only You nodes in two columns', () => {
+    const you = (id: string): DiagramNode => ({ id, label: id, shape: 'start', members: [], steps: [], lane: 'you', gate: false, next: [], loop: null })
+    const team = (id: string): DiagramNode => ({ ...you(id), shape: 'box', lane: 'team' })
+    const { unmount } = show([], { ...flow, diagram: { nodes: [team('a'), you('b'), you('c'), team('d')] } })
+    expect(nodes().map((item) => item.style.getPropertyValue('--fd-col'))).toEqual(['2', '3', '5', '4'])
+    unmount()
+    show([], { ...flow, diagram: { nodes: [you('x')] } })
+    expect(screen.getByRole('list', { name: 'The steps, in order' }).style.getPropertyValue('--fd-cols')).toBe('2')
   })
 
   it('treats an unknown shape as a plain node', () => {

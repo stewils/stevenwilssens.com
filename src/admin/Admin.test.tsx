@@ -10,7 +10,7 @@ type Routes = Partial<Record<'stats' | 'ask' | 'mcp' | 'resume' | 'team', Answer
 const routeOf = (url: string) => (url.startsWith('/api/stats') ? 'stats' : url.startsWith('/api/ask/admin') ? 'ask' : url.startsWith('/api/mcp') ? 'mcp' : url.startsWith('/api/team') ? 'team' : 'resume')
 const bodies = { stats: makeStats, ask: makeAsk, mcp: makeMcp, resume: makeResume, team: makeTeamReads }
 
-let fetchMock: Mock<(url: string) => Promise<Response>>
+let fetchMock: Mock<(url: string, init?: RequestInit) => Promise<Response>>
 const serve = (routes: Routes = {}) => {
   fetchMock = vi.fn((url: string): Promise<Response> => {
     const route = routeOf(url)

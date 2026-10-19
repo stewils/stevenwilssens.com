@@ -14,6 +14,19 @@ const stepWords = (steps: number[]) => (steps.length === 0 ? '' : steps.length =
 const shapeClass: Record<string, string> = { start: 'fd-start', box: 'fd-box', decision: 'fd-decision', group: 'fd-parallel' }
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 
+// On a wide card: the Team lane's nodes side by side, two grid columns each (after the lane
+// labels' column); a You node sits above the boundary between the team nodes it comes
+// between, and two You nodes in a row go side by side rather than on top of each other.
+const placeNodes = (nodes: DiagramNode[], teamCount: number) => {
+  let seen = 0
+  let youFrom = 0
+  return nodes.map((node) => {
+    if (node.lane !== 'you') { seen++; return { column: 2 * seen, last: seen === teamCount } }
+    youFrom = Math.max(2, 2 * seen + 1, youFrom + 2)
+    return { column: youFrom, last: false }
+  })
+}
+
 function Members({ node }: { node: DiagramNode }) {
   if (!node.members.length) return null
   const groups: { via: string | null; labels: string[] }[] = []
@@ -56,15 +69,18 @@ export function FlowDiagram({ flow, changed, labelledBy }: { flow: Flow; changed
   }
   const nodes = flow.diagram.nodes
   const labelOf = (id: string) => nodes.find((node) => node.id === id)?.label ?? id
+  const teamCount = nodes.filter((node) => node.lane !== 'you').length
+  const place = placeNodes(nodes, teamCount)
   return (
     <figure className={`fd${nodes.length > 10 ? ' fd-long' : ''}`} aria-labelledby={labelledBy}>
       <figcaption>From your ask to the live site. You: the steps that wait for you. Gate: the change stops until it passes.</figcaption>
       <div className="fd-frame">
-        <ol className="fd-steps" aria-label="The steps, in order" style={{ '--fd-cols': nodes.length } as CSSProperties}>
+        <ol className="fd-steps" aria-label="The steps, in order" style={{ '--fd-cols': Math.max(2, 2 * teamCount) } as CSSProperties}>
           {nodes.map((node, index) => {
             const isNew = isChanged(node.steps)
+            const { column, last } = place[index]
             return (
-              <li key={node.id} className={`fd-node ${shapeClass[node.shape] ?? 'fd-box'} ${node.lane === 'you' ? 'fd-you' : 'fd-team'}`} data-changed={isNew ? '' : undefined} style={{ '--fd-col': index + 2 } as CSSProperties}>
+              <li key={node.id} className={`fd-node ${shapeClass[node.shape] ?? 'fd-box'} ${node.lane === 'you' ? 'fd-you' : 'fd-team'}${last ? ' fd-tail' : ''}`} data-changed={isNew ? '' : undefined} style={{ '--fd-col': column } as CSSProperties}>
                 <span className="fd-title">
                   <span className="visually-hidden">{stepWords(node.steps)}</span>
                   {node.steps.length > 0 && <span className="fd-n" aria-hidden="true">{node.steps.join(', ')}</span>}
