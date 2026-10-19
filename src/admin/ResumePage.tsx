@@ -68,7 +68,45 @@ export function ResumePage({ resume, proposals }: { resume: ResumeInfo; proposal
           </div>
         )}
         <h3>How the score works</h3>
-        <p className="note" style={{ margin: 0 }}>The score is what an applicant tracking system makes of the PDF: 100 minus 25 per error and 5 per warning it trips over. Errors: more than two pages, text that cannot be extracted or broken glyphs, no email address or LinkedIn, a role title or company missing from the work history. Warnings: a section heading it does not recognise (Summary, Skills, Experience, Education, or spelled out letter by letter), the name not on the first line, dates missing or not in the "Mon YYYY - Mon YYYY" form, a title far from its dates, phone or location missing, education incomplete, a missing keyword, a file over 1.5 MB. What a recruiter or an editor would still say (present tense for a past role, no team size, a number without a bullet behind it) and where the PDF differs from the site (a reworded bullet, another headline or summary) are listed with the lens "Recruiter" or "Site" and do not change the score; a difference with the site fails the tests instead. The résumé is scored on every build: <code>npm run resume:build</code> refuses a PDF that scores worse than the current one, the Site update workflow compares with main in the pull request, and the Deploy workflow compares with the live site and warns in the run and in your email. Fix the data in <code>src/resume.ts</code>, never the PDF or the checker.</p>
+        <p className="note">The score is what an applicant tracking system makes of the PDF. It starts at 100 and loses points for each thing the system trips over. What a recruiter or the site would add is listed too, but does not count.</p>
+        <dl className="rules">
+          <dt><span className="badge error">Error</span> 25 points each</dt>
+          <dd>
+            <ul>
+              <li>More than two pages</li>
+              <li>Text that cannot be extracted, or broken glyphs</li>
+              <li>No email address or LinkedIn</li>
+              <li>A role title or company missing from the work history</li>
+            </ul>
+          </dd>
+          <dt><span className="badge warn">Warning</span> 5 points each</dt>
+          <dd>
+            <ul>
+              <li>A section heading it does not recognise (Summary, Skills, Experience, Education, or spelled out letter by letter)</li>
+              <li>The name not on the first line</li>
+              <li>Dates missing or not in the "Mon YYYY - Mon YYYY" form</li>
+              <li>A title far from its dates</li>
+              <li>Phone or location missing</li>
+              <li>Education incomplete</li>
+              <li>A missing keyword</li>
+              <li>A file over 1.5 MB</li>
+            </ul>
+          </dd>
+          <dt><span className="badge info">Recruiter</span> no points</dt>
+          <dd>What a recruiter or an editor would still say: present tense for a past role, no team size, a number without a bullet behind it.</dd>
+          <dt><span className="badge info">Site</span> no points</dt>
+          <dd>Where the PDF differs from the site: a reworded bullet, another headline or summary. These fail the tests instead.</dd>
+          <dt>When it is checked</dt>
+          <dd>
+            <ul>
+              <li><code>npm run resume:build</code> refuses a PDF that scores worse than the current one</li>
+              <li>The Site update workflow compares with main in the pull request</li>
+              <li>The Deploy workflow compares with the live site and warns in the run and in your email</li>
+            </ul>
+          </dd>
+          <dt>What to fix</dt>
+          <dd>The data in <code>src/resume.ts</code>. Never the PDF, never the checker.</dd>
+        </dl>
       </section>
 
       <section className="card" data-part="Findings">
