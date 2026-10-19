@@ -121,6 +121,8 @@ export const redact = (text: string) => text
   .replace(/\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g, '[key]')
   .replace(/\b(?:github_pat_|gh[opsur]_|sk[-_]|xox[a-z]-)[A-Za-z0-9_-]{8,}/g, '[key]')
   .replace(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, '[key]')
+  .replace(/\bAIza[A-Za-z0-9_-]{30,}/g, '[key]')
+  .replace(/\b(?:rk|pk|whsec)_(?:live|test)?_?[A-Za-z0-9]{10,}/g, '[key]')
   .replace(/\+?\d[\d\s().-]{7,}\d/g, '[number]')
 
 /** A job description is not kept; what /admin shows for a vote on a fit check is its size and its first words. */

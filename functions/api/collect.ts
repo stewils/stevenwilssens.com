@@ -84,11 +84,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     ratings.has(payload.rating ?? '') ? payload.rating : null,
   ).run()
 
-  if (Math.random() < 0.02) waitUntil(env.DB.batch([
-    env.DB.prepare('DELETE FROM events WHERE ts < ?').bind(now - retentionMs),
+  if (Math.random() < 0.02) {
+    waitUntil(env.DB.prepare('DELETE FROM events WHERE ts < ?').bind(now - retentionMs).run())
     // The assistant's log keeps 90 days, also when nobody asks anything for a while (as /privacy says).
-    env.DB.prepare('DELETE FROM ask_log WHERE ts < ?').bind(now - askLogMs),
-  ]))
+    // Its own statement, so the events cleanup goes on even where the table is missing.
+    waitUntil(env.DB.prepare('DELETE FROM ask_log WHERE ts < ?').bind(now - askLogMs).run().catch(() => null))
+  }
 
   return new Response(null, { status: 204 })
 }

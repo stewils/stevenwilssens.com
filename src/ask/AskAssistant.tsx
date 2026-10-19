@@ -441,6 +441,7 @@ export default function AskAssistant({ page }: { page: string }) {
               <p className="ask-foot">{remaining < 120 ? <span className="ask-count">{remaining} left</span> : <span>Enter to send, Shift+Enter for a new line.</span>} <span><button type="button" className="ask-foot-link" onClick={startFit} disabled={busy}>Job description?</button> · <a href="mailto:steven@wilssens.com">Prefer email?</a></span></p>
             </>
           )}
+          <p className="ask-kept">Questions are kept 90 days · <a href="/privacy">Privacy</a></p>
         </form>
       </section>
     </>

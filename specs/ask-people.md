@@ -20,7 +20,7 @@ Steven sees, for the chosen range (at most 90 days), how many different people u
 - AC-5: A failure to write or read the log never breaks an answer or the admin page. (`agent.test.ts`, `admin.test.ts`, `AssistantPage.test.tsx`)
 - AC-6: The **People who asked** card shows people, questions per person, follow-ups, job checks, people per day, and a row per person with their questions; a row opens (by click, or by keyboard on its button) to the answers and that day's visit. (`AssistantPage.test.tsx`, `DataTable.test.tsx`)
 - AC-7: The overview tile says how many people asked in the range. (`needs.test.ts`)
-- AC-8: `/privacy` says what the assistant keeps and for how long.
+- AC-8: `/privacy` says what the assistant keeps and for how long, and after 90 days only the question of a closed question is left (`App.test.tsx`, `store.test.ts`); the panel says "Questions are kept 90 days" with a link to `/privacy` (`AskAssistant.test.tsx`).
 
 ## Out of scope
 
@@ -37,3 +37,30 @@ A `section.card` with `data-part="People"` first on the assistant page, built fr
 ## Threat model (security-engineer)
 
 Questions are text typed by strangers, shown only on `/admin` behind the admin token and rendered as text. Redaction removes email addresses, phone numbers, API keys, JWTs and bearer tokens. No IP address is stored.
+
+## Test plan (senior-tester)
+
+| AC | Test |
+|---|---|
+| AC-1 | `agent.test.ts` logs every question with the visitor code (equal to `visitorHash` for that browser and day), answer redaction; `visitor.test.ts` fixed vector |
+| AC-2 | `agent.test.ts` logs only the opening of a pasted posting (longer than the cut, a later phrase absent) |
+| AC-3 | `agent.test.ts` previews, GPC, DNT, no `HASH_SALT`; GPC keeps no `ask_questions` row and no voted-down answer |
+| AC-4 | `store.test.ts` retention in both stores; `collect.test.ts` daily cleanup; `admin.test.ts` 90-day read and answer cap |
+| AC-5 | `agent.test.ts` failing log write; `admin.test.ts` unreadable log; `AssistantPage.test.tsx` unreadable and capped states |
+| AC-6 | `AssistantPage.test.tsx`; `DataTable.test.tsx` Enter and Space, row button names |
+| AC-7 | `needs.test.ts` 1 person, 2 people, 365 and 1 day |
+| AC-8 | `App.test.tsx` privacy paragraph; `store.test.ts` closed questions after 90 days; `AskAssistant.test.tsx` panel line |
+
+Coverage stays at 90% or more per file (`npm run test:coverage`).
+
+## Open questions
+
+Answered by Steven on 2026-10-19:
+1. Keep questions linked to the day's visit 90 days. Yes.
+2. Closed (answered or dismissed) questions after 90 days: keep only the question; drop the assistant's answer, the page, the country and the network.
+3. The panel says "Questions are kept 90 days" with a link to `/privacy`. Yes.
+4. The assistant on the preview answers correctly and streams to the end. Checked by Steven.
+
+## Sign-offs
+
+The Review workflow's sign-off table on pull request #51 is the record; this spec is approved when every role there approves.

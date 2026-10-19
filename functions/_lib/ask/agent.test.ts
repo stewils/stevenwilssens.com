@@ -135,6 +135,9 @@ describe('parsing and signing', () => {
     expect(redact('Mail me at jane@example.com or +1 425 555 0100')).toBe('Mail me at [email] or [number]')
     expect(redact('github_pat_11ABCDEFG0123456789_abcdefghij and ghp_abcdefghijklmnop and sk-ant-api03-abcdefgh')).toBe('[key] and [key] and [key]')
     expect(redact('AKIAIOSFODNN7EXAMPLE')).toBe('[key]')
+    expect(redact('AIzaSyA1234567890abcdefghijklmnopqrstu')).toBe('[key]')
+    expect(redact('sk_live_abcdefghij0123 rk_test_abcdefghij0123 whsec_abcdefghij0123')).toBe('[key] [key] [key]')
+    expect(redact('xoxb-1234567890-abcdefghij')).toBe('[key]')
     expect(redact('Authorization: Bearer abc.def-ghi_jkl')).toBe('Authorization: Bearer [key]')
     expect(redact('token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dozjgNryP4J3jVmNHl0w5N')).toBe('token [key]')
     expect(costMicro({ input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 })).toBe(4_000_000)
@@ -272,6 +275,8 @@ describe('answering', () => {
     const store = new MemoryAskStore()
     const asked = (content: string, ip: string, headers: Record<string, string> = {}, at = url) => new Request(at, { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip, 'User-Agent': 'Firefox', ...headers }, body: JSON.stringify({ messages: [{ role: 'user', content }], page: 'experience' }) })
     const run = async (request: Request) => { await (await ask(request, deps(scripted('[[in: site:about]]\n\nHe did.'), store))).text() }
+    await (await ask(asked('Reach him?', '203.0.113.9'), deps(scripted('[[in: site:about]]\n\nMail steven@example.com.'), store))).text()
+    expect(store.entries.pop()).toMatchObject({ answer: 'Mail [email].' })
     await run(asked('What did he ship? Mail bob@corp.com', '203.0.113.9'))
     await run(asked('And before that?', '203.0.113.9'))
     await run(asked('Where is he based?', '198.51.100.7'))
@@ -286,7 +291,7 @@ describe('answering', () => {
     await run(asked('q', '192.0.2.1', { DNT: '1' }))
     await run(asked('q', '192.0.2.1', {}, 'https://branch.stevenwilssens.pages.dev/api/ask'))
     expect(store.entries).toHaveLength(3)
-    expect(store.rows[0]).toMatchObject({ questions: 6 })
+    expect(store.rows[0]).toMatchObject({ questions: 7 })
     // Without a salt the code would be a plain hash of the IP address: nothing is logged.
     await (await ask(asked('q', '192.0.2.1'), { ...deps(scripted('[[in: site:about]]\n\nHe did.'), store), env: { ANTHROPIC_API_KEY: 'sk-test' } as unknown as Env })).text()
     expect(store.entries).toHaveLength(3)
@@ -360,6 +365,15 @@ describe('answering', () => {
 
 describe('the fit check', () => {
   const posting = 'Director of Product Management, Data Platform\n\nRequirements:\n- Led a product management organization\n- Experimentation at scale\n- Hands-on SQL and Python\n- Consumer subscription products'
+
+  it('logs only the opening of a pasted posting, with its length', async () => {
+    const store = new MemoryAskStore()
+    const long = `${posting}\n\nAbout us: we build data products for millions of people. The team works across five time zones and ships every week. Compensation includes a confidential bonus plan for this role only.`
+    expect(long.length).toBeGreaterThan(300)
+    await (await ask(post({ messages: [{ role: 'user', content: long, kind: 'fit' }], page: 'home' }), deps(scripted('[[in: role:csx-data]]\n\n**Covered**\n- x'), store))).text()
+    expect(store.entries[0].question).toBe(`Job description (${long.length} characters): ${long.slice(0, 240).trim()}…`)
+    expect(store.entries[0].question).not.toContain('confidential bonus')
+  })
 
   it('accepts a long job description only when the turn says it is one', () => {
     const long = 'x'.repeat(3000)

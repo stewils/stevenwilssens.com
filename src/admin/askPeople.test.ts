@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { askPeople } from './askPeople'
 import type { AskLogEntry } from './types'
 
-const at = (day: string, hour: number) => Date.parse(`${day}T${String(hour).padStart(2, '0')}:00:00Z`)
+// Local times: the chart counts the viewer's days.
+const at = (day: string, hour: number) => { const [y, m, d] = day.split('-').map(Number); return new Date(y, m - 1, d, hour).getTime() }
 const entry = (visitor: string, ts: number, extra: Partial<AskLogEntry> = {}): AskLogEntry => ({ id: ts, ts, visitor, kind: 'question', page: 'home', question: `q ${ts}`, answer: 'a', outcome: 'answered', country: 'BE', asOrg: 'Proximus', ...extra })
 
 describe('askPeople', () => {

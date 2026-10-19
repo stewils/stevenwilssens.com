@@ -153,4 +153,13 @@ describe('POST /api/collect records', () => {
     await send(post({ type: 'pageview' }), db)
     expect((db.sqlite.prepare('SELECT visitor FROM ask_log').all() as { visitor: string }[]).map((row) => row.visitor)).toEqual(['kept'])
   })
+
+  it('and still deletes old events where the assistant log does not exist yet', async () => {
+    const db = fakeD1()
+    db.sqlite.exec('DROP TABLE ask_log')
+    db.sqlite.prepare("INSERT INTO events (ts, type, visitor, host) VALUES (?, 'pageview', 'old', 'steven.wilssens.com')").run(Date.now() - 400 * 86_400_000)
+    vi.spyOn(Math, 'random').mockReturnValue(0.01)
+    expect((await send(post({ type: 'pageview' }), db)).status).toBe(204)
+    expect(rows(db).map((row) => row.visitor)).not.toContain('old')
+  })
 })

@@ -16,7 +16,7 @@ export type Column<T> = {
   className?: string
 }
 
-// rowName names a row for its open button ("Open details for …"); by default the first column's value.
+// rowName names a row for its open button ("Open details for …"); by default the first column that holds text.
 type Props<T> = { columns: Column<T>[]; rows: T[]; rowKey: (row: T, index: number) => string; empty?: string; label?: string; expand?: (row: T) => ReactNode; rowName?: (row: T) => string }
 
 // A search box from this many rows on; phones stack tables this wide into cards.
@@ -25,7 +25,7 @@ const STACK_FROM = 5
 
 const classes = (...names: (string | false | undefined | null)[]) => names.filter(Boolean).join(' ') || undefined
 
-export function DataTable<T>({ columns, rows, rowKey, empty = 'No data yet', label, expand, rowName = (row) => String(columns[0].value(row) ?? '') }: Props<T>) {
+export function DataTable<T>({ columns, rows, rowKey, empty = 'No data yet', label, expand, rowName = (row) => String(columns.map((column) => column.value(row)).find((value) => typeof value === 'string' && value) ?? '') }: Props<T>) {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<Sort>(null)
   const [open, setOpen] = useState<string | null>(null)

@@ -110,6 +110,16 @@ describe('DataTable', () => {
     expect(screen.getByText('Details of Amazon')).toBeInTheDocument()
   })
 
+  it('names a row button after the first column that holds text, or after rowName', () => {
+    type Visit = { ts: number; who: string }
+    const visits: Column<Visit>[] = [{ key: 'ts', label: 'When', value: (row) => row.ts }, { key: 'who', label: 'Who', value: (row) => row.who }]
+    const { unmount } = render(<DataTable columns={visits} rows={[{ ts: 1760876543000, who: 'Contoso' }]} rowKey={(row) => row.who} expand={() => <p>x</p>} />)
+    expect(screen.getByRole('button', { name: 'Open details for Contoso' })).toBeInTheDocument()
+    unmount()
+    render(<DataTable columns={visits} rows={[{ ts: 1, who: 'Contoso' }]} rowKey={(row) => row.who} expand={() => <p>x</p>} rowName={(row) => `visit ${row.ts}`} />)
+    expect(screen.getByRole('button', { name: 'Open details for visit 1' })).toBeInTheDocument()
+  })
+
   it('has no row buttons when rows do not open', () => {
     render(<DataTable columns={columns} rows={rows.slice(0, 2)} rowKey={(row) => row.name} />)
     expect(screen.queryByRole('button', { name: /details for/ })).not.toBeInTheDocument()

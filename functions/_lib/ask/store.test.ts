@@ -111,6 +111,24 @@ describe('the D1 assistant store', () => {
   })
 })
 
+describe.each(stores)('the %s assistant store after 90 days', (_, make) => {
+  it('keeps a closed question but nothing about where it came from or what the assistant answered', async () => {
+    const store = make()
+    const closed = await store.saveQuestion(question(1 * day, { answer: 'The assistant said this', page: 'experience' }), 90 * day)
+    if (store instanceof MemoryAskStore) Object.assign(store.saved[0], { resolvedAt: 2 * day, resolution: 'answered' })
+    else await (store as unknown as { db: D1Database }).db.prepare('UPDATE ask_questions SET resolved_at = ?, resolution = ? WHERE id = ?').bind(2 * day, 'answered', closed).run()
+    await store.saveQuestion(question(1 * day + 1), 90 * day)
+    await store.saveQuestion(question(92 * day), 90 * day)
+    // The open one from day 1 is gone, the closed one is stripped, today's is whole.
+    expect(await store.resolvedCounts(0)).toEqual({ answered: 1, dismissed: 0 })
+    const open = await store.questions(0, 10)
+    expect(open).toHaveLength(1)
+    expect(open[0]).toMatchObject({ ts: 92 * day, country: 'BE', asOrg: 'Proximus' })
+    const all = store instanceof MemoryAskStore ? store.saved : await (store as unknown as { db: D1Database }).db.prepare('SELECT id, question, answer, page, country, as_org AS asOrg FROM ask_questions ORDER BY id').all().then((r) => r.results)
+    expect(all[0]).toMatchObject({ question: 'Does Steven speak French?', answer: null, page: null, country: null, asOrg: null })
+  })
+})
+
 describe.each(stores)('the %s assistant log', (_, make) => {
   const entry = (ts: number, visitor = 'v') => ({ ts, visitor, kind: 'question' as const, page: 'home', question: `q at ${ts}`, answer: null, outcome: 'answered' as const, country: null, asOrg: null })
 

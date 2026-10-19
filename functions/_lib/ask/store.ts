@@ -95,8 +95,12 @@ export class D1AskStore implements AskStore {
   async saveQuestion(q: QuestionInput, keepMs: number) {
     const row = await this.db.prepare('INSERT INTO ask_questions (ts, reason, page, question, answer, country, as_org) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id')
       .bind(q.ts, q.reason, q.page, q.question, q.answer, q.country, q.asOrg).first<{ id: number }>()
-    // Open questions expire; answered ones stay, since the report card counts them.
-    await this.db.prepare('DELETE FROM ask_questions WHERE ts < ? AND resolved_at IS NULL').bind(q.ts - keepMs).run()
+    // Open questions expire; closed ones stay, since the report card counts them, but after
+    // keepMs only the question is left: not the assistant's answer, the page or where it came from.
+    await this.db.batch([
+      this.db.prepare('DELETE FROM ask_questions WHERE ts < ? AND resolved_at IS NULL').bind(q.ts - keepMs),
+      this.db.prepare('UPDATE ask_questions SET page = NULL, answer = NULL, country = NULL, as_org = NULL WHERE ts < ? AND resolved_at IS NOT NULL AND (page IS NOT NULL OR answer IS NOT NULL OR country IS NOT NULL OR as_org IS NOT NULL)').bind(q.ts - keepMs),
+    ])
     return row!.id
   }
 
@@ -188,6 +192,7 @@ export class MemoryAskStore implements AskStore {
     const id = (this.saved[this.saved.length - 1]?.id ?? 0) + 1
     this.saved.push({ id, ...q, resolvedAt: null, resolution: null, entryId: null })
     this.saved = this.saved.filter((item) => item.ts >= q.ts - keepMs || item.resolvedAt)
+      .map((item) => item.ts < q.ts - keepMs ? { ...item, page: null, answer: null, country: null, asOrg: null } : item)
     return id
   }
 

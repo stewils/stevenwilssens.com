@@ -5,6 +5,12 @@ import type { AskLogEntry } from './types'
 export type Asker = { visitor: string; firstTs: number; lastTs: number; entries: AskLogEntry[]; fit: number; network: string; pages: string }
 export type PeopleDay = { day: string; people: number; questions: number }
 
+// The local day, as the charts' fillDays names them.
+const localDay = (ts: number) => {
+  const date = new Date(ts)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 export function askPeople(log: AskLogEntry[]): { people: Asker[]; daily: PeopleDay[] } {
   const byVisitor = new Map<string, AskLogEntry[]>()
   for (const entry of [...log].sort((a, b) => a.ts - b.ts)) {
@@ -27,12 +33,12 @@ export function askPeople(log: AskLogEntry[]): { people: Asker[]; daily: PeopleD
   const perDay = new Map<string, PeopleDay>()
   for (const person of people) {
     for (const entry of person.entries) {
-      const day = new Date(entry.ts).toISOString().slice(0, 10)
+      const day = localDay(entry.ts)
       const row = perDay.get(day) ?? { day, people: 0, questions: 0 }
       row.questions++
       perDay.set(day, row)
     }
-    const day = new Date(person.firstTs).toISOString().slice(0, 10)
+    const day = localDay(person.firstTs)
     perDay.get(day)!.people++
   }
   return { people, daily: [...perDay.values()].sort((a, b) => a.day.localeCompare(b.day)) }
