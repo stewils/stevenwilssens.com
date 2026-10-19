@@ -36,7 +36,10 @@ them it serves and how that reader is better off.
 
 Go through the acceptance criteria one by one against the branch (code, tests, the
 built pages, the preview if there is one). For each: met / not met, with the evidence.
-Any criterion not met is a `major`. Then return the verdict block.
+Any criterion not met is a `major`. A change to the agent orchestration (`.claude/`,
+the Review or Site update workflow, a gate script) that does not update
+`/building-this-site` ("The loop", `src/articles/site/SiteArticle.tsx`) to match is a
+`major` too (CLAUDE.md, The team). Then return the verdict block.
 
 ## Output
 
