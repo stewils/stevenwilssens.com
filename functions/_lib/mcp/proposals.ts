@@ -28,7 +28,8 @@ const sameAchievement = (a: Achievement, b: Achievement) => a.value === b.value 
 export type ResumeData = { experiences: typeof experiences; profile: { resumeHeadline: string; headline: string; summary: string }; skills: readonly string[]; education: typeof education; impact: Impact[] }
 export const liveResume = (): ResumeData => ({ experiences, profile, skills, education, impact })
 
-const norm = (text: string | null | undefined) => (text ?? '').replace(/\s+/g, ' ').trim()
+// Whitespace, curly quotes and long dashes do not make a different wording.
+const norm = (text: string | null | undefined) => (text ?? '').replace(/[‘’‚]/g, "'").replace(/[“”„]/g, '"').replace(/[–—]/g, '-').replace(/\s+/g, ' ').trim()
 const parseJson = (text: string | null) => { try { return text ? JSON.parse(text) as Record<string, unknown> : null } catch { return null } }
 const sameRole = (a: Record<string, unknown> | null, b: Record<string, unknown> | null) => !!a && !!b && ['role', 'company', 'dates', 'location', 'summary'].every((key) => norm(a[key] as string) === norm(b[key] as string)) && JSON.stringify((a.points as string[] | undefined)?.map(norm)) === JSON.stringify((b.points as string[] | undefined)?.map(norm))
 
@@ -45,13 +46,12 @@ export const isApplied = (p: Proposal, resume: ResumeData = liveResume()): boole
     return !!item && sameRole({ ...item } as unknown as Record<string, unknown>, wanted)
   }
   if (item) {
-    const field = p.field ?? 'point'
-    if (field === 'point') {
-      const points = item.points.map(norm)
-      if (p.kind === 'remove') return !points.includes(current)
-      return points.includes(proposed) && (p.kind === 'add' || !points.includes(current) || current === proposed)
-    }
-    const actual = field === 'title' ? item.role : field === 'company' ? item.company : field === 'dates' ? item.dates : field === 'location' ? item.location : item.summary
+    const points = item.points.map(norm)
+    const pointApplied = () => (p.kind === 'remove' ? !points.includes(current) : points.includes(proposed) && (p.kind === 'add' || !points.includes(current) || current === proposed))
+    // Proposals from before the field column (field null) could change a bullet, the title or the summary alike.
+    if (p.field === null) return pointApplied() || (p.kind === 'replace' && [item.role, item.summary].map(norm).includes(proposed))
+    if (p.field === 'point') return pointApplied()
+    const actual = p.field === 'title' ? item.role : p.field === 'company' ? item.company : p.field === 'dates' ? item.dates : p.field === 'location' ? item.location : item.summary
     return norm(actual) === proposed
   }
   switch (p.role) {
