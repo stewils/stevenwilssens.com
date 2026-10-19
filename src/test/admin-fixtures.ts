@@ -148,14 +148,16 @@ export const makeResume = (overrides: Partial<ResumeInfo> = {}): ResumeInfo => (
 // Three updates, newest first: the newest two are from the launch on (unread with no D1
 // rows), the oldest is from before it (read).
 export const sha = (digit: string) => digit.repeat(40)
-export const makeUpdate = (overrides: Partial<TeamUpdate> = {}): TeamUpdate => ({ sha: sha('3'), date: '2026-10-19T09:00:00.000Z', summary: 'The panel reviews every draft', pr: 41, sections: ['flow', 'checks'], roles: [], commands: [], steps: ['draft'], removedSteps: [], beforeLaunch: false, ...overrides })
+// Update dates at 09:00 in the machine's own time zone, like NOW: the day shown is the same in every zone.
+const morningOf = (day: number) => new Date(2026, 9, day, 9).toISOString()
+export const makeUpdate = (overrides: Partial<TeamUpdate> = {}): TeamUpdate => ({ sha: sha('3'), date: morningOf(19), summary: 'The panel reviews every draft', pr: 41, sections: ['flow', 'checks'], roles: [], commands: [], steps: ['draft'], removedSteps: [], beforeLaunch: false, ...overrides })
 export const makeTeamManifest = (overrides: Partial<TeamManifest> = {}): TeamManifest => ({
   schema: 'team-manifest/1',
   repo: 'https://github.com/example/site',
   commit: sha('c'),
-  generatedAt: '2026-10-19T10:00:00.000Z',
+  generatedAt: new Date(2026, 9, 19, 10).toISOString(),
   launch: sha('2'),
-  files: ['.team/flow.md', '.team/agents/chief-editor.md', '.team/agents/fact-checker.md', '.team/commands/publish.md', '.ci/panel.yml', '.ci/site.yml', 'scripts/proof-gate.mjs'],
+  files: ['.team/flow.md', '.team/agents/chief-editor.md', '.team/agents/fact-checker.md', '.team/commands/publish.md', '.ci/panel.yml', '.ci/site.yml', 'scripts/proof-gate.mjs', 'RULES.md'],
   flow: {
     file: '.team/flow.md',
     steps: [
@@ -193,12 +195,13 @@ export const makeTeamManifest = (overrides: Partial<TeamManifest> = {}): TeamMan
     },
     commands: { items: [{ id: 'publish', name: 'publish', description: 'Run the editors on an ask.', hint: '<the ask>', file: '.team/commands/publish.md' }] },
     siteUpdate: { file: '.ci/site.yml', steps: [{ name: 'Let the editor write', lines: ['Draft first.', 'Then the panel.'], tools: ['Read', 'Edit'] }] },
+    rules: { file: 'RULES.md', heading: 'The editors', paragraphs: ['Every draft goes through the editors.', 'The panel signs off; a reply never clears a stop.'] },
   },
   history: {
     updates: [
       makeUpdate(),
-      makeUpdate({ sha: sha('2'), date: '2026-10-18T09:00:00.000Z', summary: 'The Team page shows the team', pr: null, sections: ['roles'], roles: ['fact-checker'], steps: [] }),
-      makeUpdate({ sha: sha('1'), date: '2026-10-12T09:00:00.000Z', summary: 'The editors review every change', pr: null, sections: ['commands'], commands: ['publish'], steps: [], beforeLaunch: true }),
+      makeUpdate({ sha: sha('2'), date: morningOf(18), summary: 'The Team page shows the team', pr: null, sections: ['roles'], roles: ['fact-checker'], steps: [] }),
+      makeUpdate({ sha: sha('1'), date: morningOf(12), summary: 'The editors review every change', pr: null, sections: ['commands'], commands: ['publish'], steps: [], beforeLaunch: true }),
     ],
     older: 0,
     truncated: false,

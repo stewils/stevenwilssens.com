@@ -37,9 +37,9 @@ const head = () => part('What changed').querySelector<HTMLElement>('.team-head')
 const unreadIds = [sha('3'), sha('2')]
 
 describe('the Team page, from the manifest', () => {
-  it('shows the Flow, What changed, Roles, Gates, Commands and Site update parts with what the manifest says', () => {
+  it('shows the Flow, What changed, Roles, Gates, Commands, Site update and Rules parts with what the manifest says', () => {
     show()
-    expect([...document.querySelectorAll('[data-part]')].map((el) => (el as HTMLElement).dataset.part)).toEqual(['Flow', 'What changed', 'Roles', 'Gates', 'Commands', 'Site update'])
+    expect([...document.querySelectorAll('[data-part]')].map((el) => (el as HTMLElement).dataset.part)).toEqual(['Flow', 'What changed', 'Roles', 'Gates', 'Commands', 'Site update', 'Rules'])
     expect(within(part('Roles')).getByRole('heading', { name: /Chief editor/ })).toBeInTheDocument()
     expect(within(part('Roles')).getByText('chief-editor')).toHaveClass('team-mono')
     expect(part('Roles')).toHaveTextContent('Owns: the draftSigns off on: the draft')
@@ -87,7 +87,7 @@ describe('the Team page, from the manifest', () => {
     expect(screen.queryByText(/changes? you have not seen/)).not.toBeInTheDocument()
     cleanup()
     show({ manifest: makeTeamManifest({ history: { updates: [], older: 0, truncated: false } }) })
-    expect(part('What changed')).toHaveTextContent('No changes recorded yet. Every change to the agents, the team flow, the commands, the Review workflow, the gates or the Site update team step will show up here.')
+    expect(part('What changed')).toHaveTextContent("No changes recorded yet. Every change to the agents, the team flow, the commands, the Review workflow, the gates, the Site update team step or the team's rules will show up here.")
   })
 
   it('says how many older changes are not listed', () => {
@@ -324,6 +324,32 @@ describe('what is new, marked', () => {
     const cards = within(part('Roles')).getAllByRole('article')
     expect(cards.map((card) => card.hasAttribute('data-new'))).toEqual([false, false, true])
     expect(within(cards[2]).getByRole('heading')).toHaveTextContent('Fact checker New')
+  })
+
+  it('shows the rules of the team small: a line, the paragraphs behind a disclosure, the file; marked when an unread update changed them', () => {
+    const manifest = makeTeamManifest()
+    manifest.history!.updates[0] = { ...manifest.history!.updates[0], sections: ['rules'], steps: [] }
+    show({ manifest })
+    const rules = part('Rules')
+    expect(within(rules).getByRole('heading', { level: 2 })).toHaveTextContent("The team's rules New")
+    expect(rules).toHaveTextContent('The section “The editors” of RULES.md, which every agent works by. Only a change to this section counts as a change to your team.')
+    const details = rules.querySelector('details')!
+    expect(details.open).toBe(false)
+    expect(within(details).getByText('The rules in words').tagName).toBe('SUMMARY')
+    expect([...details.querySelectorAll('p')].map((p) => p.textContent)).toEqual(['Every draft goes through the editors.', 'The panel signs off; a reply never clears a stop.'])
+    expect(within(rules).getByRole('link', { name: 'Open RULES.md ↗' })).toHaveAttribute('href', `https://github.com/example/site/blob/${sha('c')}/RULES.md`)
+    expect([...rows()[0].querySelectorAll('.team-chip')].map((chip) => chip.textContent)).toEqual(['Rules'])
+    expect(part('Flow')).not.toHaveAttribute('data-new')
+  })
+
+  it('says when the rules could not be read, and has no Rules part in a manifest without them', () => {
+    const manifest = makeTeamManifest()
+    show({ manifest: { ...manifest, sections: { ...manifest.sections, rules: { unreadable: 'RULES.md' } } } })
+    expect(part('Rules')).toHaveTextContent('This part could not be read from RULES.md')
+    cleanup()
+    const { rules: _, ...older } = manifest.sections
+    show({ manifest: { ...manifest, sections: older } })
+    expect(document.querySelector('[data-part="Rules"]')).toBeNull()
   })
 
   it('marks the Site update part when an unread update touched it', () => {

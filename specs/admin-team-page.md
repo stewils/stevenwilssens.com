@@ -39,8 +39,11 @@ The **orchestration files** are: `.claude/team.md`, `.claude/agents/*.md`,
 `.claude/skills/*/SKILL.md`, `.github/workflows/review.yml`, the team step of
 `.github/workflows/site-update.yml` (the step named `Let Claude make the change`, and only
 that step: decision 2), `scripts/recruiter-check.mjs`, `scripts/recruiter-compare.mjs`,
-`scripts/resume-gate.mjs`, `functions/_lib/review/**` (not tests), and `specs/TEMPLATE.md`.
-They are listed once, in the generator (`ORCHESTRATION` in `scripts/team-manifest.mjs`), and
+`scripts/resume-gate.mjs`, `functions/_lib/review/**` (not tests), `specs/TEMPLATE.md`, and
+the `## The team` section of `CLAUDE.md` (only that section, like the Site update team step:
+a change elsewhere in `CLAUDE.md` is not a team change; added in fix round 1 at the product
+manager's request; the Team page shows it small, as a Rules part with the paragraphs behind
+a disclosure). They are listed once, in the generator (`ORCHESTRATION` in `scripts/team-manifest.mjs`), and
 everything below reads that list.
 
 **Page and content (never typed in)**
@@ -120,7 +123,10 @@ everything below reads that list.
   the pull request title (the first non-empty body line). Merges of `main` into a branch are
   not updates (first-parent only). A change to `site-update.yml` is an update only when the
   text of its `Let Claude make the change` step differs from the first parent's (decision 2);
-  a change only to its other steps (the résumé email, the Building refresh) is not. Tests:
+  a change only to its other steps (the résumé email, the Building refresh) is not. The
+  same rule holds for `CLAUDE.md`: an update only when the text of its `## The team` section
+  differs. git's own merges that bring a branch up to date ("Merge branch '…' into …",
+  "Merge remote-tracking branch '…' into …") are not updates either. Tests:
   the generator on a fixture repository with a merge, a direct commit, a GitHub default
   merge and a commit that touches no orchestration file returns exactly the expected three
   updates; on a fixture with a `site-update.yml` change inside the team step, one outside it
@@ -223,8 +229,8 @@ everything below reads that list.
 **Not worse for recruiters**
 
 - AC-18: Public output is unchanged by this feature apart from the AC-17 sentence: no new
-  prerendered page or `pageMeta.ts` entry; the same number of `dist/*.html` (16) and
-  `dist/*.md` (15); `sitemap.xml`, `llms.txt` and `llms-full.txt` identical to main's build
+  prerendered page or `pageMeta.ts` entry; the same number of `dist/*.html` (16 prerendered
+  pages plus `admin.html`) and `dist/*.md` (15); `sitemap.xml`, `llms.txt` and `llms-full.txt` identical to main's build
   except the AC-17 sentence; the manifest's sentinel `team-manifest/1` (its `schema` field)
   present in `dist/assets/admin-*.js` and absent from every `dist/assets/main-*`,
   `dist/*.html`, `dist/*.md` and `dist/llms*.txt`, and no new `.json` file in `dist/` (role
@@ -742,7 +748,7 @@ and the muted date keep at least 4.5:1 in light (`--muted` `#586360` on white is
 | Needs you, one | `change to your agent team you have not seen: “<line>”` |
 | Needs you, several | `changes to your agent team you have not seen, the latest “<line>”` |
 | What changed h2 / head | `What changed` / `2 not seen` · `All seen` · `Marked as seen` + `Undo` |
-| What changed note | `Every change to the agents, the team flow, the commands, the Review workflow, the gates or the Site update team step, newest first. A change counts as seen once this page has been in front of you for 5 seconds, on any device.` |
+| What changed note | `Every change to the agents, the team flow, the commands, the Review workflow, the gates, the Site update team step or the team's rules, newest first. A change counts as seen once this page has been in front of you for 5 seconds, on any device.` |
 | Row | `Changed:` chips · `PR #41 ↗` · `Mark as unread` · `New` |
 | More | `Show all 9 changes` / `Show fewer` |
 | Section marker | `New` + `Changed 19 Oct: <line> (PR #41)` / `Changed in 2 updates you have not seen, the latest on 19 Oct: <line> (PR #41)` |
@@ -753,7 +759,7 @@ and the muted date keep at least 4.5:1 in light (`--muted` `#586360` on white is
 | Roles | `The roles`; `Owns:`, `Signs off on:`, `Read more`, `Open the brief ↗` |
 | Gates | `What must pass before a merge`; `Findings:` |
 | Commands | `Commands`; `Open the command ↗` |
-| Empty | `No changes recorded yet. Every change to the agents, the team flow, the commands, the Review workflow, the gates or the Site update team step will show up here.` |
+| Empty | `No changes recorded yet. Every change to the agents, the team flow, the commands, the Review workflow, the gates, the Site update team step or the team's rules will show up here.` |
 | Errors | `Could not load what you have seen on the Team page (HTTP <n>).` · `Seen state unavailable` · `Could not record that you have seen this; it will be tried again on your next visit.` |
 
 All the text describing roles, steps, gates and commands comes from the files; the
@@ -809,7 +815,7 @@ The design is ready to build on the existing admin language. The only choice wor
 confirming with Steven is the seen rule (5 seconds on the page, with Undo); the PM can add it
 to Open questions as a confirmation, with this as the recommendation, and pin it in an
 acceptance criterion together with the diagram (generated from the manifest, changed steps
-marked, vertical below 700px of card width).
+marked, vertical below 1000px of card width; 700px in the first draft, raised in fix round 1 because a 1280 laptop gave 100px nodes).
 
 ```
 VERDICT: APPROVE
@@ -1018,7 +1024,7 @@ integrity of the public site (recruiter-facing).
 | C1 | `scripts/team-manifest.test.mjs` "reads only listed paths from git": fixture repo whose working tree has `.review/x/r1.md`, `sources/a.md`, `.dev.vars` with a sentinel string; the manifest contains none of the sentinels | unit |
 | C1 | same file, "update has only the allowed fields": `Object.keys` of every update and section equal the allowlist; no `@` in any value | unit |
 | C1 | same file, "secret scan": a fixture agent description containing `ghp_` + 36 chars makes the scan fail; the real build's manifest passes | unit |
-| C1 | site check on `dist/assets/admin-*.js`: no `.review/`, no `ADMIN_TOKEN=` value, no e-mail address | site-check |
+| C1 | site check on `dist/assets/admin-*.js`: no `.review/` path other than the documented template `.review/<slug>/<role>-r<round>.md` (step 6 of `.claude/team.md`; the regex `\.review\/(?!<slug>\/<role>-r<round>\.md)` finds nothing), no `sources/` path, no `.dev.vars`, no `ADMIN_TOKEN=` value, no e-mail address (restated in fix round 1 as the security engineer proposed; the unit sentinels stay the proof) | site-check |
 | C2 | `scripts/team-manifest.test.mjs` "normalises text": subject with `‮`, `​`, `\n`, `\x07` and 5 000 characters comes out one line, stripped, 300 code points with `…`, emoji at the cut intact | unit |
 | C2 | `src/admin/TeamPage.test.tsx` "renders summaries as text": a fixture update summary `<img src=x onerror=alert(1)>` and `[x](javascript:alert(1))` appears as literal text in the history, notice, section marker and diagram; `container.querySelector('img')` is null and no `a[href^="javascript:"]` exists | component |
 | C2 | `src/admin/team-safety.test.ts` "no raw HTML in the Team page": reads the Team page's source files and fails on `dangerouslySetInnerHTML`, `innerHTML` or a Markdown import | unit |
@@ -1255,7 +1261,7 @@ npm run build
   `sha`, `pr` and the listed paths (C3).
 - `src/admin/FlowDiagram.tsx`: a `figure` with an `ol` of nodes from `manifest.flow`, lanes
   from `lane`, the loop from `loop`, `Gate`/`You`/`New` badges, CSS grid at wide card widths
-  and the vertical form under a container query of about 700px (and always from 11 steps);
+  and the vertical form under a container query of 1000px (and always from 11 steps);
   `data-changed` on nodes from the snapshot. No SVG, no dependency.
 - `src/admin/needs.ts`: `computeNeeds` adds `{ key: 'team-unread', page: 'team', n, text }`
   only when `team.reads` is loaded and `history` is not null, text per the design with the
@@ -1390,14 +1396,14 @@ the visit, no "Mark all as read" button** (decision 4, AC-9).
 | AC-15 | `src/admin/TeamPage.test.tsx` "when the read state answers 500, shows the sections and history, the banner 'Could not load what you have seen on the Team page (HTTP 500).', 'Seen state unavailable', no markers and no timer post"; "a failed seen post keeps everything unread, shows the muted retry line and posts again on the next visit"; `src/admin/needs.test.ts` "read state unavailable: no Team need, no badge"; `src/admin/Admin.test.tsx` "a failing team API leaves the other pages working" | component / unit |
 | AC-16 | named check at review: `grep -n "admin#team" CLAUDE.md .claude/agents/product-manager.md` matches the rule and the PM's `major`; `grep -n "%% step\|^  class " .claude/team.md` shows the step and class lines; covered at runtime by the AC-5 "real repository gives no problems" test | named check / unit |
 | AC-17 | `src/articles/site/SiteArticle.test.tsx` (or the existing article test) "The loop says that changes to the team reach Steven in his admin as unread updates"; no digit in that sentence (asserted) | component |
-| AC-18 | `src/admin/team-safety.test.ts` "manifest only in admin": walks the static imports of `src/main.tsx`, `src/entry-server.tsx`, `src/webmcp.ts`, `src/ask/**`, `src/articles/**`, `functions/**` and fails if any reaches `virtual:team-manifest`, `scripts/team-manifest.mjs` or `src/admin/`; existing `functions/api/mcp.test.ts` and the ask tool tests: the public `/mcp` and assistant tool lists unchanged (names asserted); site check after `npm run build` (tester's merge evidence): 16 `dist/*.html`, 15 `dist/*.md`, `sitemap.xml` / `llms.txt` / `llms-full.txt` identical to main's build except the AC-17 sentence (diff shown), the sentinel `team-manifest/1` found in `dist/assets/admin-*.js` and in no `dist/assets/main-*`, `dist/*.html`, `dist/*.md`, `dist/llms*.txt`, no new `.json` in `dist/`, `main-*.js` / `main-*.css` gzip within 1% of main's build of the same day; recruiter-check: `npm run check:recruiter` ≥ main (80/100, no new high), `node scripts/resume-check.mjs --baseline https://steven.wilssens.com/resume-report.json --fail-on-drop` exit 0 | unit / function / site-check / recruiter-check |
+| AC-18 | `src/admin/team-safety.test.ts` "manifest only in admin": walks the static imports of `src/main.tsx`, `src/entry-server.tsx`, `src/webmcp.ts`, `src/ask/**`, `src/articles/**`, `functions/**` and fails if any reaches `virtual:team-manifest`, `scripts/team-manifest.mjs` or `src/admin/`; existing `functions/api/mcp.test.ts` and the ask tool tests: the public `/mcp` and assistant tool lists unchanged (names asserted); site check after `npm run build` (tester's merge evidence): 16 prerendered pages plus `admin.html` in `dist/*.html`, 15 `dist/*.md`, `sitemap.xml` / `llms.txt` / `llms-full.txt` identical to main's build except the AC-17 sentence (diff shown), the sentinel `team-manifest/1` found in `dist/assets/admin-*.js` and in no `dist/assets/main-*`, `dist/*.html`, `dist/*.md`, `dist/llms*.txt`, no new `.json` in `dist/`, `main-*.js` / `main-*.css` gzip within 1% of main's build of the same day; recruiter-check: `npm run check:recruiter` ≥ main (80/100, no new high), `node scripts/resume-check.mjs --baseline https://steven.wilssens.com/resume-report.json --fail-on-drop` exit 0 | unit / function / site-check / recruiter-check |
 | AC-19 | `npm run lint`, `npm run test:coverage` (90% overall and per file; named check: `grep -n "scripts/team-manifest.mjs" vitest.config.ts` finds it in `coverage.include`), `npm run build` | named check |
 | AC-20 (a) | `scripts/team-manifest.test.mjs` "a fixture team.md with one extra step and a node mapped to it gives one extra diagram node with its label, step number and members"; "the nodes come out in the chart's order, the reviews subgraph's members as the node's members, the fixes edge as a loop back to the reviews with its label, the decision's yes / no branches, and `you` / `gate` from the classes"; "reads the real team.md chart: every numbered step is mapped, Steven's nodes are ask, steven1 and merge" | unit |
 | AC-20 (b) | `scripts/team-manifest.test.mjs` "a step with no `%% step` line, a `%% step` line naming a missing node or step, or a class naming a missing node is a problem and gives diagram: null"; `src/admin/FlowDiagram.test.tsx` "with diagram: null, lists the numbered steps in order with 'The diagram could not be drawn …'" | unit / component |
 | AC-20 (c) | `scripts/team-manifest.test.mjs` "a step counts as changed when its text or its chart node differs from the first parent"; "an inserted step marks only itself"; "a removed step is named in the update"; `src/admin/FlowDiagram.test.tsx` "an unread update touching step 3 marks the node of step 3, and only that node, with the text New and an accessible name containing 'new'"; "the mark is gone on the next visit once that update is read" | unit / component |
 | AC-20 (shape) | `src/admin/FlowDiagram.test.tsx` "is a figure labelled by the card's h2 with the caption, holding an ol 'The steps, in order' with one li per node"; "a node reads 'Step 6, <label>, new. <members>. Gate.'"; "the loop reads 'Back to <target label>: <edge label>'"; "a decision reads its branches"; "nodes classed you carry the text You"; "arrows and connectors are aria-hidden and nothing in the figure is focusable"; "from 11 nodes it uses the vertical form at every width" (class or attribute on the figure) | component |
-| AC-20 (width) | ui-check: `npm run screenshots` of `admin#team` at 1440 (lanes), 1000 (container switch to vertical; card below 700px) and 390 and 320 (vertical), light and dark; site-check: `npm run check:site` (visits every admin tab, so `#team` at 390 and 1440): no horizontal page scroll, no serious or critical axe violation, no console error | ui-check / site-check |
-| AC-21 (a) C1 | `scripts/team-manifest.test.mjs` "reads only listed paths from git": a fixture repo whose working tree has `.review/x/r1.md`, `sources/a.md`, `.dev.vars` and an untracked `.claude/agents/x.md` with a sentinel string; the manifest contains none of them; "a listed path matching `.review/`, `sources/`, `.env*` or `.dev.vars*` is refused"; "update and section keys equal the allowlist; no `@` in any value"; "secret scan: a fixture description with `ghp_` + 36 characters fails the scan; the real manifest passes"; site check: `dist/assets/admin-*.js` has no `.review/` path and no e-mail address | unit / site-check |
+| AC-20 (width) | ui-check: `npm run screenshots` of `admin#team` at 1440 (lanes), 1280 (vertical; card below 1000px) and 390 and 320 (vertical), light and dark; site-check: `npm run check:site` (visits every admin tab, so `#team` at 390 and 1440): no horizontal page scroll, no serious or critical axe violation, no console error | ui-check / site-check |
+| AC-21 (a) C1 | `scripts/team-manifest.test.mjs` "reads only listed paths from git": a fixture repo whose working tree has `.review/x/r1.md`, `sources/a.md`, `.dev.vars` and an untracked `.claude/agents/x.md` with a sentinel string; the manifest contains none of them; "a listed path matching `.review/`, `sources/`, `.env*` or `.dev.vars*` is refused"; "update and section keys equal the allowlist; no `@` in any value"; "secret scan: a fixture description with `ghp_` + 36 characters fails the scan; the real manifest passes"; site check: `dist/assets/admin-*.js` has no `.review/` path other than the documented template `.review/<slug>/<role>-r<round>.md` (regex `\.review\/(?!<slug>\/<role>-r<round>\.md)` finds nothing), no `sources/` path, no `.dev.vars` and no e-mail address | unit / site-check |
 | AC-21 (b) C2 | `scripts/team-manifest.test.mjs` "normalises text": a subject with U+202E, U+200B, `\n`, `\x07` and 5 000 characters comes out one line, stripped, 300 code points with `…`, an emoji at the cut intact; `src/admin/TeamPage.test.tsx` "renders summaries as text": a summary `<img src=x onerror=alert(1)>` and `[x](javascript:alert(1))` appears as literal text in the history, notice, section marker, diagram and Needs you; no `img`, no `a[href^="javascript:"]`; `src/admin/team-safety.test.ts` "no raw HTML in the Team page": the Team page's sources contain no `dangerouslySetInnerHTML`, `innerHTML` or Markdown import | unit / component |
 | AC-21 (c) C3 | `scripts/team-manifest.test.mjs` "links are built from validated parts": a default merge whose body says `#12abc` and a subject with a URL give `pr: null` and no URL field; `src/admin/TeamPage.test.tsx` "every a[href] is the repository plus /commit/<40 hex>, /pull/<digits> or /blob/<sha>/<listed path>, with target=_blank and rel='noopener noreferrer'" | unit / component |
 | AC-22 C4 | `scripts/team-manifest.test.mjs` "bounded": 250 fixture commits give 200 updates and the 'older' count; "a manifest over 256 KB drops the oldest updates and says so"; "a fixture file named `$(touch pwned).md` under `.claude/agents/` is read as a name and creates no file"; "a summary with `$(rm -rf /)`, backticks and `;` is stored as text"; "never throws: malformed frontmatter gives an unreadable part, a shallow clone `history: null`" | unit |
@@ -1412,7 +1418,7 @@ the visit, no "Mark all as read" button** (decision 4, AC-9).
 | Chip-bar "new" flag | `src/admin/SubNav.test.tsx` "a part with data-new shows a dot and its chip is named '<part>, changed'"; "a part without data-new has neither"; "the flag goes when data-new is removed and the parts are read again" | component |
 | Site update part | `src/admin/TeamPage.test.tsx` "the Site update part shows the step name, its numbered lines and the workflow link; it is marked New when an unread update touched it" | component |
 | Diagram is an `ol` in a `figure` | AC-20 (shape) rows | component |
-| Vertical below 700px card width | ui-check at 1000 with the side menu open (the card is below 700px) and at 390; jsdom cannot evaluate container queries, so the test only asserts the 11-node override and the CSS rule exists (named check: `grep "@container" src/admin/admin.css`) | ui-check / named check |
+| Vertical below 1000px card width | ui-check at 1280 (the card is below 1000px) and at 390; jsdom cannot evaluate container queries, so the test only asserts the 11-node override and the CSS rule exists (named check: `grep "@container" src/admin/admin.css`) | ui-check / named check |
 | No horizontal scroll at 390 (and 320) | `npm run check:site` phone pass of `/admin#team`; ui-check screenshot at 320 | site-check / ui-check |
 | Notice line | `src/admin/TeamPage.test.tsx` "the notice shows one / several unread changes with the latest line, and 'See what changed' moves focus to the What changed h2"; "no notice when all are read" | component |
 | States | `src/admin/TeamPage.test.tsx` "no markers and a Shimmer in the head until the read state answers"; "empty history shows the empty text"; "All seen in the head when none are unread" | component |
@@ -1499,7 +1505,7 @@ All answered by Steven on 2026-10-19 and applied throughout; none is open.
 
 | Role | Spec | Merge | Notes |
 |---|---|---|---|
-| Product manager | APPROVE (reconciled, round 1) | | |
+| Product manager | APPROVE (reconciled, round 1) | APPROVE r1 (acceptance check) | AC-1 to AC-22 met on the branch at 53ca5af; Steven's ask and decisions 1 to 4 met end to end; /building-this-site sentence added and its diagram still matches the chart (flow nodes unchanged); 1 minor (Deploy node fit, to ux-designer), 3 nits; `.review/admin-team-page/product-manager-r1.md` |
 | Senior recruiter | APPROVE r1 on the draft; to confirm on the reconciled spec | | AC-18 now pins public output unchanged, main gzip within 1% |
 | Senior designer | APPROVE r1 on the draft; to confirm on the reconciled spec | | seen rule pinned in AC-9; diagram nodes aligned to the chart; Site update part added: designer to confirm |
 | Senior developer | (feasibility) | | chart parsing per AC-20; `team_reads(id, read, at)` |

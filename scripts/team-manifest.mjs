@@ -17,6 +17,8 @@ export const SCHEMA = 'team-manifest/1'
 export const REPO = 'https://github.com/stewils/stevenwilssens.com'
 // The step of site-update.yml where the team works; a change elsewhere in that file is not a team change.
 export const TEAM_STEP = 'Let Claude make the change'
+// The section of CLAUDE.md with the team's rules; a change elsewhere in that file is not a team change.
+export const TEAM_RULES = 'The team'
 
 // The orchestration files: the only list of them. A new kind goes here (or in IGNORED, with a
 // reason) in the same pull request; the coverage test fails on a file that is in neither.
@@ -31,6 +33,7 @@ export const ORCHESTRATION = [
   { glob: 'scripts/resume-gate.mjs', section: 'checks' },
   { glob: 'functions/_lib/review/**', exclude: '**/*.test.*', section: 'checks' },
   { glob: 'specs/TEMPLATE.md', section: 'flow' },
+  { glob: 'CLAUDE.md', section: 'rules', heading: TEAM_RULES },
 ]
 
 // Files in the places orchestration lives that are deliberately not part of it.
@@ -46,7 +49,7 @@ export const IGNORED = [
 // Where orchestration files live: every tracked file here is in ORCHESTRATION or IGNORED.
 export const AUDITED = ['.claude/**', '.github/workflows/**', 'functions/_lib/review/**', 'scripts/*-gate.mjs', 'scripts/*-check.mjs', 'scripts/*-compare.mjs']
 
-export const SECTIONS = ['flow', 'roles', 'checks', 'commands', 'siteUpdate']
+export const SECTIONS = ['flow', 'roles', 'checks', 'commands', 'siteUpdate', 'rules']
 export const UPDATE_KEYS = ['sha', 'date', 'summary', 'pr', 'sections', 'roles', 'commands', 'steps', 'removedSteps', 'beforeLaunch']
 export const MAX_UPDATES = 200
 export const MAX_BYTES = 256 * 1024
@@ -57,7 +60,7 @@ const HEX40 = /^[0-9a-f]{40}$/
 
 // Control, bidi and zero-width characters out, whitespace collapsed, cut on a code point.
 // oxlint-disable-next-line no-control-regex -- stripping control characters is the point
-const INVISIBLE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g
+const INVISIBLE = /[\u0000-\u001f\u007f-\u009f\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g
 export const clean = (value, max = 300) => {
   const text = String(value ?? '').replace(/\s+/g, ' ').replace(INVISIBLE, '').replace(/\s+/g, ' ').trim()
   const points = Array.from(text)
@@ -366,9 +369,19 @@ export const cutStep = (text, name) => {
   return lines.slice(at, end).map((line) => line.trimEnd()).join('\n').trimEnd()
 }
 
+// One `## ` section of a Markdown file, from its heading to the next one; null when it is not there.
+export const cutSection = (text, heading) => {
+  const part = splitSections(text).find((item) => item.heading === heading)
+  return part ? part.body.trim() : null
+}
+
+// A workflow expression (${{ steps.branch.outputs.spec }}) as Steven reads it: what it stands for.
+const READABLE = { 'steps.branch.outputs.spec': 'specs/<slug>.md' }
+export const readable = (text) => text.replace(/\$\{\{\s*([^}]*?)\s*\}\}/g, (_, name) => READABLE[name] ?? `<${name.split('.').pop() || 'value'}>`)
+
 const stepDetails = (name, block) => ({
   name: clean(name, 120),
-  lines: [...block.matchAll(/^\s*\d+\.\s+(.+)$/gm)].slice(0, 20).map((match) => clean(plain(match[1]), 1000)),
+  lines: [...block.matchAll(/^\s*\d+\.\s+(.+)$/gm)].slice(0, 20).map((match) => clean(readable(plain(match[1])), 1000)),
   tools: (/--allowedTools\s+\\?"([^"\\]*)\\?"/.exec(block)?.[1] ?? '').split(',').map((tool) => clean(tool, 80)).filter(Boolean).slice(0, 60),
 })
 
@@ -479,22 +492,37 @@ const readSections = (files, read, orchestration) => {
     else siteUpdate = { file: sitePath, steps: steps.map(([name, block]) => stepDetails(name, block)) }
   }
 
-  return { flow, sections: { roles, checks, commands, siteUpdate }, problems, team, jobs, siteSteps: siteUpdate.steps ? siteEntry.steps : null }
+  // The team's rules: one section of CLAUDE.md, as paragraphs of text.
+  let rules = null
+  const rulesEntry = orchestration.find((entry) => entry.section === 'rules')
+  if (rulesEntry) {
+    const text = read(rulesEntry.glob)
+    const section = text === null ? null : cutSection(text, rulesEntry.heading)
+    if (section === null) rules = fail(rulesEntry.glob, `no "## ${rulesEntry.heading}" section in ${rulesEntry.glob}`)
+    else rules = { file: rulesEntry.glob, heading: clean(rulesEntry.heading, 120), paragraphs: section.split(/\r?\n\s*\r?\n/).map((paragraph) => clean(plain(paragraph), 2000)).filter(Boolean).slice(0, 20) }
+  }
+
+  return { flow, sections: { roles, checks, commands, siteUpdate, ...(rules ? { rules } : {}) }, problems, team, jobs, siteSteps: siteUpdate.steps ? siteEntry.steps : null }
 }
 
 // The signature of each step: its text, and its node in the chart. A step whose signature
-// differs between two versions of team.md changed.
+// differs between two versions of team.md changed. When the older version tied no step to the
+// chart (before the "%% step" lines), a step whose text is the same and whose node is drawn
+// the same there (label, shape, members, edges) did not change: tying it to its node is not
+// a change to the step.
+const drawn = ({ label, shape, members, next, loop }) => JSON.stringify({ label, shape, members, next, loop })
 const stepSignatures = (team) => {
-  const signatures = new Map()
-  if (!team) return signatures
+  const steps = new Map()
   const nodes = team.chart ? buildDiagram(team.chart, team.steps.map((step) => step.n)).nodes : []
   for (const step of team.steps) {
     const node = nodes.find((item) => item.steps.includes(step.n))
     const { steps: _, ...shape } = node ?? {}
-    signatures.set(step.title, { id: step.id, signature: JSON.stringify([step.text, step.who, node ? shape : null]) })
+    steps.set(step.title, { id: step.id, text: JSON.stringify([step.text, step.who]), node: node ? JSON.stringify(shape) : null, nodeId: node ? node.id : null, drawn: node ? drawn(node) : null })
   }
-  return signatures
+  return { steps, nodes, mapped: Boolean(team.chart?.stepLines.length) }
 }
+const sameStep = (was, before, step) => Boolean(before) && before.text === step.text && (before.node === step.node
+  || (!was.mapped && step.drawn !== null && was.nodes.some((node) => node.id === step.nodeId && drawn(node) === step.drawn)))
 
 // What one commit changed, by section, role, command and flow step.
 const touchedBy = ({ root, sha, parent, paths, orchestration, current, siteMissing }) => {
@@ -522,8 +550,11 @@ const touchedBy = ({ root, sha, parent, paths, orchestration, current, siteMissi
       if (old.flowText !== now.flowText || old.restText !== now.restText) sections.add('flow')
       const was = stepSignatures(old)
       const is = stepSignatures(now)
-      for (const [title, step] of is) if (was.get(title)?.signature !== step.signature) { steps.add(step.id); sections.add('flow') }
-      for (const title of was.keys()) if (!is.has(title)) { removedSteps.add(clean(title, 120)); sections.add('flow') }
+      for (const [title, step] of is.steps) if (!sameStep(was, was.steps.get(title), step)) { steps.add(step.id); sections.add('flow') }
+      for (const title of was.steps.keys()) if (!is.steps.has(title)) { removedSteps.add(clean(title, 120)); sections.add('flow') }
+    } else if (entry.section === 'rules') {
+      const cut = (text) => (text === null ? null : cutSection(text, entry.heading))
+      if (cut(before(path)) !== cut(after(path))) sections.add('rules')
     } else if (entry.section === 'siteUpdate') {
       const oldText = before(path)
       const newText = after(path)
@@ -563,26 +594,38 @@ export const summaryOf = (subject, body) => {
   }
   return { summary: clean(subject, 300), pr: null }
 }
-const MERGE_MAIN = /^Merge (?:remote-tracking )?branch '?(?:origin\/)?main'? into /
+// git's own text when a branch is brought up to date ("Merge branch 'main' into x",
+// "Merge remote-tracking branch 'origin/main' into x"): not written for Steven, and what it
+// brings in is on the commits it merges.
+export const SYNC_MERGE = /^Merge (?:remote-tracking )?branch '?[^'\s]+'?(?: of \S+)? into /
+
+// The first-parent log, one record per commit. A record that does not read as one (a subject
+// carrying the separators) is dropped, never half read. The body is not in it: see bodyOf.
+export const parseLog = (log) => log.split('\x1e').filter(Boolean).flatMap((record) => {
+  const fields = record.split('\x1f')
+  if (fields.length !== 5) return []
+  const [hash, parentList, date, subject, names] = fields
+  const parents = parentList.split(' ').filter(Boolean)
+  if (!HEX40.test(hash) || !parents.every((parent) => HEX40.test(parent)) || Number.isNaN(Date.parse(date))) return []
+  return [{ sha: hash, parent: parents[0] ?? null, date, subject, paths: names.split('\0').map((name) => name.trim()).filter(Boolean) }]
+})
 
 const readHistory = ({ root, sha, orchestration, current, siteMissing, maxUpdates }) => {
-  const log = runGit(root, ['log', '--first-parent', '--diff-merges=first-parent', '--name-only', '-z', '--format=%x1e%H%x1f%P%x1f%cI%x1f%s%x1f%b%x1f', sha])
-  const commits = log.split('\x1e').filter(Boolean).map((record) => {
-    const [hash, parents, date, subject, body, names = ''] = record.split('\x1f')
-    return { sha: hash, parent: parents.split(' ').filter(Boolean)[0] ?? null, date, subject, body, paths: names.split('\0').map((name) => name.trim()).filter(Boolean) }
-  })
+  const commits = parseLog(runGit(root, ['log', '--first-parent', '--diff-merges=first-parent', '--name-only', '-z', '--format=%x1e%H%x1f%P%x1f%cI%x1f%s%x1f', sha]))
+  // Only GitHub's merges need the body (its first line is the pull request title): read it for those alone.
+  const bodyOf = (commit) => (/^Merge pull request #/.test(commit.subject) ? runGit(root, ['log', '-1', '--format=%b', commit.sha]) : '')
   const added = runGit(root, ['log', '--first-parent', '--diff-merges=first-parent', '--diff-filter=A', '--reverse', '--format=%H', sha, '--', 'scripts/team-manifest.mjs']).split(/\s+/).find(Boolean) ?? null
   const launch = added && HEX40.test(added) ? added : null
   const launchAt = launch ? commits.findIndex((commit) => commit.sha === launch) : -1
   const updates = []
   commits.forEach((commit, index) => {
-    if (!HEX40.test(commit.sha) || MERGE_MAIN.test(commit.subject)) return
+    if (SYNC_MERGE.test(commit.subject)) return
     const paths = commit.paths.filter((path) => entryFor(path, orchestration))
     if (!paths.length) return
     const touched = touchedBy({ root, sha: commit.sha, parent: commit.parent, paths, orchestration, current, siteMissing })
     if (!touched.sections.length) return
-    const { summary, pr } = summaryOf(commit.subject, commit.body)
-    const date = Number.isNaN(Date.parse(commit.date)) ? null : new Date(commit.date).toISOString()
+    const { summary, pr } = summaryOf(commit.subject, bodyOf(commit))
+    const date = new Date(commit.date).toISOString()
     updates.push({ sha: commit.sha, date, summary, pr, ...touched, beforeLaunch: launchAt < 0 || index > launchAt })
   })
   return { launch: launchAt < 0 ? null : launch, history: { updates: updates.slice(0, maxUpdates), older: Math.max(0, updates.length - maxUpdates), truncated: false } }
@@ -599,6 +642,15 @@ export const generate = ({ root = process.cwd(), ref = 'HEAD', orchestration = O
     return emptyManifest('the build is not in a git repository, so the team files could not be read', now)
   }
   manifest.commit = sha
+  try {
+    return readCommit({ root, sha, orchestration, maxUpdates, maxBytes, manifest })
+  } catch (error) {
+    return { ...emptyManifest(`the team manifest could not be generated: ${error instanceof Error ? error.message : error}`, now), commit: sha }
+  }
+}
+
+// Everything after the commit is known; generate() turns a throw in here into an empty manifest.
+const readCommit = ({ root, sha, orchestration, maxUpdates, maxBytes, manifest }) => {
   const files = runGit(root, ['ls-tree', '-r', '--name-only', '-z', sha]).split('\0').filter((path) => path && clean(path, 500) === path && entryFor(path, orchestration))
   manifest.files = files
   const read = (path) => (files.includes(path) ? show(root, sha, path) : null)

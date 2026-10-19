@@ -50,7 +50,7 @@ describe('the lines the page and the overview show', () => {
   })
 
   it('writes the day, and says when it is not known', () => {
-    expect(shortDay('2026-10-12T09:00:00.000Z')).toBe('12 Oct')
+    expect(shortDay(new Date(2026, 9, 12, 9).toISOString())).toBe('12 Oct')
     expect(shortDay(null)).toBe('an unknown day')
     expect(shortDay('not a date')).toBe('an unknown day')
   })

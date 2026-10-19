@@ -10,8 +10,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
-  AUDITED, IGNORED, MAX_UPDATES, ORCHESTRATION, SCHEMA, UPDATE_KEYS, buildDiagram, clean, coverageGaps, cutStep, emptyManifest, entryFor, frontmatter, generate,
-  globToRegExp, manifestModule, parseChart, parseJobs, parseTeam, plain, refused, scanSecrets, slug, summaryOf,
+  AUDITED, IGNORED, MAX_UPDATES, ORCHESTRATION, SCHEMA, SYNC_MERGE, UPDATE_KEYS, buildDiagram, clean, coverageGaps, cutSection, cutStep, emptyManifest, entryFor, frontmatter, generate,
+  globToRegExp, manifestModule, parseChart, parseJobs, parseLog, parseTeam, plain, readable, refused, scanSecrets, slug, summaryOf,
 } from './team-manifest.mjs'
 
 const repoRoot = resolve(import.meta.dirname, '..')
@@ -103,14 +103,16 @@ jobs:
           prompt: |
             Do the change.
             1. ${team}
-            2. Then build.
+            2. Then build \${{ steps.branch.outputs.spec }} on \${{ steps.branch.outputs.branch }}.
           claude_args: '--max-turns 10 --allowedTools "Read,Edit,Bash(npm run *)"'
 
       # The next step
       - name: Email Steven
         run: ${other}
 `
+const RULES = (rules = 'Every change goes through the editors.') => `# Site\n\n## Facts\n\nOne source.\n\n## The team\n\n${rules}\n\nA reply never clears a stop.\n\n## The admin\n\nTiles.\n`
 const BASE = {
+  'CLAUDE.md': RULES(),
   '.claude/team.md': TEAM,
   '.claude/agents/chief-editor.md': agent('chief-editor'),
   '.claude/agents/fact-checker.md': agent('fact-checker'),
@@ -126,7 +128,13 @@ const BASE = {
 }
 
 let clock = Date.UTC(2026, 9, 1, 12)
-const git = (dir, args, env = {}) => execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', ...env } })
+// The fixtures' git reads no system or global config (hooks, templates, signing): only the
+// repository's own. An empty file, not os.devNull: git for Windows cannot open that path.
+const emptyConfig = join(mkdtempSync(join(tmpdir(), 'team-manifest-config-')), 'gitconfig')
+writeFileSync(emptyConfig, '')
+made.push(dirname(emptyConfig))
+const GIT_ENV = { GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: emptyConfig }
+const git = (dir, args, env = {}) => execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...GIT_ENV, ...env } })
 const repo = () => {
   const dir = mkdtempSync(join(tmpdir(), 'team-manifest-'))
   made.push(dir)
@@ -202,11 +210,12 @@ describe('the manifest of a fixture repository', () => {
       scripts: ['functions/_lib/review/recruiter.ts', 'scripts/recruiter-check.mjs'],
       protection: 'proof and panel pass; branch protection on main requires proof and panel.',
     })
-    expect(m.sections.siteUpdate).toEqual({ file: '.github/workflows/site-update.yml', steps: [{ name: 'Let Claude make the change', lines: ['Draft first.', 'Then build.'], tools: ['Read', 'Edit', 'Bash(npm run *)'] }] })
+    expect(m.sections.siteUpdate).toEqual({ file: '.github/workflows/site-update.yml', steps: [{ name: 'Let Claude make the change', lines: ['Draft first.', 'Then build specs/<slug>.md on <branch>.'], tools: ['Read', 'Edit', 'Bash(npm run *)'] }] })
+    expect(m.sections.rules).toEqual({ file: 'CLAUDE.md', heading: 'The team', paragraphs: ['Every change goes through the editors.', 'A reply never clears a stop.'] })
   })
 
   it('lists the files it read, at the built commit, so the page can link each one', () => {
-    expect(sharedManifest.files).toEqual(['.claude/agents/chief-editor.md', '.claude/agents/fact-checker.md', '.claude/skills/publish/SKILL.md', '.claude/team.md', '.github/workflows/review.yml', '.github/workflows/site-update.yml', 'functions/_lib/review/recruiter.ts', 'scripts/recruiter-check.mjs', 'specs/TEMPLATE.md'])
+    expect(sharedManifest.files).toEqual(['.claude/agents/chief-editor.md', '.claude/agents/fact-checker.md', '.claude/skills/publish/SKILL.md', '.claude/team.md', '.github/workflows/review.yml', '.github/workflows/site-update.yml', 'CLAUDE.md', 'functions/_lib/review/recruiter.ts', 'scripts/recruiter-check.mjs', 'specs/TEMPLATE.md'])
     expect(sharedManifest.repo).toBe('https://github.com/stewils/stevenwilssens.com')
   })
 
@@ -229,7 +238,7 @@ describe('the manifest of a fixture repository', () => {
     expect(github).toMatchObject({ summary: 'The fact checker checks every fact', pr: 12, sections: ['roles'], roles: ['fact-checker'] })
     expect(local).toMatchObject({ summary: 'Every editor runs on an ask', pr: null, sections: ['commands'], commands: ['publish'] })
     expect(direct).toMatchObject({ summary: 'The checker is stricter', sections: ['checks'], steps: [] })
-    expect(root.sections).toEqual(['flow', 'roles', 'checks', 'commands', 'siteUpdate'])
+    expect(root.sections).toEqual(['flow', 'roles', 'checks', 'commands', 'siteUpdate', 'rules'])
     expect(root.steps).toEqual(['intake', 'draft', 'questions', 'publish'])
     expect(direct.date).toMatch(/^2026-10-\d\dT\d\d:00:00\.000Z$/)
     expect(sharedManifest.history.older).toBe(0)
@@ -335,6 +344,13 @@ describe('a part that cannot be read never fails the build (AC-5)', () => {
     expect(m.history.updates.map((update) => update.summary)).toEqual(['Renamed the step', 'Only the email step', 'Base'])
   }, SLOW)
 
+  it('never throws: a failure after the commit is known gives an empty manifest of that commit', () => {
+    const m = generate({ root: shared.dir, orchestration: { find: () => { throw new Error('boom') } }, now: new Date('2026-10-19T00:00:00Z') })
+    expect(m).toEqual({ ...emptyManifest('the team manifest could not be generated: boom', new Date('2026-10-19T00:00:00Z')), commit: shared.direct })
+    const odd = generate({ root: shared.dir, orchestration: { find: () => { throw 'odd' } } })
+    expect(odd.problems.map((p) => p.message)).toEqual(['the team manifest could not be generated: odd'])
+  }, SLOW)
+
   it('never throws: not a git repository gives an empty manifest whose parts say they could not be read', () => {
     const dir = mkdtempSync(join(tmpdir(), 'team-manifest-nogit-'))
     made.push(dir)
@@ -383,7 +399,63 @@ describe('the history (AC-6, AC-7)', () => {
     r.commit({ '.github/workflows/site-update.yml': siteUpdate({ team: 'Spec, then build.', other: 'echo another mail' }) }, 'Outside the team step')
     r.commit({ '.github/workflows/site-update.yml': siteUpdate({ team: 'Spec first, always.', other: 'echo a third mail' }) }, 'In both')
     const m = generate({ root: r.dir })
-    expect(m.history.updates.map((update) => [update.summary, update.sections])).toEqual([['In both', ['siteUpdate']], ['Inside the team step', ['siteUpdate']], ['Base', ['flow', 'roles', 'checks', 'commands', 'siteUpdate']]])
+    expect(m.history.updates.map((update) => [update.summary, update.sections])).toEqual([['In both', ['siteUpdate']], ['Inside the team step', ['siteUpdate']], ['Base', ['flow', 'roles', 'checks', 'commands', 'siteUpdate', 'rules']]])
+  }, SLOW)
+
+  it('counts a CLAUDE.md change only when its "The team" section changed', () => {
+    const r = repo()
+    r.commit(BASE, 'Base')
+    r.commit({ 'CLAUDE.md': RULES().replace('One source.', 'One source, always.') }, 'Outside the team section')
+    r.commit({ 'CLAUDE.md': RULES('Every change goes through every editor.').replace('One source.', 'One source, always.') }, 'Inside the team section')
+    r.commit({ 'CLAUDE.md': RULES('Every change goes through every editor.').replace('Tiles.', 'Tiles, sorted.') }, 'The next section')
+    const m = generate({ root: r.dir })
+    expect(m.history.updates.map((update) => [update.summary, update.sections])).toEqual([['Inside the team section', ['rules']], ['Base', ['flow', 'roles', 'checks', 'commands', 'siteUpdate', 'rules']]])
+    expect(m.sections.rules.paragraphs[0]).toBe('Every change goes through every editor.')
+  }, SLOW)
+
+  it('reports a CLAUDE.md without the team section, and a repository without CLAUDE.md, as a part it cannot read', () => {
+    const r = repo()
+    r.commit({ ...BASE, 'CLAUDE.md': '# Site\n\n## Facts\n\nOne source.\n' }, 'Base')
+    let m = generate({ root: r.dir })
+    expect(m.sections.rules).toEqual({ unreadable: 'CLAUDE.md' })
+    expect(m.problems.map((p) => [p.path, p.message])).toEqual([['CLAUDE.md', 'no "## The team" section in CLAUDE.md']])
+    r.commit({ 'CLAUDE.md': null }, 'No CLAUDE.md')
+    m = generate({ root: r.dir })
+    expect(m.sections.rules).toEqual({ unreadable: 'CLAUDE.md' })
+    // Without a rules entry in the list there is no rules part at all.
+    m = generate({ root: r.dir, orchestration: ORCHESTRATION.filter((entry) => entry.section !== 'rules') })
+    expect(m.sections.rules).toBeUndefined()
+  }, SLOW)
+
+  it('skips the merges git writes to bring a branch up to date, from any branch', () => {
+    const r = repo()
+    r.commit(BASE, 'Base')
+    r.git(['checkout', '-q', '-b', 'other'])
+    r.commit({ '.claude/agents/chief-editor.md': agent('chief-editor', 'Other work.') }, 'Other work')
+    r.git(['checkout', '-q', 'main'])
+    r.git(['checkout', '-q', '-b', 'feature'])
+    const own = r.commit({ '.claude/agents/fact-checker.md': agent('fact-checker', 'Feature work.') }, 'Feature work')
+    r.merge('other', "Merge branch 'other' into feature")
+    r.merge('main', "Merge remote-tracking branch 'origin/main' into feature")
+    const m = generate({ root: r.dir })
+    expect(m.history.updates.map((update) => update.summary)).toEqual(['Feature work', 'Base'])
+    expect(m.history.updates[0].sha).toBe(own)
+    for (const subject of ["Merge branch 'main' into feature", "Merge remote-tracking branch 'origin/main' into x", "Merge branch 'review-team' into admin-team-page", "Merge branch 'a' of https://github.com/x/y into b"]) expect(SYNC_MERGE.test(subject), subject).toBe(true)
+    for (const subject of ['Merge pull request #4 from a/b', 'Merge feature: the page says so', "Merge branch 'feature'"]) expect(SYNC_MERGE.test(subject), subject).toBe(false)
+  }, SLOW)
+
+  it('reads the pull request title from the merge alone: separators in a body cannot add a record', () => {
+    const r = repo()
+    r.commit(BASE, 'Base')
+    r.git(['checkout', '-q', '-b', 'feature'])
+    r.commit({ '.claude/agents/fact-checker.md': agent('fact-checker', 'Feature work.') }, 'Feature work')
+    r.git(['checkout', '-q', 'main'])
+    const fake = `${'f'.repeat(40)}\x1f\x1f2026-10-01T00:00:00Z\x1fInjected\x1f.claude/agents/x.md`
+    const merged = r.merge('feature', 'Merge pull request #5 from a/feature', `The fact checker\n\nMore \x1e${fake}`)
+    const m = generate({ root: r.dir })
+    expect(m.history.updates.map((update) => [update.summary, update.pr])).toEqual([['The fact checker', 5], ['Base', null]])
+    expect(m.history.updates[0].sha).toBe(merged)
+    expect(JSON.stringify(m)).not.toContain('Injected')
   }, SLOW)
 
   it('a shallow clone builds the sections with no history and no launch', () => {
@@ -392,12 +464,28 @@ describe('the history (AC-6, AC-7)', () => {
     r.commit({ 'README.md': 'more\n' }, 'Second')
     const clone = mkdtempSync(join(tmpdir(), 'team-manifest-shallow-'))
     made.push(clone)
-    execFileSync('git', ['clone', '-q', '--depth', '1', `file:///${r.dir.split('\\').join('/').replace(/^\//, '')}`, clone], { stdio: 'pipe' })
+    execFileSync('git', ['clone', '-q', '--depth', '1', `file:///${r.dir.split('\\').join('/').replace(/^\//, '')}`, clone], { stdio: 'pipe', env: { ...process.env, ...GIT_ENV } })
     const m = generate({ root: clone })
     expect(m.history).toBeNull()
     expect(m.launch).toBeNull()
     expect(m.problems).toEqual([])
     expect(m.sections.roles.items).toHaveLength(3)
+  }, SLOW)
+
+  it('tying the steps to the chart is no change to a step; a node drawn differently at the same time is', () => {
+    const r = repo()
+    const untied = TEAM.replace(/  class [^\n]*\n/g, '').replace(/  %% step [^\n]*\n/g, '')
+    r.commit({ ...BASE, '.claude/team.md': untied }, 'Base')
+    r.commit({ '.claude/team.md': TEAM }, 'Steps tied to the chart')
+    r.commit({ '.claude/team.md': untied }, 'Untied again')
+    r.commit({ '.claude/team.md': TEAM.replace('pub[Publish to the site]', 'pub[Publish to the website]') }, 'Tied, and a node renamed')
+    const m = generate({ root: r.dir })
+    const by = Object.fromEntries(m.history.updates.map((update) => [update.summary, update]))
+    expect(m.problems).toEqual([])
+    expect(by['Steps tied to the chart']).toMatchObject({ sections: ['flow'], steps: [] })
+    // From tied to untied, each step loses its node: that is a change to the drawing of every step.
+    expect(by['Untied again'].steps).toEqual(['intake', 'draft', 'questions', 'publish'])
+    expect(by['Tied, and a node renamed']).toMatchObject({ sections: ['flow'], steps: ['publish'] })
   }, SLOW)
 
   it('the launch is the oldest first-parent commit that adds the generator; older updates are before it', () => {
@@ -423,7 +511,7 @@ describe('the history (AC-6, AC-7)', () => {
       if (i > 0) lines.push(`from :${i}`)
       lines.push('M 100644 inline .claude/agents/a.md', `data ${Buffer.byteLength(content)}`, content, '')
     }
-    execFileSync('git', ['fast-import', '--quiet'], { cwd: r.dir, input: `${lines.join('\n')}\n` })
+    execFileSync('git', ['fast-import', '--quiet'], { cwd: r.dir, input: `${lines.join('\n')}\n`, env: { ...process.env, ...GIT_ENV } })
     const m = generate({ root: r.dir })
     expect(m.history.updates).toHaveLength(MAX_UPDATES)
     expect(m.history.older).toBe(50)
@@ -534,19 +622,50 @@ describe('the chart parser (AC-20 a, b)', () => {
     expect(built.diagram.nodes[0].next).toEqual([{ to: 'x', label: null }])
   })
 
-  it('reads the real team.md chart: every numbered step is mapped, Steven decides at ask, steven1 and merge', () => {
+  // The real chart changes with the team: these check its shape, never today's nodes (the
+  // fixture tests above pin the exact drawing).
+  it('reads the real team.md chart: every numbered step is mapped, with a You and a Gate node', () => {
     const text = readFileSync(join(repoRoot, '.claude/team.md'), 'utf8')
-    const team = parseTeam(text, { agents: [], jobs: ['gates', 'team'] })
+    const team = parseTeam(text, { agents: [], jobs: [] })
     const built = buildDiagram(team.chart, team.steps.map((step) => step.n))
     expect(built.problems).toEqual([])
-    expect(built.diagram.nodes.filter((node) => node.lane === 'you').map((node) => node.id)).toEqual(['ask', 'steven1', 'merge'])
-    expect(built.diagram.nodes.filter((node) => node.gate).map((node) => node.id)).toEqual(['spec', 'reviews', 'pr'])
-    expect(built.diagram.nodes.find((node) => node.id === 'reviews').members).toHaveLength(6)
-    expect(built.diagram.nodes.find((node) => node.id === 'fix').loop).toEqual({ to: 'reviews', label: 'changes requested, max 3 rounds' })
+    expect(built.diagram).not.toBeNull()
+    const mapped = built.diagram.nodes.flatMap((node) => node.steps).sort((a, b) => a - b)
+    expect(mapped).toEqual(team.steps.map((step) => step.n).sort((a, b) => a - b))
+    expect(built.diagram.nodes.some((node) => node.lane === 'you')).toBe(true)
+    expect(built.diagram.nodes.some((node) => node.gate)).toBe(true)
   })
 })
 
 describe('the parts that read text', () => {
+  it('takes out the other invisible characters: the Arabic letter mark, the word joiner and invisible operators, the Mongolian vowel separator', () => {
+    expect(clean('a\u061Cb\u2060c\u2061d\u2062e\u2063f\u2064g\u180Eh')).toBe('abcdefgh')
+  })
+
+  it('reads a workflow expression as what it stands for, and a Markdown section by its heading', () => {
+    expect(readable('Write ${{ steps.branch.outputs.spec }} for ${{ needs.brief.outputs.instruction }} and ${{ }}')).toBe('Write specs/<slug>.md for <instruction> and <value>')
+    expect(cutSection('# A\n\n## The team\n\nOne.\n\nTwo.\n## Next\n\nNo.\n', 'The team')).toBe('One.\n\nTwo.')
+    expect(cutSection('# A\n', 'The team')).toBeNull()
+  })
+
+  it('reads the log record by record, and drops one that does not read as a commit', () => {
+    const a = 'a'.repeat(40)
+    const b = 'b'.repeat(40)
+    const record = (fields) => `\x1e${fields.join('\x1f')}`
+    const log = [
+      record([a, b, '2026-10-01T12:00:00+02:00', 'Good', '\n.claude/team.md\0CLAUDE.md\0']),
+      record([b, '', '2026-09-01T12:00:00Z', 'Root', '\n.claude/team.md\0']),
+      record(['not-a-sha', b, '2026-10-01T12:00:00Z', 'Bad hash', '']),
+      record([a, 'zz', '2026-10-01T12:00:00Z', 'Bad parent', '']),
+      record([a, b, 'yesterday', 'Bad date', '']),
+      record([a, b, '2026-10-01T12:00:00Z', 'A subject\x1fwith a separator', '']),
+    ].join('')
+    expect(parseLog(log)).toEqual([
+      { sha: a, parent: b, date: '2026-10-01T12:00:00+02:00', subject: 'Good', paths: ['.claude/team.md', 'CLAUDE.md'] },
+      { sha: b, parent: null, date: '2026-09-01T12:00:00Z', subject: 'Root', paths: ['.claude/team.md'] },
+    ])
+  })
+
   it('normalises text: control, bidi and zero-width characters out, one line, 300 code points with an ellipsis, an emoji at the cut intact', () => {
     const subject = `Start\u202Eevil\u200B\nline two\u0007 ${'x'.repeat(5000)}`
     const out = clean(subject)
@@ -659,7 +778,10 @@ describe('the module vite.config.ts serves', () => {
     const { code, problems } = manifestModule({ orchestration: { find: () => { throw new Error('boom') } }, root: shared.dir })
     expect(code).toContain('"history":null')
     expect(problems).toEqual(['.: the team manifest could not be generated: boom'])
-    const odd = manifestModule({ orchestration: { find: () => { throw 'odd' } }, root: shared.dir })
+    // Even a throw before the commit is read (here, a clock that is not a date).
+    const early = manifestModule({ now: {}, root: shared.dir })
+    expect(early.problems).toEqual([expect.stringMatching(/^\.: the team manifest could not be generated: /)])
+    const odd = manifestModule({ now: { toISOString: () => { throw 'odd' } }, root: shared.dir })
     expect(odd.problems).toEqual(['.: the team manifest could not be generated: odd'])
   }, SLOW)
 })
@@ -686,7 +808,10 @@ describe('this repository', () => {
     const manifest = generate({ root: repoRoot })
     expect(manifest.problems).toEqual([])
     expect(scanSecrets(manifest)).toEqual([])
-    expect(manifest.flow.diagram.nodes.map((node) => node.id)).toEqual(['ask', 'spec', 'q', 'steven1', 'build', 'reviews', 'fix', 'pr', 'merge', 'deploy'])
+    expect(manifest.flow.diagram).not.toBeNull()
+    const steps = manifest.flow.steps.map((step) => step.n).sort((a, b) => a - b)
+    expect(manifest.flow.diagram.nodes.flatMap((node) => node.steps).sort((a, b) => a - b)).toEqual(steps)
+    expect(manifest.sections.rules.paragraphs.length).toBeGreaterThan(0)
     expect(JSON.stringify(manifest).length).toBeLessThan(256 * 1024)
   }, SLOW)
 

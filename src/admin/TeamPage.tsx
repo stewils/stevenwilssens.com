@@ -20,7 +20,7 @@ type Props = { manifest: TeamManifest; reads: TeamReads | null; readsError: stri
 
 export const SEEN_AFTER_MS = 5000
 const SHOWN = 5
-const sectionLabel: Record<SectionId, string> = { flow: 'Flow', roles: 'Roles', checks: 'Gates', commands: 'Commands', siteUpdate: 'Site update' }
+const sectionLabel: Record<SectionId, string> = { flow: 'Flow', roles: 'Roles', checks: 'Gates', commands: 'Commands', siteUpdate: 'Site update', rules: 'Rules' }
 const headingId = (section: SectionId | 'changes') => `team-h-${section}`
 
 const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -101,7 +101,7 @@ export function TeamPage({ manifest, reads, readsError, onPost }: Props) {
   const isUnread = (update: TeamUpdate) => ids.includes(update.sha)
   const changedFor = (target: Target) => touching(unread, target)
   const flow = manifest.flow
-  const { roles, checks, commands, siteUpdate } = manifest.sections
+  const { roles, checks, commands, siteUpdate, rules } = manifest.sections
   const roleTitle = (id: string) => rolesOf(manifest).find((role) => role.id === id)?.title ?? id
   const commandName = (id: string) => (commands && !isUnreadable(commands) ? commands.items.find((item) => item.id === id && !isUnreadable(item)) as { name: string } | undefined : undefined)?.name ?? id
   const stepTitle = (id: string) => (flow && !isUnreadable(flow) ? flow.steps.find((step) => step.id === id)?.title : undefined) ?? id
@@ -169,12 +169,12 @@ export function TeamPage({ manifest, reads, readsError, onPost }: Props) {
       </Part>
 
       <Part id="changes" part="What changed" title="What changed" flag={unread.length > 0} head={<span className="team-head" aria-live="polite">{head}</span>}>
-        <p className="note">Every change to the agents, the team flow, the commands, the Review workflow, the gates or the Site update team step, newest first. A change counts as seen once this page has been in front of you for 5 seconds, on any device.</p>
+        <p className="note">Every change to the agents, the team flow, the commands, the Review workflow, the gates, the Site update team step or the team's rules, newest first. A change counts as seen once this page has been in front of you for 5 seconds, on any device.</p>
         {seen === 'failed' && <p className="team-muted team-retry">Could not record that you have seen this; it will be tried again on your next visit.</p>}
         {!history
           ? <p className="empty">The history of changes is not in this build.</p>
           : !updates.length
-            ? <p className="empty">No changes recorded yet. Every change to the agents, the team flow, the commands, the Review workflow, the gates or the Site update team step will show up here.</p>
+            ? <p className="empty">No changes recorded yet. Every change to the agents, the team flow, the commands, the Review workflow, the gates, the Site update team step or the team's rules will show up here.</p>
             : <>
               <ol className="team-updates">
                 {shown.map((update) => {
@@ -288,6 +288,19 @@ export function TeamPage({ manifest, reads, readsError, onPost }: Props) {
           <p className="team-open"><ExtLink href={fileUrl(manifest, siteUpdate.file)}>Open the workflow ↗</ExtLink></p>
         </>}
       </Part>
+
+      {rules && (
+        <Part id="rules" part="Rules" title="The team's rules" changed={changedFor({ section: 'rules' })}>
+          {isUnreadable(rules) ? <Unreadable path={rules.unreadable} /> : <>
+            <p className="note">The section “{rules.heading}” of {rules.file}, which every agent works by. Only a change to this section counts as a change to your team.</p>
+            <details className="team-words">
+              <summary>The rules in words</summary>
+              {rules.paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+            </details>
+            <p className="team-open"><ExtLink href={fileUrl(manifest, rules.file)}>Open {rules.file} ↗</ExtLink></p>
+          </>}
+        </Part>
+      )}
     </>
   )
 }
