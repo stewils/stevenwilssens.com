@@ -1,19 +1,21 @@
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SpatialField from './SpatialField'
-import { revealRows } from './rowReveal'
 import { applyTheme, currentTheme, serverTheme, subscribeTheme } from './theme'
 
 // matchMedia that answers the queries a test names as matching.
 const media = (matching: string[]) => vi.fn((query: string) => ({ matches: matching.some((part) => query.includes(part)), media: query, addEventListener: () => {}, removeEventListener: () => {} }))
 
-// An IntersectionObserver the test drives: `fire` reports entries to the latest observer.
+// An IntersectionObserver the test drives: `fire` reports entries to an observer. Tests find
+// the one watching their rows (`watching`), not just the latest: another module may create one.
 class FakeObserver {
   static latest: FakeObserver | null = null
+  static all: FakeObserver[] = []
+  static watching = (element: Element) => FakeObserver.all.find((observer) => observer.observed.has(element)) ?? null
   observed = new Set<Element>()
   callback: IntersectionObserverCallback
   options?: IntersectionObserverInit
-  constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) { this.callback = callback; this.options = options; FakeObserver.latest = this }
+  constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) { this.callback = callback; this.options = options; FakeObserver.latest = this; FakeObserver.all.push(this) }
   observe = (element: Element) => { this.observed.add(element) }
   unobserve = (element: Element) => { this.observed.delete(element) }
   disconnect = vi.fn(() => { this.observed.clear() })
@@ -24,6 +26,7 @@ let frames: FrameRequestCallback[] = []
 beforeEach(() => {
   frames = []
   FakeObserver.latest = null
+  FakeObserver.all = []
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return frames.length })
   vi.stubGlobal('cancelAnimationFrame', vi.fn())
 })
@@ -89,6 +92,32 @@ describe('SpatialField', () => {
 })
 
 describe('revealRows', () => {
+  // rowReveal keeps whether the page's first load has happened in the module, so each test
+  // loads it fresh; `afterFirstLoad` uses that first call up on an empty root.
+  let revealRows: typeof import('./rowReveal').revealRows
+  beforeEach(async () => {
+    vi.resetModules()
+    ;({ revealRows } = await import('./rowReveal'))
+    vi.stubGlobal('IntersectionObserver', FakeObserver)
+    revealRows(document.createElement('div'))
+    FakeObserver.all = []
+    FakeObserver.latest = null
+  })
+
+  it('on the first load leaves the rows already on screen as painted, and sweeps in the rest', async () => {
+    vi.resetModules()
+    ;({ revealRows } = await import('./rowReveal'))
+    vi.stubGlobal('IntersectionObserver', FakeObserver)
+    document.body.innerHTML = '<div class="timeline-item">on screen</div><div class="timeline-item">below</div>'
+    const [onScreen, below] = [...document.querySelectorAll<HTMLElement>('.timeline-item')]
+    vi.spyOn(below, 'getBoundingClientRect').mockReturnValue({ top: window.innerHeight + 200 } as DOMRect)
+    revealRows()
+    expect(onScreen.dataset.shown).toBe('still')
+    expect('shown' in below.dataset).toBe(false)
+    expect(FakeObserver.watching(below)).not.toBeNull()
+    expect(FakeObserver.watching(onScreen)).toBeNull()
+  })
+
   const rows = () => {
     document.body.innerHTML = '<div class="timeline-item">1</div><div class="recommendation">2</div><div class="project-card" data-shown="">3</div><p>not a row</p>'
     return [...document.querySelectorAll<HTMLElement>('.timeline-item, .recommendation, .project-card')]
@@ -99,7 +128,7 @@ describe('revealRows', () => {
     const [first, second, already] = rows()
     const stop = revealRows()
     expect(document.documentElement.dataset.rowReveal).toBe('on')
-    const observer = FakeObserver.latest!
+    const observer = FakeObserver.watching(first)!
     expect([...observer.observed]).toEqual([first, second]) // the row already shown is left alone
     observer.fire([[first, true], [second, true]])
     expect(first.dataset.shown).toBe('')

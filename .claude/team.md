@@ -74,7 +74,7 @@ flowchart TD
 5. **Build** (`senior-developer`, build mode) on a branch from the latest `origin/main`:
    code and tests together, following the spec's test plan; `npm run lint`,
    `npm run test:coverage`, `npm run build` all pass before handing over.
-6. **Review**: five reviewers in parallel, each a fresh instance that did not write the
+6. **Review**: six reviewers in parallel, each a fresh instance that did not write the
    code: `senior-developer` (review mode), `security-engineer`, `senior-tester`,
    `ux-designer` (UI check) and `senior-recruiter` (merge check). The PM checks the
    acceptance criteria one by one. Each writes its report to

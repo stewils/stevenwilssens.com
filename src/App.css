@@ -93,6 +93,9 @@ html, body { overflow-x: clip; }
 :root[data-row-reveal] :is(.timeline-item, .recommendation, .archive-list article, .project-card, .capability-grid article, .work-list article)[data-shown] { animation: row-uncover .95s cubic-bezier(.7,0,.2,1) var(--reveal-delay, 0ms) both; }
 :root[data-row-reveal] :is(.timeline-item, .recommendation, .archive-list article, .project-card, .capability-grid article, .work-list article)[data-shown]::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; background: var(--green); box-shadow: 0 0 10px rgba(var(--ring-rgb), .8); transform-origin: left; pointer-events: none; animation: row-rule .95s cubic-bezier(.7,0,.2,1) var(--reveal-delay, 0ms) both, row-rule-settle .7s ease-out calc(var(--reveal-delay, 0ms) + .95s) forwards; }
 :root[data-row-reveal] .capability-grid article[data-shown]::after { top: -1px; bottom: auto; }
+/* Rows already on screen when the page first loads stay as painted (see motion/rowReveal.ts). */
+:root[data-row-reveal] :is(.timeline-item, .recommendation, .archive-list article, .project-card, .capability-grid article, .work-list article)[data-shown="still"] { clip-path: none; animation: none; }
+:root[data-row-reveal] :is(.timeline-item, .recommendation, .archive-list article, .project-card, .capability-grid article, .work-list article)[data-shown="still"]::after { content: none; }
 /* Project frames cast wide shadows: uncover them without clipping those once shown. */
 :root[data-row-reveal] .project-card { clip-path: inset(-60px 100% -60px -60px); }
 :root[data-row-reveal] .project-card[data-shown] { animation-name: project-uncover; }
