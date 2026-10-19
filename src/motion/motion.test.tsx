@@ -7,13 +7,16 @@ import { applyTheme, currentTheme, serverTheme, subscribeTheme } from './theme'
 // matchMedia that answers the queries a test names as matching.
 const media = (matching: string[]) => vi.fn((query: string) => ({ matches: matching.some((part) => query.includes(part)), media: query, addEventListener: () => {}, removeEventListener: () => {} }))
 
-// An IntersectionObserver the test drives: `fire` reports entries to the latest observer.
+// An IntersectionObserver the test drives: `fire` reports entries to an observer. Tests find
+// the one watching their rows (`watching`), not just the latest: another module may create one.
 class FakeObserver {
   static latest: FakeObserver | null = null
+  static all: FakeObserver[] = []
+  static watching = (element: Element) => FakeObserver.all.find((observer) => observer.observed.has(element)) ?? null
   observed = new Set<Element>()
   callback: IntersectionObserverCallback
   options?: IntersectionObserverInit
-  constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) { this.callback = callback; this.options = options; FakeObserver.latest = this }
+  constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) { this.callback = callback; this.options = options; FakeObserver.latest = this; FakeObserver.all.push(this) }
   observe = (element: Element) => { this.observed.add(element) }
   unobserve = (element: Element) => { this.observed.delete(element) }
   disconnect = vi.fn(() => { this.observed.clear() })
@@ -24,6 +27,7 @@ let frames: FrameRequestCallback[] = []
 beforeEach(() => {
   frames = []
   FakeObserver.latest = null
+  FakeObserver.all = []
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return frames.length })
   vi.stubGlobal('cancelAnimationFrame', vi.fn())
 })
@@ -99,7 +103,7 @@ describe('revealRows', () => {
     const [first, second, already] = rows()
     const stop = revealRows()
     expect(document.documentElement.dataset.rowReveal).toBe('on')
-    const observer = FakeObserver.latest!
+    const observer = FakeObserver.watching(first)!
     expect([...observer.observed]).toEqual([first, second]) // the row already shown is left alone
     observer.fire([[first, true], [second, true]])
     expect(first.dataset.shown).toBe('')
