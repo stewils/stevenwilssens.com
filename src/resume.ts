@@ -122,8 +122,9 @@ export type Impact = { value: string; label: string; backing?: string }
 export const impact: Impact[] = [
   { value: '250%+', label: 'growth in monthly active spatial-audio devices', backing: 'spatial-audio-lead' },
   { value: '1.6B+', label: 'Windows devices informing product decisions', backing: 'windows-devices-data' },
-  { value: '15%', label: 'increase in Windows adoption' },
-  { value: '30%', label: 'reduction in customer issues' },
+  { value: '+5%', label: 'Perfect Day improvement for Windows gaming', backing: 'csx-data' },
+  // TODO(steven): no csx-data bullet states the ~30% yet; should a bullet say it (e.g. "about 30% fewer issue days across Perfect Day scenarios")?
+  { value: '~30%', label: 'fewer issue days across Perfect Day scenarios', backing: 'csx-data' },
 ]
 
 // Keywords the resume carries for applicant tracking systems and recruiter searches.
