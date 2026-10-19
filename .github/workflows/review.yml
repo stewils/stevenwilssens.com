@@ -85,6 +85,8 @@ jobs:
       - name: Tests with coverage (90% or more, overall and per file)
         run: |
           npm run test:coverage
+          # The 90% bar, checked here too: vitest.config.ts comes from the pull request.
+          node -e "const s=require('./coverage/coverage-summary.json');const low=[];for(const [f,v] of Object.entries(s))for(const k of ['statements','branches','functions','lines'])if(v[k].total>0&&v[k].pct<90)low.push(f.replace(process.cwd(),'')+' '+k+' '+v[k].pct);if(low.length){console.error('::error::Below 90%: '+low.join(', '));process.exit(1)}"
           node -e "const t=require('./coverage/coverage-summary.json').total; console.log('| | % |\n|---|---|\n'+['statements','branches','functions','lines'].map(k=>'| '+k+' | '+t[k].pct+' |').join('\n'))" >> "$GITHUB_STEP_SUMMARY"
       - run: npm run build
       - name: The checkers come from main, the data from the pull request
@@ -224,6 +226,7 @@ jobs:
           sudo rm -rf /etc/claude-code
           # A value planted in $GITHUB_ENV by an earlier step would reach the review; pin it.
           echo "CLAUDE_CONFIG_DIR=$HOME/.claude" >> "$GITHUB_ENV"
+          { echo "NODE_OPTIONS="; echo "BASH_ENV="; echo "ANTHROPIC_BASE_URL=https://api.anthropic.com"; } >> "$GITHUB_ENV"
           if ! git cat-file -e origin/main:.claude/team.md 2>/dev/null; then
             echo "::warning::main has no .claude/team.md yet; the team reviews by the pull request's own rules."
             exit 0
@@ -313,17 +316,17 @@ jobs:
             push, commit, merge or edit any file outside .review/. Always finish by writing .review/result.json
             as the skill says, even when a reviewer failed or ran out of turns (that role then counts as
             CHANGES_REQUESTED with the reason); its "comment" is posted on the pull request for Steven.
-          claude_args: '--max-turns 300 --allowedTools "Agent,Task,Read,Glob,Grep,Write(.review/**),Edit(.review/**),Write(/${{ github.workspace }}/.review/**),Edit(/${{ github.workspace }}/.review/**),Bash(npm run lint*),Bash(npm test*),Bash(npm run test:coverage*),Bash(npm run check:recruiter*),Bash(npm run check:site*),Bash(npm run screenshots*),Bash(npm audit*),Bash(node scripts/resume-check.mjs*),Bash(node scripts/recruiter-check.mjs*),Bash(node scripts/screenshots.mjs*),Bash(node scripts/site-check.mjs*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(git status*),Bash(gh pr view*),Bash(gh pr diff*),Bash(ls*),Bash(cat*),Bash(head*),Bash(tail*),Bash(wc*),Bash(find*),Bash(grep*),Bash(sort*),Bash(diff*),Bash(md5sum*),Bash(sha256sum*),Bash(jq*),Bash(git rev-parse*),Bash(git ls-files*),Bash(git cat-file*),Bash(git merge-base*),Bash(git blame*),Bash(npx vitest*),Bash(npx tsc*),Bash(npx oxlint*),Bash(mkdir -p .review*),Bash(sed -n*)"'
+          claude_args: '--max-turns 300 --allowedTools "Agent,Task,Read,Glob,Grep,Write(.review/**),Edit(.review/**),Write(/${{ github.workspace }}/.review/**),Edit(/${{ github.workspace }}/.review/**),Bash(npm run lint*),Bash(npm test*),Bash(npm run test:coverage*),Bash(npm run check:recruiter*),Bash(npm run check:site*),Bash(npm run screenshots*),Bash(npm audit*),Bash(node scripts/resume-check.mjs*),Bash(node scripts/recruiter-check.mjs*),Bash(node scripts/screenshots.mjs*),Bash(node scripts/site-check.mjs*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(git status*),Bash(gh pr view*),Bash(gh pr diff*),Bash(ls*),Bash(cat*),Bash(head*),Bash(tail*),Bash(wc*),Bash(grep*),Bash(sort*),Bash(diff*),Bash(md5sum*),Bash(sha256sum*),Bash(jq*),Bash(git rev-parse*),Bash(git ls-files*),Bash(git cat-file*),Bash(git merge-base*),Bash(git blame*),Bash(npx vitest*),Bash(npx tsc*),Bash(npx oxlint*),Bash(mkdir -p .review*),Bash(sed -n*)"'
 
       - name: Post the sign-offs and pass or fail
-        if: steps.who.outputs.dependabot != 'true'
+        if: ${{ !cancelled() && steps.who.outputs.dependabot != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ ! -f .review/result.json ]; then
             echo "::error::The team review wrote no result."
             # Say why: the tool calls Claude Code refused (names and inputs only).
-            jq -c '.[] | select(.type == "result") | .permission_denials[]? | {tool: .tool_name, input: .tool_input}' "$RUNNER_TEMP/claude-execution-output.json" 2>/dev/null | head -20 || true
+            jq -c '.[] | select(.type == "result") | .permission_denials[]? | {tool: .tool_name, input: .tool_input}' "$RUNNER_TEMP/claude-execution-output.json" 2>/dev/null | head -20 | tee .review/permission-denials.jsonl || true
             exit 1
           fi
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
@@ -335,7 +338,8 @@ jobs:
           printf '\n\n<sub>Review workflow run %s · the reports are in its `team-review` artifact</sub>\n' "$run_url" >> "$RUNNER_TEMP/comment.md"
           gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file "$RUNNER_TEMP/comment.md" || gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
           cat "$RUNNER_TEMP/comment.md" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$(jq -r '.approved' .review/result.json)" != "true" ]; then
+          # Approved only when the model says so AND six roles each say APPROVE or NOT_APPLICABLE.
+          if [ "$(jq -r '.approved' .review/result.json)" != "true" ] || ! jq -e '(.roles | length) == 6 and all(.roles[]; .verdict == "APPROVE" or .verdict == "NOT_APPLICABLE")' .review/result.json >/dev/null; then
             echo "::error::The team asked for changes or waits for Steven: see the comment on the pull request."
             exit 1
           fi
@@ -353,7 +357,6 @@ jobs:
           name: team-review
           path: |
             .review
-            ${{ runner.temp }}/claude-execution-output.json
             !.review/screenshots
             !.review/cov-*
           include-hidden-files: true
