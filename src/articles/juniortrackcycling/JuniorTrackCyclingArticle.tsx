@@ -13,7 +13,7 @@ import '../wilssens/article.css'
 
 // The write-up of how juniortrackcycling.com was built, linked from /projects. Facts come
 // from the project's CLAUDE.md, PRODUCT.md, DESIGN.md, docs and specs, and its commit
-// history as of 18 October 2026. Nothing about any rider; no usage numbers.
+// history as of 19 October 2026. Nothing about any rider; no usage numbers.
 // Screenshots: the holding page as served, and pages from a local build of the site,
 // which is not public yet.
 

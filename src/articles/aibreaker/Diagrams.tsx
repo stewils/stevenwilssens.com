@@ -45,8 +45,8 @@ export function ConcernChart() {
 export function LevelsDiagram() {
   const levels: [string, string, string, string][] = [
     ['0', 'Nothing blocked', 'Your PC exactly as it is', 'Nothing'],
-    ['1', 'AI features off', 'Recall, Click to Do, Copilot in Office and Edge, Paint and Notepad AI, browser AI, data for AI training', 'Those features only'],
-    ['2', 'No AI apps or sites', '+ chatbot sites and desktop apps, the Copilot apps, AI chatbots inside Messenger', 'Chatbot sites and apps'],
+    ['1', 'AI features off', 'Recall, Click to Do, Copilot in Office and Edge, Paint and Notepad AI, Widgets, browser AI, AI training data', 'Those features, and the whole Widgets board'],
+    ['2', 'No AI apps or sites', '+ chatbot sites and apps, the Copilot apps, chatbots inside Messenger, AI in Google Search', 'Chatbot sites and apps, the image strips on Google’s results page'],
     ['3', 'Full lockdown', '+ AI engines inside apps, local model runners; option: Windows’ own built-in AI', 'Background blur, generative tools, local AI apps'],
   ]
   return <svg viewBox="0 0 760 392" role="img" aria-label="Four levels, each including the ones below it: nothing blocked, AI features off, no AI apps or sites, full lockdown" fontSize="13"><Arrow id="lvl-arrow" />
@@ -102,7 +102,7 @@ export function LayersDiagram() {
     ['Chatbot websites', 'Each browser’s own URL block list, then DNS rules as a catch-all', 'Level 2'],
     ['AI desktop apps', 'Per-app outbound firewall rules', 'Level 2'],
     ['The Copilot apps', 'AppLocker: the app does not start (Microsoft’s recommended method)', 'Level 2'],
-    ['Chatbots inside Messenger', 'A browser extension, since the network only sees Facebook', 'Level 2'],
+    ['AI in Google Search, Messenger', 'The browser extension that comes with AI Breaker', 'Level 2'],
     ['AI engines inside apps, local models', 'App Control: Windows refuses to run those files', 'Level 3'],
   ]
   return <svg viewBox="0 0 760 318" role="img" aria-label="Where each kind of AI is stopped: policy settings, browser block lists and DNS, firewall rules, AppLocker, a browser extension, and App Control" fontSize="13">
