@@ -16,6 +16,7 @@ import { ipHash } from '../ask/agent'
 import { D1AskStore } from '../ask/store'
 import { D1Store, publicView, ReadOnlyError, type DossierStore } from './store'
 import { instructionsFor, publicToolNames, siteUrl, ToolError, tools, type Mode, type ToolContext } from './tools'
+import { trafficSummary } from '../traffic'
 
 export const defaultRepo = 'stewils/stevenwilssens.com'
 
@@ -47,6 +48,9 @@ export type McpRequest = {
   fetchPage: ToolContext['fetchPage']
   mode?: Mode
   github?: GitHub | null
+  // The site's traffic for site_analytics (owner mode); null when there is no database behind the server.
+  traffic?: ToolContext['traffic']
+  sleep?: ToolContext['sleep']
   now?: number
   // Where the caller is, for the public server's log (from request.cf in production).
   place?: { country: string | null; asOrg: string | null }
@@ -165,7 +169,7 @@ export const resolveMode = (segment: string | undefined, request: Request, env: 
   return 'public'
 }
 
-export const handleMcp = async ({ request, store, fetchPage, mode = 'owner', github = null, now = Date.now(), place, limiter }: McpRequest): Promise<Response> => {
+export const handleMcp = async ({ request, store, fetchPage, mode = 'owner', github = null, traffic = null, sleep, now = Date.now(), place, limiter }: McpRequest): Promise<Response> => {
   if (request.method === 'OPTIONS') return respond(null, 204)
   if (request.method === 'GET') {
     // A GET with Accept: text/event-stream asks for a server-to-client stream; this server never sends one.
@@ -183,7 +187,7 @@ export const handleMcp = async ({ request, store, fetchPage, mode = 'owner', git
   let parsed: unknown
   try { parsed = JSON.parse(body) } catch { return jsonResponse(error(null, -32700, 'Parse error'), 400) }
 
-  const ctx: ToolContext = { store: mode === 'owner' ? store : publicView(store), now, fetchPage, github: mode === 'owner' ? github : null, mode }
+  const ctx: ToolContext = { store: mode === 'owner' ? store : publicView(store), now, fetchPage, github: mode === 'owner' ? github : null, traffic: mode === 'owner' ? traffic : null, sleep, mode }
   const messages = Array.isArray(parsed) ? parsed as JsonRpcRequest[] : [parsed as JsonRpcRequest]
   if (!messages.length) return jsonResponse(error(null, -32600, 'Invalid Request'), 400)
   const responses: JsonRpcResponse[] = []
@@ -216,5 +220,6 @@ export const onMcpRequest: PagesFunction<Env> = async ({ request, env, params })
     await hits.addHit(key, now)
     return true
   }
-  return handleMcp({ request, store: new D1Store(env.DB), fetchPage, mode, github, limiter, place: { country: (cf.country as string | undefined) ?? null, asOrg: (cf.asOrganization as string | undefined) ?? null } })
+  const traffic = mode === 'owner' ? (days: number) => trafficSummary(env.DB, days) : null
+  return handleMcp({ request, store: new D1Store(env.DB), fetchPage, mode, github, traffic, limiter, place: { country: (cf.country as string | undefined) ?? null, asOrg: (cf.asOrganization as string | undefined) ?? null } })
 }

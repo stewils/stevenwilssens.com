@@ -43,6 +43,8 @@ export interface DossierStore {
   listProposals(status?: ProposalStatus): Promise<Proposal[]>
   insertProposal(input: ProposalInput, now: number): Promise<Proposal>
   decideProposal(id: number, status: ProposalStatus, note: string | null, now: number): Promise<Proposal | null>
+  // Marks proposals applied (a merged site update, or the résumé found to carry them), keeping the decision note and adding why.
+  applyProposals(ids: number[], note: string, now: number): Promise<Proposal[]>
   // Open questions from the site assistant (ask_questions, not yet answered or dismissed), newest first.
   askGaps(limit: number): Promise<AskGap[]>
   getAskGap(id: number): Promise<AskGap | null>
@@ -142,6 +144,12 @@ export class D1Store implements DossierStore {
     return row ? proposalFromRow(row) : null
   }
 
+  async applyProposals(ids: number[], note: string, now: number) {
+    if (!ids.length) return []
+    const results = await this.db.batch(ids.map((id) => this.db.prepare("UPDATE resume_proposals SET status = 'applied', decision_note = CASE WHEN decision_note IS NULL OR decision_note = '' THEN ?1 ELSE decision_note || ' · ' || ?1 END, updated_at = ?2 WHERE id = ?3 AND status <> 'applied' RETURNING *").bind(note, now, id)))
+    return results.flatMap((result) => (result.results as ProposalRow[]).map(proposalFromRow))
+  }
+
   async askGaps(limit: number) {
     const { results } = await this.db.prepare('SELECT * FROM ask_questions WHERE resolved_at IS NULL ORDER BY ts DESC LIMIT ?').bind(limit).all<QuestionDb>()
     return results.map((row) => gapFromQuestion(questionFromRow(row)))
@@ -232,6 +240,15 @@ export class MemoryStore implements DossierStore {
     Object.assign(proposal, { status, decisionNote: note, updatedAt: now })
     return proposal
   }
+  async applyProposals(ids: number[], note: string, now: number) {
+    const applied: Proposal[] = []
+    for (const proposal of this.proposals) {
+      if (!ids.includes(proposal.id) || proposal.status === 'applied') continue
+      Object.assign(proposal, { status: 'applied', decisionNote: proposal.decisionNote ? `${proposal.decisionNote} · ${note}` : note, updatedAt: now })
+      applied.push(proposal)
+    }
+    return applied
+  }
   private shapeGap = ({ id, question, when, reason, page, answer }: AskGap): AskGap => ({ id, question, when, reason, page, answer })
   async askGaps(limit: number) { return this.gaps.filter((gap) => !gap.resolvedAt).slice(0, limit).map(this.shapeGap) }
   async getAskGap(id: number) { const gap = this.gaps.find((item) => item.id === id && !item.resolvedAt); return gap ? this.shapeGap(gap) : null }
@@ -259,7 +276,7 @@ export const publicView = (store: DossierStore): DossierStore => {
     get: async (id) => { const entry = await store.get(id); return entry?.visibility === 'public' ? entry : null },
     search: (terms, filter, limit) => store.search(terms, { ...filter, visibility: 'public' }, limit),
     insert: refuse, update: refuse, remove: refuse,
-    listProposals: async () => [], insertProposal: refuse, decideProposal: refuse,
+    listProposals: async () => [], insertProposal: refuse, decideProposal: refuse, applyProposals: refuse,
     askGaps: async () => [], getAskGap: async () => null, resolveAskGap: refuse,
     getLinkedIn: async () => null, saveLinkedIn: refuse,
     logToolCall: (call) => store.logToolCall(call),
