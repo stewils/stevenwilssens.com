@@ -51,11 +51,31 @@ describe('the Team page renders text only', () => {
 })
 
 describe('the flow diagram lays itself out from the card width', () => {
-  it('has two lanes only in a container of 700px or more, and never from 11 nodes', () => {
+  // 1000px: with the chart's 7 team nodes, a node is 120px or wider; at a 1280 or 1366
+  // laptop (card about 880px) the nodes went to 100px and words broke, so those get one column.
+  it('has two lanes only in a container of 1000px or more, and never from 11 nodes', () => {
     const css = readFileSync(join(root, 'src/admin/admin.css'), 'utf8')
     expect(css).toMatch(/\.fd \{[^}]*container-type: inline-size/)
-    const wide = css.slice(css.indexOf('@container (min-width: 700px)'))
-    expect(wide).toMatch(/^@container \(min-width: 700px\) \{\s+\.fd:not\(\.fd-long\) \.fd-steps \{ grid-template-columns/)
+    expect(css.match(/@container[^{]*/g)).toEqual(['@container (min-width: 1000px) '])
+    const wide = css.slice(css.indexOf('@container (min-width: 1000px)'))
+    expect(wide).toMatch(/^@container \(min-width: 1000px\) \{\s+\.fd:not\(\.fd-long\) \.fd-steps \{ grid-template-columns/)
+    // In the lanes: no word broken with a hyphen, a group's branches read out but not
+    // shown, no arrow from a node that does not lead to the next one.
+    const lanes = wide.slice(0, wide.search(/\n\}/))
+    expect(lanes).toContain('.fd:not(.fd-long) .fd-node { hyphens: manual; }')
+    expect(lanes).toMatch(/\.fd-parallel \.fd-branch \{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect\(0 0 0 0\)/)
+    expect(lanes).toContain('.fd:not(.fd-long) .fd-cut::after { content: none; }')
+    // A changed decision keeps its dashed border.
+    expect(css).toMatch(/\.fd-node\[data-changed\] \{ border-width: 2px; border-color: var\(--yellow\);/)
+  })
+
+  it('draws the focus ring on the page pane in --focus: ink in the light theme, also when the system picks it', () => {
+    const css = readFileSync(join(root, 'src/admin/admin.css'), 'utf8')
+    const light = css.slice(css.indexOf(":root[data-theme='light']"), css.indexOf('*, *::before'))
+    expect(light.match(/--focus: #172121;/g)).toHaveLength(2)
+    expect(css).toMatch(/:root \{[^}]*--focus: #e8b84a;/)
+    const team = css.slice(css.indexOf('/* Keyboard focus on the outline buttons'))
+    expect(team).not.toMatch(/outline: 2px solid var\(--yellow\)/)
   })
 })
 

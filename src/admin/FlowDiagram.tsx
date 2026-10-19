@@ -3,9 +3,10 @@ import type { DiagramNode, Flow } from './team-types'
 
 // How a change gets to main, drawn from the chart in .claude/team.md (the build-time
 // manifest): an ordered list of the chart's nodes in a figure, laid out with CSS. Wide cards
-// get two lanes (You above, Team below) in the order of the chart; below 700px of card
-// width, or from 11 nodes, one node per row. Every word comes from the manifest; this file
-// only knows the four shapes (a node, a decision, a parallel group, a loop back). The
+// get two lanes (You above, Team below) in the order of the chart; below 1000px of card
+// width (where a node gets narrower than about 120px), or from 11 nodes, one node per row.
+// Every word comes from the manifest; this file only knows the four shapes (a node, a
+// decision, a parallel group, a loop back). The
 // screen reader hears each node as a sentence; arrows and lanes are decoration. Nothing in
 // it takes focus.
 
@@ -13,6 +14,9 @@ const stepWords = (steps: number[]) => (steps.length === 0 ? '' : steps.length =
 // Class names come from here, never from the manifest.
 const shapeClass: Record<string, string> = { start: 'fd-start', box: 'fd-box', decision: 'fd-decision', group: 'fd-parallel' }
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
+// A long name (a file path, a domain) may wrap after a dot or a slash inside it, never
+// inside a word, and never after the slash of a command (/feature).
+const breakable = (text: string) => text.split(/(?<=\w[./])(?=\w)/).flatMap((part, index) => (index ? [<wbr key={index} />, part] : [part]))
 
 // On a wide card: the Team lane's nodes side by side, two grid columns each (after the lane
 // labels' column); a You node sits above the boundary between the team nodes it comes
@@ -71,6 +75,12 @@ export function FlowDiagram({ flow, changed, labelledBy }: { flow: Flow; changed
   const labelOf = (id: string) => nodes.find((node) => node.id === id)?.label ?? id
   const teamCount = nodes.filter((node) => node.lane !== 'you').length
   const place = placeNodes(nodes, teamCount)
+  // A team node whose arrow would point at the next team node it does not lead to (the pull
+  // request does not deploy by itself: Steven merges first) has no arrow in the lanes.
+  const cut = nodes.map((node, index) => {
+    const following = nodes.slice(index + 1).find((item) => item.lane !== 'you')
+    return node.lane !== 'you' && following !== undefined && !node.next.some((edge) => edge.to === following.id)
+  })
   return (
     <figure className={`fd${nodes.length > 10 ? ' fd-long' : ''}`} aria-labelledby={labelledBy}>
       <figcaption>From your ask to the live site. You: the steps that wait for you. Gate: the change stops until it passes.</figcaption>
@@ -80,11 +90,11 @@ export function FlowDiagram({ flow, changed, labelledBy }: { flow: Flow; changed
             const isNew = isChanged(node.steps)
             const { column, last } = place[index]
             return (
-              <li key={node.id} className={`fd-node ${shapeClass[node.shape] ?? 'fd-box'} ${node.lane === 'you' ? 'fd-you' : 'fd-team'}${last ? ' fd-tail' : ''}`} data-changed={isNew ? '' : undefined} style={{ '--fd-col': column } as CSSProperties}>
+              <li key={node.id} className={`fd-node ${shapeClass[node.shape] ?? 'fd-box'} ${node.lane === 'you' ? 'fd-you' : 'fd-team'}${last ? ' fd-tail' : ''}${cut[index] ? ' fd-cut' : ''}`} data-changed={isNew ? '' : undefined} style={{ '--fd-col': column } as CSSProperties}>
                 <span className="fd-title">
                   <span className="visually-hidden">{stepWords(node.steps)}</span>
                   {node.steps.length > 0 && <span className="fd-n" aria-hidden="true">{node.steps.join(', ')}</span>}
-                  <strong className="fd-label">{node.label}</strong>
+                  <strong className="fd-label">{breakable(node.label)}</strong>
                   {isNew && <><span className="visually-hidden">, new</span><span className="badge new" aria-hidden="true">New</span></>}
                   <span className="visually-hidden">. </span>
                 </span>

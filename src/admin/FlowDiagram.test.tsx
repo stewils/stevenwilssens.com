@@ -95,6 +95,24 @@ describe('the flow diagram', () => {
     ])
   })
 
+  it('draws no arrow from a team node to the next one it does not lead to, in the wide layout', () => {
+    show()
+    // The decision leads to the owner and to Publish, not to "Editor fixes" next to it;
+    // "Editor fixes" loops back and does not lead to Publish. Draft leads to the decision.
+    expect(nodes().filter((item) => item.classList.contains('fd-cut')).map((item) => item.querySelector('.fd-label')!.textContent)).toEqual(['Questions only the owner can answer?', 'Editor fixes'])
+  })
+
+  it('lets a long name wrap after its dots and slashes, never inside a word', () => {
+    show()
+    expect(node('Draft:').querySelector('.fd-label')!.innerHTML).toBe('Draft: drafts/<wbr>slug.<wbr>md')
+    expect(node('Questions only').querySelector('.fd-label wbr')).toBeNull()
+    expect(node('Draft:').querySelector('.fd-label')!.textContent).toBe('Draft: drafts/slug.md')
+    const command: Flow = { ...flow, diagram: { nodes: [{ ...flow.diagram!.nodes[0], label: 'Steven asks: /feature, or deploy to steven.wilssens.com.' }] } }
+    cleanup()
+    show([], command)
+    expect(nodes()[0].querySelector('.fd-label')!.innerHTML).toBe('Steven asks: /feature, or deploy to steven.<wbr>wilssens.<wbr>com.')
+  })
+
   it('puts two You nodes in a row side by side, and a chart of only You nodes in two columns', () => {
     const you = (id: string): DiagramNode => ({ id, label: id, shape: 'start', members: [], steps: [], lane: 'you', gate: false, next: [], loop: null })
     const team = (id: string): DiagramNode => ({ ...you(id), shape: 'box', lane: 'team' })
