@@ -19,6 +19,9 @@
 // report could not be read, the --compare file could not be read, or the baseline run
 // failed), so an outage never passes as "not worse". scripts/recruiter-check.test.mjs
 // runs the script on fixture pages for each exit code.
+// In the Review workflow this script and the checker are main's, but src/pageMeta.ts (the
+// page list and Markdown paths) and node_modules come from the pull request's checkout:
+// they are read as data, and a pull request that changes them is the reviewers' to judge.
 import { execFileSync } from 'node:child_process'
 import { appendFileSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { registerHooks } from 'node:module'

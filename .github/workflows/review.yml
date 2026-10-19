@@ -12,8 +12,8 @@ name: Review
 #          when any of them asks for changes or waits for Steven. Steven answers a
 #          NEEDS_STEVEN question by replying on the pull request; the next run (a push, or
 #          "Re-run jobs") reads his replies. Dependabot's own dependency updates (opened by
-#          Dependabot, on a dependabot/ branch, its head commit by Dependabot) get the gates
-#          only; anything else gets the full team.
+#          Dependabot, on a dependabot/ branch, its head commit by Dependabot, the run
+#          started by Dependabot) get the gates only; anything else gets the full team.
 # Branch protection on main (turned on by Steven once this workflow is on main) requires
 # the contexts `gates`, `team` and `check` (Site checks). A pull request opened by the
 # Site update workflow is pushed with the built-in token, which starts no workflow, so
@@ -28,6 +28,12 @@ name: Review
 # a pull request cannot loosen the gate it is judged by; a change to a checker or a rule
 # takes effect once it is merged. The bootstrap pull request (main has no
 # scripts/recruiter-check.mjs or .claude/team.md yet) is checked by its own.
+#
+# The limit: both jobs run the pull request's code before the swap (npm ci and its install
+# scripts, the tests, the build), in the same job, so that code could still change what
+# the later steps see (files outside the checkout, the npm cache, node_modules). The robust
+# fix, a separate gate job that runs only main's code over the pull request's built
+# artifacts, is a named follow-up (specs/review-team.md, Out of scope).
 #
 # Secrets: ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN, as for Site update.
 on:
@@ -146,11 +152,11 @@ jobs:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          # Gates only when Dependabot opened the pull request, on its own dependabot/ branch, and the head
-          # commit is Dependabot's (Dependabot's runs get no Anthropic secret). A commit someone else pushes
-          # onto it, or a dispatched run, gets the full team.
+          # Gates only when Dependabot opened the pull request, on its own dependabot/ branch, Dependabot started
+          # this run and the head commit is Dependabot's (Dependabot's runs get no Anthropic secret). A commit
+          # someone else pushes onto it, a re-run by someone else, or a dispatched run, gets the full team.
           dependabot=false
-          if [ "$AUTHOR" = 'dependabot[bot]' ] && [[ "$HEAD_REF" == dependabot/* ]]; then
+          if [ "$AUTHOR" = 'dependabot[bot]' ] && [ "$GITHUB_ACTOR" = 'dependabot[bot]' ] && [[ "$HEAD_REF" == dependabot/* ]]; then
             commit_author=$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA" --jq '.author.login // ""' || true)
             if [ "$commit_author" = 'dependabot[bot]' ]; then dependabot=true; fi
           fi
@@ -212,14 +218,16 @@ jobs:
           # (committed by the pull request, or written by its install or build) is main's version when main has
           # one, and is removed when it does not. This runs after the install and the build, right before the
           # review. The diff the reviewers read (origin/main...HEAD) is unchanged; they read the pull request's
-          # own versions of these files with `git show HEAD:<path>`.
+          # own versions of these files with `git show HEAD:<path>`. User-level settings the install, tests or
+          # build may have written in the home folder are removed too.
+          rm -rf "$HOME/.claude" "$HOME/.claude.json"
           if ! git cat-file -e origin/main:.claude/team.md 2>/dev/null; then
             echo "::warning::main has no .claude/team.md yet; the team reviews by the pull request's own rules."
             exit 0
           fi
           rm -rf .claude
           git checkout origin/main -- CLAUDE.md .claude
-          find . -path ./.git -prune -o \( -name .claude -type d -prune -print0 \) -o \( \( -name CLAUDE.md -o -name CLAUDE.local.md -o -name .mcp.json \) -print0 \) |
+          find . -path ./.git -prune -o \( -name .claude \( -type d -o -type l \) -prune -print0 \) -o \( \( -name CLAUDE.md -o -name CLAUDE.local.md -o -name .mcp.json \) -print0 \) |
             while IFS= read -r -d '' found; do
               path=${found#./}
               case "$path" in CLAUDE.md|.claude) continue ;; esac

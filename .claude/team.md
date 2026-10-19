@@ -20,6 +20,26 @@ product, design, engineering, security and test.
 
 ## The flow
 
+```mermaid
+flowchart TD
+  ask([Steven asks: /feature, the MCP, or a write-up refresh]) --> spec
+  subgraph spec [Spec: specs/slug.md]
+    pm[Product manager] --- rec[Recruiter] --- des[Designer]
+    pm -.adds.- sec[Security: threat model] & tst[Tester: test plan] & dev0[Developer: approach]
+  end
+  spec --> q{Questions only Steven can answer?}
+  q -- yes, asked once --> steven1([Steven answers]) --> build
+  q -- no --> build
+  build[Developer builds, with tests] --> reviews
+  subgraph reviews [Six reviews in parallel, fresh agents]
+    r1[Code] & r2[Security] & r3[Tests 90%] & r4[Design + screenshots] & r5[Recruiter: not worse] & r6[PM: acceptance]
+  end
+  reviews -- changes requested, max 3 rounds --> fix[Developer fixes] --> reviews
+  reviews -- all approve --> pr[Pull request + Review check on GitHub: main's gates and team review]
+  pr --> merge([Steven merges]) --> deploy[Deploy to steven.wilssens.com]
+```
+
+
 1. **Intake** (lead). Restate the ask in one sentence, find what it touches (public pages,
    admin, `src/resume.ts`, Pages Functions, the MCP server, workflows), pick a slug, and
    check `git log origin/main` first: other sessions merge into main while you work.

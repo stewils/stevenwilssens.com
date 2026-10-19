@@ -87,7 +87,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      # No token is left in .git/config for Claude to find: the push below passes it for that one command.
+      # The checkout keeps no credentials. claude-code-action puts github.token back into the origin URL for the
+      # Claude session (its agent mode rewrites origin with the token embedded); the step after it resets origin,
+      # the checks run without GH_TOKEN, and only the push step passes the token, for that one command.
       - uses: actions/checkout@v7
         with:
           ref: main
@@ -201,11 +203,14 @@ jobs:
             - Commit nothing yourself; the workflow commits the change and the spec and opens the pull request. End with a short summary of what changed and any open questions, written for Steven.
           claude_args: '--max-turns 400 --allowedTools "Agent,Task,Read,Edit,Write,MultiEdit,Glob,Grep,Bash(npm run *),Bash(npm test*),Bash(node scripts/*),Bash(npx vitest*),Bash(git diff*),Bash(git status*),Bash(git log*),Bash(git show*),Bash(ls*),Bash(mkdir -p specs*)"'
 
-      - name: Check, commit and push
+      # The action left github.token in the origin URL; nothing after this step reads it from .git/config.
+      - name: Remove the token from the origin URL
+        run: git remote set-url origin "https://github.com/$GITHUB_REPOSITORY.git"
+
+      # Lint, tests and build run code Claude just wrote, so this step has no token.
+      - name: Check and commit
         id: commit
         env:
-          GH_TOKEN: ${{ github.token }}
-          BRANCH: ${{ steps.branch.outputs.branch }}
           TITLE: ${{ needs.brief.outputs.title }}
           INSTRUCTION: ${{ needs.brief.outputs.instruction }}
           ORIGIN: ${{ needs.brief.outputs.origin }}
@@ -219,12 +224,21 @@ jobs:
           status=passed
           (npm run lint && npm run test:coverage && npm run build) || status=failed
           git add -A
-          git commit -m "$TITLE" -m "$INSTRUCTION" -m "Requested through $ORIGIN; made by Claude Code in the Site update workflow (run ${GITHUB_RUN_ID})." -m "Co-Authored-By: Claude <noreply@anthropic.com>"
-          # The checkout keeps no credentials, so the token goes in for this push only (as actions/checkout does it).
-          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
-          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" push -u origin "$BRANCH"
+          git -c core.hooksPath=/dev/null commit -m "$TITLE" -m "$INSTRUCTION" -m "Requested through $ORIGIN; made by Claude Code in the Site update workflow (run ${GITHUB_RUN_ID})." -m "Co-Authored-By: Claude <noreply@anthropic.com>"
           echo "changed=true" >> "$GITHUB_OUTPUT"
           echo "checks=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Push the branch
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+        run: |
+          set -e
+          # The token goes in for this push only (as actions/checkout does it), masked in the log; no hooks run.
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          git -c core.hooksPath=/dev/null -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" push -u origin "$BRANCH"
 
       # The new resume against the one main had: the score line goes into the pull request,
       # the step summary and the email, and a drop is a warning on the run.
@@ -275,11 +289,13 @@ jobs:
           SPEC: ${{ steps.branch.outputs.spec }}
         run: |
           alias=$(printf '%s' "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | cut -c1-28)
-          # Text copied into the body (the instruction, the spec's open questions, the new findings) cannot open or
+          # Text copied into the body (the instruction, the origin, the proposals, the spec's open questions, the new findings) cannot open or
           # close an HTML comment: a hidden marker planted in it would otherwise read as the workflow's own
           # (functions/_lib/github.ts also takes the last marker, which is the workflow's).
           neutralise() { sed 's/<!--/\&lt;!--/g; s/-->/--\&gt;/g'; }
           instruction=$(printf '%s' "$INSTRUCTION" | neutralise)
+          origin=$(printf '%s' "$ORIGIN" | neutralise)
+          proposals=$(printf '%s' "$PROPOSALS" | neutralise)
           # The team's spec and the questions it left for Steven (its "Open questions" section, when it has any).
           spec_line="**Spec:** none was written (see the run log)."
           questions=""
@@ -301,7 +317,7 @@ jobs:
           request=$(jq -cn --arg title "$TITLE" --arg instruction "$INSTRUCTION" --arg proposals "$PROPOSALS" --arg supersedes "$SUPERSEDES" \
             '{title: $title, instruction: $instruction, proposals: ($proposals | split(",") | map(select(test("^[0-9]+$")) | tonumber)), supersedes: (if ($supersedes | test("^[0-9]+$")) then ($supersedes | tonumber) else null end)}' | base64 -w0)
           proposals_line=""
-          if [ -n "$PROPOSALS" ]; then proposals_line=$(printf '**Résumé proposals:** %s (marked applied in the MCP server when this merges)\n\n' "$(printf '%s' "$PROPOSALS" | sed 's/,/, #/g; s/^/#/')"); fi
+          if [ -n "$proposals" ]; then proposals_line=$(printf '**Résumé proposals:** %s (marked applied in the MCP server when this merges)\n\n' "$(printf '%s' "$proposals" | sed 's/,/, #/g; s/^/#/')"); fi
           body=$(printf '%s%s%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s\n%s' \
             "$warning" "$proposals_line" \
             "**Instruction**" "$instruction" \
@@ -309,7 +325,7 @@ jobs:
             "**Checks in this run:** $CHECKS (lint, tests, build). Preview, once the Deploy workflow for this branch finishes: https://$alias.stevenwilssens.pages.dev" \
             "$spec_line" \
             "Merging deploys to production. Review the resume PDF in the branch before merging." \
-            "🤖 Generated with [Claude Code](https://claude.com/claude-code) from $ORIGIN." \
+            "🤖 Generated with [Claude Code](https://claude.com/claude-code) from $origin." \
             "$marker" \
             "<!-- site-update-request $request -->")
           url=$(gh pr create --base main --head "$BRANCH" --title "$TITLE" --body "$body")

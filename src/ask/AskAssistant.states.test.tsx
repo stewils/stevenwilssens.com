@@ -250,31 +250,35 @@ describe('asking', () => {
     expect(fetchMock.mock.calls.some((call) => call[0] === '/api/ask/feedback')).toBe(false)
   })
 
-  // Fake timers that still let real time pass (userEvent and the stream need it); the
-  // 1.6 s of the label are skipped with advanceTimersByTime instead of waited for.
+  // Real timers until the answer is on screen (userEvent and the stream need them), then
+  // plain fake timers: the click is synchronous, and the clipboard's promise and the 1.6 s
+  // of the label run only when advanceTimersByTimeAsync moves the clock, inside act.
   const withClipboard = async (clipboard: unknown, body: () => Promise<void>) => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: clipboard })
     try {
       await openPanel()
       await ask('Hello')
       await screen.findByText('An answer.')
+      vi.useFakeTimers()
       await body()
     } finally {
       Reflect.deleteProperty(navigator, 'clipboard')
       vi.useRealTimers()
     }
   }
-  const copyAnswer = () => userEvent.click(screen.getByRole('button', { name: 'Copy answer' }))
-  const pass = (ms: number) => act(() => { vi.advanceTimersByTime(ms) })
+  const pass = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms) })
+  // Click, then let the clipboard's promise settle without moving the clock.
+  const copyAnswer = async () => { fireEvent.click(screen.getByRole('button', { name: 'Copy answer' })); await pass(0) }
 
   it('copies an answer and says so for a moment', async () => {
     const writeText = vi.fn(async () => {})
     await withClipboard({ writeText }, async () => {
       await copyAnswer()
       expect(writeText).toHaveBeenCalledWith('An answer.')
-      expect(await screen.findByText('Copied')).toBeInTheDocument()
-      await pass(1600)
+      expect(screen.getByText('Copied')).toBeInTheDocument()
+      await pass(1599)
+      expect(screen.getByText('Copied')).toBeInTheDocument()
+      await pass(1)
       expect(screen.queryByText('Copied')).not.toBeInTheDocument()
     })
   })
@@ -282,7 +286,7 @@ describe('asking', () => {
   it('keeps "Copied" for the full moment after a second click', async () => {
     await withClipboard({ writeText: vi.fn(async () => {}) }, async () => {
       await copyAnswer()
-      await screen.findByText('Copied')
+      expect(screen.getByText('Copied')).toBeInTheDocument()
       await pass(1000)
       await copyAnswer()
       await pass(1000) // the first click's timer would have cleared it by now
@@ -297,7 +301,7 @@ describe('asking', () => {
     await withClipboard({ writeText }, async () => {
       await copyAnswer()
       expect(writeText).toHaveBeenCalledWith('An answer.')
-      expect(await screen.findByText('Copy failed')).toBeInTheDocument()
+      expect(screen.getByText('Copy failed')).toBeInTheDocument()
       expect(screen.queryByText('Copied')).not.toBeInTheDocument()
       await pass(1600)
       expect(screen.queryByText('Copy failed')).not.toBeInTheDocument()
@@ -307,9 +311,17 @@ describe('asking', () => {
   it('says the copy failed when the browser has no clipboard (no secure context)', async () => {
     await withClipboard(undefined, async () => {
       await copyAnswer()
-      expect(await screen.findByText('Copy failed')).toBeInTheDocument()
+      expect(screen.getByText('Copy failed')).toBeInTheDocument()
       await pass(1600)
       expect(screen.queryByText('Copy failed')).not.toBeInTheDocument()
+    })
+  })
+
+  it('says the copy failed when the clipboard has no writeText', async () => {
+    await withClipboard({}, async () => {
+      await copyAnswer()
+      expect(screen.getByText('Copy failed')).toBeInTheDocument()
+      expect(screen.queryByText('Copied')).not.toBeInTheDocument()
     })
   })
 

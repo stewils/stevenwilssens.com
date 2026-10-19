@@ -64,6 +64,8 @@
 .wx-figure figcaption { margin-top: 12px; color: var(--muted); font-size: 13.5px; line-height: 1.55; }
 .wx-diagram-scroll { overflow-x: auto; padding: 22px 18px 16px; border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(180deg, color-mix(in srgb, var(--card) 100%, transparent), color-mix(in srgb, var(--card) 70%, var(--paper))); scrollbar-color: var(--green) transparent; }
 .wx-diagram svg { display: block; width: 100%; height: auto; overflow: visible; font-family: inherit; }
+/* A diagram drawn twice (across, and stacked for a phone): only one shows. */
+.wx-diagram svg.wx-flow-tall { display: none; }
 .wx-shot-frame { position: relative; display: block; width: 100%; overflow: hidden; padding: 0; border: 1px solid var(--line); border-radius: 14px; background: #0c0f14; cursor: zoom-in; box-shadow: 0 24px 50px -28px rgb(0 0 0 / .6); transition: transform 300ms cubic-bezier(.2,.8,.2,1), box-shadow 300ms ease; }
 .wx-shot-frame:hover, .wx-shot-frame:focus-visible { transform: translateY(-4px); box-shadow: 0 32px 60px -28px rgb(0 0 0 / .7); }
 .wx-shot-frame:focus-visible { outline: 2px solid var(--green); outline-offset: 4px; }
@@ -182,6 +184,9 @@
   .wx-diagram-scroll { margin-inline: -4px; padding: 16px 12px 12px; border-radius: 14px; }
   .wx-diagram svg { min-width: 640px; }
   .wx-diagram figcaption::before { content: 'Swipe to see the whole diagram · '; color: var(--green); }
+  .wx-diagram svg.wx-flow-wide { display: none; }
+  .wx-diagram svg.wx-flow-tall { display: block; min-width: 0; max-width: 360px; margin-inline: auto; }
+  .wx-diagram:has(.wx-flow-tall) figcaption::before { content: none; }
   .wx-table thead { display: none; }
   .wx-table, .wx-table tbody, .wx-table tr, .wx-table th, .wx-table td { display: block; }
   .wx-table tr { padding: 14px 16px; border-bottom: 1px solid var(--line); }

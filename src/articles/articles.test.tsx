@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WilssensArticle from './wilssens/WilssensArticle'
 import AIBreakerArticle from './aibreaker/AIBreakerArticle'
 import SiteArticle, { ReportCard } from './site/SiteArticle'
+import { TeamFlowDiagram } from './site/Diagrams'
 import JuniorTrackCyclingArticle from './juniortrackcycling/JuniorTrackCyclingArticle'
 import LeoArticle from './leo/LeoArticle'
 import { Stats } from './wilssens/Stats'
@@ -150,5 +151,24 @@ describe('the assistant\'s report card on /building-this-site', () => {
     answer(Response.json(report))
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the team diagram on /building-this-site', () => {
+  it('draws the flow across and stacked, each an image with its name and a description of every step', () => {
+    render(<TeamFlowDiagram />)
+    const images = screen.getAllByRole('img', { name: 'How a change reaches the site: a team of AI agents, and Steven deciding' })
+    expect(images.map((image) => image.getAttribute('class'))).toEqual(['wx-flow-wide', 'wx-flow-tall'])
+    for (const image of images) {
+      expect(image).toHaveAccessibleDescription(/Six reviews run in parallel.*at most three rounds.*main’s gates and the team review\. Steven merges/)
+      for (const label of ['Spec', 'My questions', 'Build', 'Six reviews, in parallel', 'tests, 90% a file', 'recruiter: not worse', 'PM: acceptance', 'Pull request', 'I merge', 'Deploy']) expect(within(image).getByText(label)).toBeInTheDocument()
+    }
+  })
+
+  it('sits in the loop section, with the step it explains', () => {
+    render(<SiteArticle />)
+    const loop = document.getElementById('loop')!.closest('section')!
+    expect(within(loop).getByText('Put every change past a team.')).toBeInTheDocument()
+    expect(within(loop).getAllByRole('img', { name: /a team of AI agents, and Steven deciding/ })).toHaveLength(2)
   })
 })

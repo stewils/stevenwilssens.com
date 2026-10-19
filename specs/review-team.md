@@ -45,6 +45,8 @@ Named follow-ups from the review rounds (each its own change):
 - **Screenshots `--state`** (assistant open, phone menu open, keyboard focus), together with seeding the local D1 (above).
 - **The assistant declines work authorization and availability** (`functions/_lib/ask/prompt.ts:127` forbids speculating about them, and the model applies it to `profile.workAuthorization` and `profile.availability`, which the site states). Needs Steven to confirm both facts may be stated by the assistant; then a spec and a test asking both questions.
 - **The phone first screen** (390x844): the green card and "Open to" sit below the fold, and the résumé and email links are cut by the bottom edge. A design spec.
+- **A separate gate job on main's code**: in `review.yml` the pull request's own code runs earlier in the same job (`npm ci` and its install scripts, the tests, the build) and could still influence the later steps that run main's checkers and the team review. The robust fix is a second job that checks out main only and scores the pull request's built artifacts (pages, PDF, resume report) passed as an artifact.
+- **Reviewers' `npm test` and `npm run lint` run branch code** after the swap to main's rules: the cleanup protects the rules the reviewers read, not the code they execute. Same fix as above, or a reviewer sandbox without the secrets.
 - **The desktop contact band**: "Connect on LinkedIn" runs past the grid's right edge at 1440.
 - **`/api/collect` rate limit** (pre-existing).
 - **The MCP reading the Review run** (the `team` check and its comment) in `site_update_status` and `merge_site_update`.
