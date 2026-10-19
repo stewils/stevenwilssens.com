@@ -22,6 +22,13 @@ describe('isApplied', () => {
     expect(isApplied(proposal({ kind: 'add', proposedText: '  Owned   the budget. ' }), resume)).toBe(true)
     expect(isApplied(proposal({ kind: 'remove', currentText: 'Ran the review.' }), resume)).toBe(true)
     expect(isApplied(proposal({ kind: 'remove', currentText: 'Owned the budget.' }), resume)).toBe(false)
+    // Curly quotes and dashes on the site, straight ones in the proposal: the same wording.
+    expect(isApplied(proposal({ currentText: 'x', proposedText: 'Steven\'s "data" team – 2024' }), { ...resume, experiences: [{ ...resume.experiences[0], points: ['Steven’s “data” team - 2024'] }] })).toBe(true)
+    // Proposals from before the field column: a title or summary change with field null still counts.
+    expect(isApplied(proposal({ field: null, currentText: 'PM', proposedText: 'Group PM' }), resume)).toBe(true)
+    expect(isApplied(proposal({ field: null, currentText: 'x', proposedText: 'Led the data org.' }), resume)).toBe(true)
+    expect(isApplied(proposal({ field: null, currentText: 'x', proposedText: 'Led 12 PMs.' }), resume)).toBe(true)
+    expect(isApplied(proposal({ field: null, kind: 'add', proposedText: 'Group PM' }), resume)).toBe(false)
     expect(isApplied(proposal({ field: 'dates', currentText: 'x', proposedText: 'Dec 2024 - Sep 2026' }), resume)).toBe(true)
     expect(isApplied(proposal({ field: 'title', currentText: 'x', proposedText: 'Principal Group PM' }), resume)).toBe(false)
     expect(isApplied(proposal({ role: 'headline', field: null, proposedText: 'Product leader who builds' }), resume)).toBe(true)
