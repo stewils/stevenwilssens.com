@@ -312,6 +312,27 @@ describe('enhanceArticle', () => {
     }
   })
 
+  it('goes back to "Copy link" after a double click, not to "Copied"', async () => {
+    vi.useFakeTimers()
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn(async () => {}) } })
+    try {
+      const root = article({ feed: null })
+      enhanceArticle(root)
+      const button = root.querySelector<HTMLButtonElement>('[data-copy]')!
+      button.click()
+      await vi.waitFor(() => expect(button).toHaveTextContent('Copied ✓'))
+      button.click()
+      await settle()
+      expect(button).toHaveTextContent('Copied ✓')
+      vi.advanceTimersByTime(1800)
+      expect(button).toHaveTextContent('Copy link')
+      vi.advanceTimersByTime(1800)
+      expect(button).toHaveTextContent('Copy link')
+    } finally {
+      Reflect.deleteProperty(navigator, 'clipboard')
+    }
+  })
+
   it('handles an article without a body, contents, progress bar or feed', () => {
     document.body.innerHTML = '<article><span data-read-time>5 min read</span></article>'
     const root = document.querySelector('article')!

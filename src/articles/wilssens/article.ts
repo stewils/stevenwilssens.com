@@ -132,11 +132,13 @@ export function enhanceArticle(root: HTMLElement): () => void {
   dialog?.addEventListener('click', onBackdrop)
   cleanups.push(() => { root.removeEventListener('click', onZoom); dialog?.removeEventListener('click', onBackdrop) })
 
-  // Copy link, with a short "Copied" in place of the label.
+  // Copy link, with a short "Copied" in place of the label. The label is kept once, so a
+  // second click while "Copied" shows does not make "Copied" the label.
   const onCopy = async (event: Event) => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-copy]')
     if (!button) return
-    try { await navigator.clipboard.writeText(button.dataset.copy!); const label = button.textContent; button.textContent = 'Copied ✓'; setTimeout(() => { button.textContent = label }, 1800) } catch { /* clipboard unavailable */ }
+    const label = button.dataset.label ??= button.textContent ?? ''
+    try { await navigator.clipboard.writeText(button.dataset.copy!); button.textContent = 'Copied ✓'; setTimeout(() => { button.textContent = label }, 1800) } catch { /* clipboard unavailable */ }
   }
   root.addEventListener('click', onCopy)
   cleanups.push(() => root.removeEventListener('click', onCopy))

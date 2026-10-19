@@ -76,7 +76,7 @@ export function ReportCard() {
 
 export default function SiteArticle() {
   const rootRef = useRef<HTMLElement>(null)
-  useEffect(() => rootRef.current ? enhanceArticle(rootRef.current) : undefined, [])
+  useEffect(() => enhanceArticle(rootRef.current!), [])
 
   return <article className="wx" ref={rootRef}>
     <div className="wx-progress" aria-hidden="true"><span /></div>

@@ -2,7 +2,7 @@
 // The traffic summary for site_analytics, from the real SQL on an in-memory SQLite with
 // every migration applied, and the sentences Claude reads instead of the tables.
 import { describe, expect, it } from 'vitest'
-import { fakeD1, type FakeD1 } from '../api/_testing/d1'
+import { fakeD1, type FakeD1 } from './testing/d1'
 import { describeTraffic, trafficSummary, type TrafficSummary } from './traffic'
 
 const now = Date.UTC(2026, 9, 19, 12)

@@ -96,7 +96,11 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
     })
     if (response.status === 204) return null
     const text = await response.text()
-    const body = text ? JSON.parse(text) as Record<string, unknown> : null
+    // An error page from a proxy (a 502 in HTML) is not JSON: keep the status and the text.
+    let body: Record<string, unknown> | null = null
+    try { body = text ? JSON.parse(text) as Record<string, unknown> : null } catch {
+      throw new GitHubError(`GitHub ${response.status} on ${path}: ${response.ok ? 'the answer is not JSON' : text.slice(0, 200)}`, response.status)
+    }
     if (!response.ok) throw new GitHubError(`GitHub ${response.status} on ${path}: ${(body?.message as string) ?? text}`, response.status)
     return body
   }

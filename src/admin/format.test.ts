@@ -22,7 +22,8 @@ describe('chart and comparison helpers', () => {
   })
 
   it('says how long ago the numbers were loaded', () => {
-    const now = Date.parse('2026-10-17T12:00:00Z')
+    // Noon local time: two days back is 15 October in every time zone.
+    const now = new Date(2026, 9, 17, 12).getTime()
     expect(formatAgo(now - 10_000, now)).toBe('just now')
     expect(formatAgo(now - 4 * 60_000, now)).toBe('4 min ago')
     expect(formatAgo(now - 3 * 3_600_000, now)).toBe('3 h ago')

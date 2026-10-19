@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import type { Env } from '../_lib/env'
-import { context, fakeD1, type FakeD1 } from './_testing/d1'
+import { context, fakeD1, type FakeD1 } from '../_lib/testing/d1'
 import { onRequestGet } from './stats'
 
 const token = 'admin-secret'
@@ -95,6 +95,12 @@ describe('GET /api/stats', () => {
       const response = await send(get(query))
       expect(response.status).toBe(200)
       expect(((await response.json()) as { days: number }).days).toBe(days)
+    }
+    // The offset in the SQL text stops at fourteen hours either way (840 minutes).
+    for (const [tz, seconds] of [['99999', 50400], ['-99999', -50400]] as const) {
+      const db = fakeD1()
+      await send(get(`?tz=${tz}`), db)
+      expect(db.queries.some((sql) => sql.includes(`(ts / 1000) + ${seconds}, 'unixepoch'`))).toBe(true)
     }
   })
 

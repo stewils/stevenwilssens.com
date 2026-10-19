@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_BUDGET_USD, MODEL } from '../../_lib/ask/agent'
 import { D1AskStore, dayOf } from '../../_lib/ask/store'
 import type { Env } from '../../_lib/env'
-import { context, fakeD1, type FakeD1 } from '../_testing/d1'
+import { context, fakeD1, type FakeD1 } from '../../_lib/testing/d1'
 import { onRequestGet } from './admin'
 
 const token = 'admin-secret'

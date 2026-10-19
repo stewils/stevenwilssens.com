@@ -1,6 +1,6 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { makeAsk, makeMcp, makeResume, makeStats, NOW } from './fixtures'
+import { makeAsk, makeMcp, makeResume, makeStats, NOW } from '../test/admin-fixtures'
 import { computeNeeds, computeSummaries } from './needs'
 import { Overview } from './Overview'
 import type { AdminData, ResumeReport } from './types'

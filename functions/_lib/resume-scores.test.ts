@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
-import { fakeAssets, fakeD1 } from '../api/_testing/d1'
+import { fakeAssets, fakeD1 } from './testing/d1'
 import { parseReport, reportKey, ResumeScores, type ScoredReport } from './resume-scores'
 
 describe('the résumé score history', () => {

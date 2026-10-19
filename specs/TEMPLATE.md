@@ -32,10 +32,17 @@ Numbered, each one testable, each one mapped to a test or a check in the test pl
 
 ## Design (ux-designer)
 
-- The flow, step by step, for each reader; states: empty, loading, error, long content.
+- The flow, step by step, for each reader; states: empty, loading, error, very long
+  content (a long write-up refresh, a long name or title, many rows), and the page
+  without JavaScript as prerendered.
 - Layout at desktop (1440) and phone (390), light and dark; which existing components
   and tokens it reuses (`src/index.css`, `src/App.css`, `src/admin/admin.css`).
+- A sketch of the layout in text (ASCII is fine).
+- Copy: the exact wording of headings, labels, buttons and messages, and how long it
+  may get (with the recruiter).
 - Accessibility: keyboard path, focus, labels, contrast, reduced motion.
+- Pages to screenshot: `home`, `<page>`, `admin`, `admin#<part>` (the designer's UI
+  check and the before/after pairs for Steven).
 
 ## Threat model (security-engineer)
 
@@ -51,7 +58,7 @@ Numbered, each one testable, each one mapped to a test or a check in the test pl
 
 | AC | Test (file, name) or check | Kind |
 |---|---|---|
-| AC-1 | … | unit / component / function / site-check / recruiter-check |
+| AC-1 | … | unit / component / function / site-check / recruiter-check / ui-check |
 
 Coverage stays at or above 90% (statements, branches, functions, lines) and every new
 or changed file is at 90% or more on its own.

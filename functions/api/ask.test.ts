@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ipHash, signAnswer } from '../_lib/ask/agent'
 import type { Env } from '../_lib/env'
-import { context, fakeAssets, fakeD1, type FakeD1 } from './_testing/d1'
+import { context, fakeAssets, fakeD1, type FakeD1 } from '../_lib/testing/d1'
 import { onRequestGet, onRequestPost } from './ask'
 import { onRequestPost as onFeedback } from './ask/feedback'
 

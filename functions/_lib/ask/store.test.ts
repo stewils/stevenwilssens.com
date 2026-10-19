@@ -2,7 +2,7 @@
 // The site assistant's stores: the D1 store runs its real SQL on an in-memory SQLite
 // with every migration applied; the memory store must behave the same.
 import { describe, expect, it } from 'vitest'
-import { fakeD1 } from '../../api/_testing/d1'
+import { fakeD1 } from '../testing/d1'
 import { D1AskStore, MemoryAskStore, dayOf, monthStart, sumTotals, type AskStore, type QuestionInput } from './store'
 
 const usage = { input: 100, output: 50, cacheRead: 10, cacheWrite: 5 }

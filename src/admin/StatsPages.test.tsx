@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AudiencePage } from './AudiencePage'
 import { CrawlersPage } from './CrawlersPage'
-import { makeStats, NOW } from './fixtures'
+import { makeStats, NOW } from '../test/admin-fixtures'
 import { LinksPage } from './LinksPage'
 import { SourcesPage } from './SourcesPage'
 import { SpeedPage } from './SpeedPage'

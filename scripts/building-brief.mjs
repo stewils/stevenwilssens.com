@@ -27,7 +27,7 @@ export const brief = ({ event, title, instruction, payload, today = new Date(), 
   if (!/^[0-9a-f]{7,40}$/.test(sha)) return { skip: 'The payload names no commit (sha).' }
   const before = /^[0-9a-f]{7,40}$/.test(String(payload.before ?? '')) && !/^0+$/.test(payload.before) ? payload.before : ''
   const subject = String(payload.subject ?? '').split('\n')[0].trim()
-  const date = today.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+  const date = today.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
   const folder = project.article.replace(/\/[^/]+$/, '')
   const lines = [
     `Refresh the Building write-up about ${project.name} (/${project.page}, ${project.article}) after a check-in on ${project.repository}${subject ? `: "${subject}"` : ''}.`,

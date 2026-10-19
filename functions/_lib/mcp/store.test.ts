@@ -2,7 +2,7 @@
 // The dossier stores: the D1 store runs its real SQL on an in-memory SQLite with every
 // migration applied; the memory store and the public view are checked for the same behaviour.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fakeD1 } from '../../api/_testing/d1'
+import { fakeD1 } from '../testing/d1'
 import { D1Store, MemoryStore, publicView, ReadOnlyError, type DossierStore, type EntryInput, type ProposalInput } from './store'
 
 const entry = (overrides: Partial<EntryInput> = {}): EntryInput => ({ role: 'microsoft', topic: 'impact', title: 'Shipped experimentation', body: 'Steven built the experimentation platform.', visibility: 'private', tags: 'resume, platform', ...overrides })

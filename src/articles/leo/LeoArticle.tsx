@@ -50,7 +50,7 @@ const H2 = ({ id, kicker, children }: { id: string; kicker: string; children: Re
 
 export default function LeoArticle() {
   const rootRef = useRef<HTMLElement>(null)
-  useEffect(() => rootRef.current ? enhanceArticle(rootRef.current) : undefined, [])
+  useEffect(() => enhanceArticle(rootRef.current!), [])
 
   return <article className="wx" ref={rootRef}>
     <div className="wx-progress" aria-hidden="true"><span /></div>

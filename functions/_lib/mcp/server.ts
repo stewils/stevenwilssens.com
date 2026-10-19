@@ -94,7 +94,8 @@ const callTool = async (params: Record<string, unknown> | undefined, ctx: ToolCo
 }
 
 const handleMessage = async (message: JsonRpcRequest, ctx: ToolContext, place: McpRequest['place']): Promise<JsonRpcResponse | null> => {
-  const id = message.id ?? null
+  // null, [null] or a number are not objects: no id to read, and still a JSON-RPC error, not a throw.
+  const id = message && typeof message === 'object' ? message.id ?? null : null
   if (!message || typeof message !== 'object' || message.jsonrpc !== '2.0' || typeof message.method !== 'string') {
     // A response from the client (result/error without method) needs no answer.
     if (message && typeof message === 'object' && !('method' in message) && ('result' in message || 'error' in message)) return null

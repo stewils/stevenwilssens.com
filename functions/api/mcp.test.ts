@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { profile } from '../../src/resume'
 import type { Env } from '../_lib/env'
-import { context, fakeD1, type FakeD1 } from './_testing/d1'
+import { context, fakeD1, type FakeD1 } from '../_lib/testing/d1'
 import { onRequestGet } from './mcp'
 
 const token = 'admin-secret'

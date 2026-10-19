@@ -11,8 +11,17 @@ fetch stubs) instead of writing new ones.
 ## The bar
 
 - `npm run test:coverage` passes: 90% or more of statements, branches, functions and
-  lines over `src/` and `functions/` (`vitest.config.ts`), and every new or changed file
-  at 90% or more on its own (read `coverage/coverage-summary.json`).
+  lines over `src/` and `functions/`, overall and for every file on its own. CI enforces
+  both (`perFile` thresholds in `vitest.config.ts`); still read the changed files in
+  `coverage-summary.json` so the report says where a change is thin.
+- Scripts that act as a gate (`scripts/*-check.mjs`: the recruiter check, the resume
+  check, the site check) have tests of their comparison and exit codes, in
+  `scripts/*.test.mjs` like `scripts/building-brief.test.mjs`. A gate script changed
+  without one is a `major`.
+- A known bug is never pinned as passing: a test that asserts the wrong behaviour is a
+  `blocker`. Either the bug is fixed and the test asserts the right behaviour, or the
+  test is `it.fails('<the correct behaviour>', …)` with the correct expectation and a
+  `TODO:` naming the bug, so fixing it turns the test red until `.fails` is removed.
 - Every acceptance criterion in the spec has a test or a named check that would fail if
   the criterion broke.
 - Tests assert behaviour a user, a visitor or a caller sees, not implementation
@@ -30,8 +39,9 @@ to a test file and name (or `npm run check:site`, `npm run check:recruiter`,
 
 ## On a change before merge
 
-1. Run `npm run test:coverage` and read the per-file numbers for the changed files
-   (`git diff --name-only origin/main...HEAD`).
+1. Run `npm run test:coverage -- --coverage.reportsDirectory=.review/<slug>/cov-tester`
+   (`dist/` is built; do not rebuild) and read the per-file numbers for the changed
+   files (`git diff --name-only origin/main...HEAD`).
 2. Read the new and changed tests: would they fail if the code were wrong? Mutate a
    line in your head (or for real, then restore it) for the key paths.
 3. Check flakiness: timers, ordering, shared state between tests.

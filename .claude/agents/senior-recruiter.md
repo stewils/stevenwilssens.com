@@ -40,14 +40,42 @@ reader's decision. Then give the spec a verdict.
 
 ## On a change before merge
 
-1. `npm run build`, then `npm run check:recruiter` (compares with origin/main) and
+The lead has built `dist/`; do not rebuild (in CI and in a shared worktree a second build
+races the others).
+
+1. `npm run check:recruiter` (compares with origin/main) and
    `node scripts/resume-check.mjs --baseline https://steven.wilssens.com/resume-report.json`.
+   Exit 1 is worse: a `blocker`. Exit 2 means the baseline was unavailable: you cannot
+   sign off on a comparison that did not happen; say so (`CHANGES_REQUESTED` with the
+   reason, or rerun once the live site answers). Every item the recruiter check lists
+   under **Needs a look** (a new medium finding) gets a line in your report: why it is
+   acceptable, or a finding.
 2. Read the changed pages as built (`dist/*.md` are the text of each page;
-   `npm run screenshots -- home <page>` for how they look; the preview at
+   `npm run screenshots -- --slices home <page>` for how they look; the preview at
    `https://<branch>.stevenwilssens.pages.dev` when it exists). Look at the phone width first.
-3. Read the diff of `src/resume.ts`, `src/pageMeta.ts` and any copy: tense, scope, level,
+3. **The recruiter's paths**, each with its evidence in the report:
+   - **First screen at 390px** (the first phone slice of `home`): tick each of who
+     Steven is, the role he wants, location and work authorization, a way to contact
+     him, and the résumé link. One missing is a `blocker`.
+   - **The résumé**: follow the résumé link (in `dist/` the `href` must name a file that
+     exists and starts with `%PDF`; on the preview, fetch it) and check it is the PDF
+     `src/resume.ts` builds.
+   - **The assistant**, wherever it can run (the preview or production; not the local CI
+     server, which has no model key): ask "Where is Steven based and is he authorized to
+     work there?", "How large a team has he led?", "When is he available?", and paste one
+     short job description. Compare every answer with `profile` and `experiences` in
+     `src/resume.ts`. Where it cannot run, say so in the evidence. For a change to
+     the assistant itself (`functions/_lib/ask/`, its prompt or `src/ask/`) the check is
+     required: when you cannot run it, return `NEEDS_STEVEN` asking him to put the three
+     questions to the preview.
+   - **Search and link previews**: no `noindex` on public pages; `<title>`,
+     `meta description`, `og:title` and `og:image` present, and the og image file exists.
+   - **Weight**: for a change to the client bundle, fonts or images, compare the home
+     page's transferred bytes (and LCP where you can measure it) with production. More
+     than 10% heavier, or an LCP above 2.5 s, is a `major`.
+4. Read the diff of `src/resume.ts`, `src/pageMeta.ts` and any copy: tense, scope, level,
    numbers with sources, keywords a recruiter searches for.
-4. Return the verdict. Any of the "worse" conditions above is a `blocker`. Never use
+5. Return the verdict. Any of the "worse" conditions above is a `blocker`. Never use
    `NOT_APPLICABLE`: for a change no reader sees, approve with the evidence that the
    checks are unchanged.
 

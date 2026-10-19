@@ -1,7 +1,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AssistantPage } from './AssistantPage'
-import { makeAsk, NOW } from './fixtures'
+import { makeAsk, NOW } from '../test/admin-fixtures'
 import type { AskInfo } from './types'
 
 beforeEach(() => {
@@ -28,7 +28,10 @@ describe('Ask about Steven page', () => {
     // (3600 + 1200) ms over 4 answered questions.
     expect(stat('Time to first word')).toHaveTextContent('1s')
     expect(stat('Cache')).toHaveTextContent('25%')
-    expect(screen.getByText(/October: \$5\.00 of the \$25\.00 budget \(20%\) · month end ≈ \$8\.16 at this pace/)).toBeInTheDocument()
+    // The budget month is UTC's: $5 over the UTC days so far, times October's 31 (19 days in
+    // most time zones, 18 where local noon on the 19th is still the 18th in UTC).
+    const pace = (5 * 31 / NOW.getUTCDate()).toFixed(2).replace('.', '\\.')
+    expect(screen.getByText(new RegExp(`October: \\$5\\.00 of the \\$25\\.00 budget \\(20%\\) · month end ≈ \\$${pace} at this pace`))).toBeInTheDocument()
     expect(screen.queryByText(/the budget would run out/)).not.toBeInTheDocument()
     expect(screen.getByRole('img', { name: /Questions per day \(7 days\).*Latest 4, peak 4/ })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: /Cost per day \(7 days\).*Latest \$0\.40/ })).toBeInTheDocument()

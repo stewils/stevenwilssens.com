@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { D1AskStore, dayOf } from '../../_lib/ask/store'
 import type { Env } from '../../_lib/env'
-import { context, fakeD1, type FakeD1 } from '../_testing/d1'
+import { context, fakeD1, type FakeD1 } from '../../_lib/testing/d1'
 import { onRequestGet } from './report'
 
 const get = (db: FakeD1, at = 'https://steven.wilssens.com/api/ask/report?bust=1') => {

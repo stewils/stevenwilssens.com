@@ -1,6 +1,6 @@
 // Realistic answers from the admin APIs (functions/api/stats.ts, mcp.ts, ask/admin.ts,
-// resume.ts), for the dashboard's tests. Each builder takes overrides.
-import type { AskInfo, McpInfo, ResumeInfo, Stats } from './types'
+// resume.ts), for the dashboard's tests (src/admin/*.test.tsx). Each builder takes overrides.
+import type { AskInfo, McpInfo, ResumeInfo, Stats } from '../admin/types'
 
 // The tests run on a fixed clock: Monday 19 October 2026, noon local time.
 export const NOW = new Date(2026, 9, 19, 12, 0, 0)

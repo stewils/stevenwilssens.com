@@ -3,7 +3,7 @@
 // JSON-RPC edges server.test.ts leaves out: client responses, malformed messages,
 // tools that fail unexpectedly and a public log that cannot be written.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { context, fakeAssets, fakeD1, type FakeD1 } from '../../api/_testing/d1'
+import { context, fakeAssets, fakeD1, type FakeD1 } from '../testing/d1'
 import type { Env } from '../env'
 import { handleMcp, onMcpRequest, PUBLIC_CALLS_PER_HOUR } from './server'
 import { MemoryStore } from './store'
@@ -95,9 +95,9 @@ describe('JSON-RPC edges', () => {
     expect(empty.status).toBe(400)
   })
 
-  it('throws on a null message instead of answering Invalid Request (reported: server.ts reads message.id before checking the message)', async () => {
-    await expect(send(null)).rejects.toThrow(TypeError)
-    await expect(send([null])).rejects.toThrow(TypeError)
+  it('answers a null message, alone or in a batch, with Invalid Request', async () => {
+    expect(await (await send(null)).json()).toMatchObject({ jsonrpc: '2.0', id: null, error: { code: -32600 } })
+    expect(await (await send([null])).json()).toMatchObject([{ jsonrpc: '2.0', id: null, error: { code: -32600 } }])
   })
 
   it('refuses an oversized request', async () => {

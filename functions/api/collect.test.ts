@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Env } from '../_lib/env'
-import { context, fakeD1, type FakeD1 } from './_testing/d1'
+import { context, fakeD1, type FakeD1 } from '../_lib/testing/d1'
 import { onRequestPost } from './collect'
 
 const browser = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
@@ -32,8 +32,11 @@ describe('POST /api/collect refuses', () => {
     expect(rows(db)).toHaveLength(1)
   })
 
-  it('throws on the opaque Origin "null" a sandboxed frame sends (reported: should be a 403, not a 500)', async () => {
-    await expect(send(post({ type: 'pageview' }, { headers: { Origin: 'null' } }))).rejects.toThrow()
+  it('refuses the opaque Origin "null" a sandboxed frame sends, and an Origin that is not an address, with a 403', async () => {
+    const db = fakeD1()
+    expect((await send(post({ type: 'pageview' }, { headers: { Origin: 'null' } }), db)).status).toBe(403)
+    expect((await send(post({ type: 'pageview' }, { headers: { Origin: 'not a url' } }), db)).status).toBe(403)
+    expect(rows(db)).toHaveLength(0)
   })
 
   it('to count preview deployments, bots and requests without a user agent', async () => {

@@ -111,9 +111,12 @@ describe('the GitHub client', () => {
     expect(error).toMatchObject({ status: 500, message: 'GitHub 500 on /actions/runs/500: boom' })
   })
 
-  it('throws a SyntaxError, not a GitHubError, on a non-JSON error page (reported: the text fallback is unreachable)', async () => {
-    const { client } = fakeFetch({ 'GET /actions/runs/502': { status: 502, text: '<html>Bad gateway</html>' } })
-    await expect(client.run(502)).rejects.toBeInstanceOf(SyntaxError)
+  it('keeps the status and the text of a non-JSON error page, and refuses a non-JSON answer', async () => {
+    const { client } = fakeFetch({ 'GET /actions/runs/502': { status: 502, text: '<html>Bad gateway</html>' }, 'GET /actions/runs/7': { text: 'not json' } })
+    const error = await client.run(502).catch((caught: unknown) => caught)
+    expect(error).toBeInstanceOf(GitHubError)
+    expect(error).toMatchObject({ status: 502, message: 'GitHub 502 on /actions/runs/502: <html>Bad gateway</html>' })
+    await expect(client.run(7)).rejects.toMatchObject({ status: 200, message: 'GitHub 200 on /actions/runs/7: the answer is not JSON' })
   })
 
   it('shapes pull requests with their preview, score and request', async () => {

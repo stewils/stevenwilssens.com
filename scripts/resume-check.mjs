@@ -8,6 +8,7 @@
 //
 //   node scripts/resume-check.mjs [path/to/resume.pdf] [--json path/to/report.json] [--baseline report.json|https://…/resume-report.json]
 //
+// --fail-on-drop also exits 1 when the score is lower than the baseline's.
 // --baseline (or the RESUME_BASELINE environment variable) compares the score with an
 // earlier report: what main scored before a change, or the live site's
 // /resume-report.json. The workflows use it to warn when an update would lower the
@@ -212,6 +213,8 @@ export const formatReport = (report) => [
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const args = process.argv.slice(2)
   const option = (flag) => { const index = args.indexOf(flag); return index >= 0 ? args.splice(index, 2)[1] : null }
+  const flag = (name) => { const index = args.indexOf(name); if (index >= 0) args.splice(index, 1); return index >= 0 }
+  const failOnDrop = flag('--fail-on-drop')
   const jsonPath = option('--json')
   const baselineSource = option('--baseline') ?? process.env.RESUME_BASELINE ?? null
   const report = { ...(await analyzeResume(args[0] ? resolve(args[0]) : resumePath)), ...commitInfo() }
@@ -226,5 +229,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     if (report.baseline.lower && process.env.GITHUB_ACTIONS) console.log(`::warning title=Resume score dropped::${formatComparison(report)}`)
   }
   if (jsonPath) { writeFileSync(resolve(jsonPath), JSON.stringify(report, null, 2)); console.log(`Wrote ${jsonPath}`) }
-  process.exitCode = report.errors ? 1 : 0
+  // --fail-on-drop (the Review workflow's gate): a lower ATS score than the baseline fails too.
+  process.exitCode = report.errors || (failOnDrop && report.baseline?.lower) ? 1 : 0
 }

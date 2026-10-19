@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { makeMcp } from './fixtures'
+import { makeMcp } from '../test/admin-fixtures'
 import { McpPage } from './McpPage'
 
 afterEach(() => {

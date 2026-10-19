@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import Admin from './Admin'
-import { makeAsk, makeMcp, makeResume, makeStats, NOW } from './fixtures'
+import { makeAsk, makeMcp, makeResume, makeStats, NOW } from '../test/admin-fixtures'
 
 // The dashboard against a fake admin API: /api/stats, /api/ask/admin, /api/mcp and
 // /api/resume answer with the shapes the Pages Functions write.

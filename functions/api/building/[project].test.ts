@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Env } from '../../_lib/env'
-import { context, fakeD1, type FakeD1 } from '../_testing/d1'
+import { context, fakeD1, type FakeD1 } from '../../_lib/testing/d1'
 import { onRequestGet } from './[project]'
 
 const get = (project: string | undefined, db: FakeD1 = fakeD1(), env: Partial<Env> = {}) => {

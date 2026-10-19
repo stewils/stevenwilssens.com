@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Env } from './_lib/env'
-import { context, fakeAssets, fakeD1, type FakeD1 } from './api/_testing/d1'
+import { context, fakeAssets, fakeD1, type FakeD1 } from './_lib/testing/d1'
 
 const googlebot = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
 const browser = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'

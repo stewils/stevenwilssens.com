@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { makeMcp, makeResume } from './fixtures'
+import { makeMcp, makeResume } from '../test/admin-fixtures'
 import { ResumePage } from './ResumePage'
 import type { ResumeReport } from './types'
 
@@ -57,7 +57,7 @@ describe('Résumé page', () => {
     fireEvent.click(findings.getByRole('button', { name: 'Severity' }))
     expect(findings.getAllByRole('row')[3]).toHaveTextContent('Error')
     fireEvent.click(findings.getByRole('button', { name: 'Who trips' }))
-    expect(screen.getByText('1 note that do not change the score')).toBeInTheDocument()
+    expect(screen.getByText('1 note that does not change the score')).toBeInTheDocument()
     expect(screen.getByText('A reworded bullet')).toBeInTheDocument()
   })
 

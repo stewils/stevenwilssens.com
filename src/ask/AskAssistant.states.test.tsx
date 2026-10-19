@@ -266,6 +266,27 @@ describe('asking', () => {
     }
   })
 
+  it('says the copy failed when the browser refuses the clipboard, or has none', async () => {
+    const writeText = vi.fn(async () => { throw new Error('denied') })
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    try {
+      await openPanel()
+      await ask('Hello')
+      await screen.findByText('An answer.')
+      await userEvent.click(screen.getByRole('button', { name: 'Copy answer' }))
+      expect(writeText).toHaveBeenCalledWith('An answer.')
+      expect(await screen.findByText('Copy failed')).toBeInTheDocument()
+      expect(screen.queryByText('Copied')).not.toBeInTheDocument()
+      await waitFor(() => expect(screen.queryByText('Copy failed')).not.toBeInTheDocument(), { timeout: 2500 })
+
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })
+      await userEvent.click(screen.getByRole('button', { name: 'Copy answer' }))
+      expect(await screen.findByText('Copy failed')).toBeInTheDocument()
+    } finally {
+      Reflect.deleteProperty(navigator, 'clipboard')
+    }
+  })
+
   it('starts a new conversation', async () => {
     await openPanel()
     await ask('Hello')

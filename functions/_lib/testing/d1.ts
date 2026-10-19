@@ -1,6 +1,8 @@
 // Test support for the Pages Functions: a D1 database backed by an in-memory SQLite
 // (node:sqlite) with every migration applied, so the handlers run their real SQL.
-// Not a route: it exports no onRequest handler. Only the tests import it.
+// It lives under _lib, outside the routes, and only the tests import it (it is left out
+// of the coverage numbers). Like D1, binding undefined throws D1_TYPE_ERROR, so a handler
+// that forgets `?? null` fails here as it would in production. Unlike D1, batch is not atomic.
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,7 +11,8 @@ import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
 const migrations = fileURLToPath(new URL('../../../migrations', import.meta.url).href)
 
 const value = (input: unknown): SQLInputValue => {
-  if (input === undefined || input === null) return null
+  if (input === undefined) throw new Error("D1_TYPE_ERROR: Type 'undefined' not supported for value 'undefined'")
+  if (input === null) return null
   if (typeof input === 'boolean') return input ? 1 : 0
   return input as SQLInputValue
 }
@@ -32,7 +35,7 @@ export const fakeD1 = (): FakeD1 => {
     const args = () => params.map(value)
     return {
       sql,
-      bind: (...values: unknown[]) => statement(sql, values),
+      bind: (...values: unknown[]) => { values.forEach(value); return statement(sql, values) },
       all: () => run(() => ({ results: prepared().all(...args()).map((row) => ({ ...row })), success: true, meta: {} })),
       first: (column?: string) => run(() => {
         const row = prepared().get(...args()) as Record<string, unknown> | undefined

@@ -41,7 +41,8 @@ meets the spec's technical approach; tests that actually assert behaviour; fit w
 codebase (reuse, naming, no hard-coded facts, no dead code, no needless abstraction);
 performance (bundle size on public pages, queries per request, Workers CPU limits);
 operability (logs, the admin, the MCP marker in `functions/_lib/github.ts` kept in step
-with the workflow inputs). Run `npm run lint`, `npm test`, `npm run build` yourself.
+with the workflow inputs). Run `npm run lint` and `npm test` yourself; the lead has built
+`dist/` and it passed; do not rebuild (parallel builds in one tree race).
 
 Do not report style the linter would catch, or taste without a reason. Write the full
 report to `.review/<slug>/senior-developer-r<round>.md` and return the verdict block.
