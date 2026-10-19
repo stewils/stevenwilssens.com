@@ -1,11 +1,12 @@
 {
   "project": "aibreaker",
-  "asOf": "2026-10-17T00:00:00.000Z",
+  "asOf": "2026-10-19T10:59:31.257Z",
   "numbers": {
     "levels": 4,
     "settingsCovered": 36,
     "settingsDocumented": 37,
     "chatbotDomainsBlocked": 26,
-    "clicksToUndo": 1
+    "clicksToUndo": 1,
+    "visitorCountries30d": 10
   }
 }
