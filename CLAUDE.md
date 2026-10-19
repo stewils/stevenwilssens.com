@@ -14,13 +14,17 @@ Steven Wilssens's resume site, read mostly by recruiters and hiring managers. Re
 2. Run `npm run resume:build`. It renders the PDF, runs `scripts/resume-check.mjs` on the new and the current file (recruiter, ATS and editor checks: pages, extractable text, contact, headline, every role and date, bullets of the two latest roles, tense, scope, keywords, unexplained numbers) and only replaces the PDF when the score does not drop. The score is the ATS score: only the findings an applicant tracking system trips over (lens `ats`) count; the site and recruiter findings are listed beside it. Read its findings; fix the data, not the checker. `--force` exists for a deliberate trade-off and needs a reason in the commit message. The workflows compare the score with main (Site update) and with the live site (Deploy) and warn Steven in the pull request, the run and the emails when a change would lower it; `node scripts/resume-check.mjs --baseline https://steven.wilssens.com/resume-report.json` shows the same comparison locally.
 3. `npm test` includes `src/resume.test.ts`, which fails when the PDF no longer matches `src/resume.ts`. Once live, the score of every résumé is recorded (`functions/_lib/resume-scores.ts`) and shown on `/admin` → **Résumé** with the findings, the questions and the history; a change to the checks shows up there too.
 4. If the headline or photo changed, regenerate the share image.
-5. `npm run lint`, `npm test`, `npm run build`.
+5. `npm run lint`, `npm run test:coverage`, `npm run build`.
 
 Do not invent facts or numbers. A number needs the role bullet that explains it (`impact[].backing`); a claim about an outcome needs a source (a recommendation, a public article) or Steven's own word recorded in the dossier. When a fact is missing, leave a `TODO(steven): …` comment and ask.
 
 ## Working on a branch
 
-Feature branches, merged into `main` with a merge commit whose message says what changed for the reader (see `git log`). Pushing `main` deploys to production; every other branch gets a preview at `https://<branch>.stevenwilssens.pages.dev`. Commit messages describe the change for Steven, not the diff.
+Feature branches, merged into `main` through a pull request with a merge commit (`gh pr merge --merge`) whose message says what changed for the reader (see `git log`). `main` is protected: nobody pushes to it directly, and a pull request merges only when the **Review** checks (`gates`, `team`) and **Site checks** pass. Merging deploys to production; every other branch gets a preview at `https://<branch>.stevenwilssens.pages.dev`. Commit messages describe the change for Steven, not the diff.
+
+## The team
+
+Every change goes through Steven's product team (`.claude/team.md`): a senior product manager, a senior recruiter, a senior designer (UX), a senior developer, a senior security engineer and a senior tester, as agents in `.claude/agents/`. `/feature <ask>` runs the whole flow: spec in `specs/<slug>.md` (PM with the recruiter and the designer; security, test and engineering add their sections), Steven's open questions asked once, the build, five reviews in parallel by fresh agents, a fix loop, the pull request with the sign-offs. `/team-review [PR]` runs the gate alone on any branch or pull request; the Review workflow runs it on GitHub. The bars: coverage of 90% or more overall and per changed file (`npm run test:coverage`), and never worse for recruiters than main (`npm run check:recruiter`, the resume ATS score, and the recruiter's read of the pages). The designer checks the UI with `npm run screenshots -- <pages>`.
 
 ## The admin
 

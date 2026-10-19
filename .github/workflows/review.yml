@@ -1,0 +1,120 @@
+name: Review
+
+# The gate before main (.claude/team.md). Two required checks on every pull request:
+#   gates: lint, tests with 90% coverage (vitest.config.ts), the build, and the
+#          recruiter check against main (scripts/recruiter-check.mjs);
+#   team:  Claude Code runs the team review (.claude/skills/team-review) in parallel:
+#          senior developer, security engineer, senior tester, designer, recruiter and
+#          product manager, and posts the sign-off table on the pull request. It fails
+#          when any of them asks for changes.
+# Branch protection on main requires both and the Site checks. A pull request opened by
+# the Site update workflow is pushed with the built-in token, which starts no workflow,
+# so that workflow dispatches this one with the pull request number.
+#
+# Secrets: ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN, as for Site update.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'Pull request number to review (run on its branch)'
+        required: true
+
+concurrency:
+  group: review-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - name: Tests with coverage (90% or more)
+        run: |
+          npm run test:coverage
+          node -e "const t=require('./coverage/coverage-summary.json').total; console.log('| | % |\n|---|---|\n'+['statements','branches','functions','lines'].map(k=>'| '+k+' | '+t[k].pct+' |').join('\n'))" >> "$GITHUB_STEP_SUMMARY"
+      - run: npm run build
+      - name: Not worse for recruiters than main
+        run: node scripts/recruiter-check.mjs --baseline-ref origin/main --summary "$GITHUB_STEP_SUMMARY"
+      - name: Resume ATS score against the live site
+        run: node scripts/resume-check.mjs --baseline https://steven.wilssens.com/resume-report.json | tee -a "$GITHUB_STEP_SUMMARY" || true
+
+  team:
+    needs: gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      PR: ${{ github.event.pull_request.number || inputs.pr }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: The pull request number is a number
+        run: '[[ "$PR" =~ ^[0-9]+$ ]] || { echo "::error::pr must be a pull request number"; exit 1; }'
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Browser and local database for the designer's screenshots
+        run: |
+          npx playwright-core install chromium
+          npx wrangler d1 migrations apply stevenwilssens-analytics --local
+          { echo 'ADMIN_TOKEN=ci-check-token'; echo 'HASH_SALT=ci-check-salt'; } > .dev.vars
+          mkdir -p .review
+
+      - name: The team reviews the pull request
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: |
+            You run in the Review workflow on pull request #${{ env.PR }} of steven.wilssens.com.
+            Read CLAUDE.md, .claude/team.md and .claude/skills/team-review/SKILL.md and follow the skill
+            with --no-fix ("In CI" section): the branch is already checked out and built (dist/), the
+            admin token for screenshots is in .dev.vars. Start the six reviewers in parallel with the
+            Agent tool. Never push, commit, merge or edit source files. Write .review/result.json as the
+            skill says; its "comment" is posted on the pull request for Steven.
+          claude_args: '--max-turns 300 --allowedTools "Agent,Task,Read,Glob,Grep,Write,Bash(npm run *),Bash(npm test*),Bash(npm audit*),Bash(node scripts/*),Bash(npx vitest*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(git status*),Bash(git worktree*),Bash(gh pr view*),Bash(gh pr diff*),Bash(ls*),Bash(cat*),Bash(mkdir*)"'
+
+      - name: Post the sign-offs and pass or fail
+        run: |
+          if [ ! -f .review/result.json ]; then
+            echo "::error::The team review wrote no result."
+            exit 1
+          fi
+          jq -r '.comment' .review/result.json > /tmp/comment.md
+          printf '\n\n<sub>Review workflow run %s</sub>\n' "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >> /tmp/comment.md
+          gh pr comment "$PR" --edit-last --create-if-none --body-file /tmp/comment.md || gh pr comment "$PR" --body-file /tmp/comment.md
+          cat /tmp/comment.md >> "$GITHUB_STEP_SUMMARY"
+          if [ "$(jq -r '.approved' .review/result.json)" != "true" ]; then
+            echo "::error::The team asked for changes: see the comment on the pull request."
+            exit 1
+          fi
+      - name: Keep the reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: team-review
+          path: .review
+          include-hidden-files: true
+          if-no-files-found: ignore

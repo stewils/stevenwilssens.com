@@ -32,3 +32,10 @@ dist-ssr
 
 # Project repositories checked out by the Site update workflow for a Building write-up refresh
 sources
+
+# Test coverage reports (npm run test:coverage)
+coverage
+# Screenshots for the designer (npm run screenshots)
+screenshots
+# Review notes the team writes while working on a branch
+.review

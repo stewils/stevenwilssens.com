@@ -181,7 +181,8 @@ jobs:
             - After any change to src/resume.ts, run `npm run resume:build`. It regenerates public/steven-wilssens-resume-2026.pdf and refuses a resume that scores worse than the current one; read its findings and fix the data until it passes. Never commit a resume with errors.
             - The resume on main scores ${{ steps.baseline.outputs.score }}/100 with applicant tracking systems: the ATS score (`node scripts/resume-check.mjs` shows the findings and which of them count). Keep it there or raise it. Never pass `--force` to resume:build. If Steven's instruction cannot be carried out without lowering the score (a bullet he wants removed carried a keyword or a number, say), make the change he asked for, keep the data honest, and say plainly in your summary which check got worse and why: the workflow warns him and he decides.
             - If the headline or the photo changed, run `node scripts/og-image.mjs`.
-            - Run `npm run lint`, `npm test` and `npm run build` and make them pass.
+            - Code changes come with tests (.claude/team.md, .claude/agents/senior-tester.md): `npm run test:coverage` keeps 90% or more overall and on every file you change. The Review workflow then runs the team review (code, security, test, design, recruiter) on the pull request before it can merge.
+            - Run `npm run lint`, `npm run test:coverage` and `npm run build` and make them pass.
             - Do not invent numbers or facts. If the instruction needs a fact you do not have, leave a `TODO(steven): question` comment in src/resume.ts and list the question in your final message.
             - Commit nothing yourself; the workflow commits and opens the pull request. End with a short summary of what changed and any open questions, written for Steven.
           claude_args: '--max-turns 250 --allowedTools "Read,Edit,Write,MultiEdit,Glob,Grep,Bash(npm run *),Bash(npm test*),Bash(node scripts/*),Bash(npx vitest*),Bash(git diff*),Bash(git status*),Bash(ls*)"'
@@ -201,7 +202,7 @@ jobs:
             exit 0
           fi
           status=passed
-          (npm run lint && npm test && npm run build) || status=failed
+          (npm run lint && npm run test:coverage && npm run build) || status=failed
           git add -A
           git commit -m "$TITLE" -m "$INSTRUCTION" -m "Requested through $ORIGIN; made by Claude Code in the Site update workflow (run ${GITHUB_RUN_ID})." -m "Co-Authored-By: Claude <noreply@anthropic.com>"
           git push -u origin "$BRANCH"
@@ -282,6 +283,9 @@ jobs:
           url=$(gh pr create --base main --head "$BRANCH" --title "$TITLE" --body "$body")
           # A push made with the built-in token starts no workflow, so start the preview build explicitly.
           gh workflow run deploy.yml --ref "$BRANCH"
+          # The same for the checks branch protection requires before the pull request can merge.
+          gh workflow run site-check.yml --ref "$BRANCH"
+          gh workflow run review.yml --ref "$BRANCH" -f pr="${url##*/}"
           # A redo closes the pull request it replaces, with a pointer to the new one.
           if [ -n "$SUPERSEDES" ]; then
             gh pr comment "$SUPERSEDES" --body "Superseded by $url: the same update, redone on a fresh branch from main." || true
