@@ -64,11 +64,15 @@ describe('GET /api/ask/admin', () => {
     const data = await (await send(get('?days=7'), db)).json() as Record<string, any>
     expect(data.log).toEqual([{ id: 1, ts: now - 60_000, visitor: 'abc', kind: 'question', page: 'home', question: 'What did he ship?', answer: 'Windows data.', outcome: 'answered', country: 'US', asOrg: 'Contoso' }])
     expect(data).toMatchObject({ logDays: 7, logCapped: false })
+    await store.logQuestion({ ts: now - 30_000, visitor: 'long', kind: 'question', page: 'home', question: 'Tell me everything', answer: 'x'.repeat(5000), outcome: 'answered', country: null, asOrg: null }, 90 * 86_400_000)
+    const long = (await (await send(get('?days=7'), db)).json() as { log: { visitor: string; answer: string }[] }).log.find((e) => e.visitor === 'long')!
+    expect(long.answer).toHaveLength(1501)
+    expect(long.answer.endsWith('…')).toBe(true)
     // A year asked for still reads 90 days: an entry past them is not sent even before it is deleted.
     db.sqlite.prepare('INSERT INTO ask_log (ts, visitor, kind, question, outcome) VALUES (?, ?, ?, ?, ?)').run(now - 120 * 86_400_000, 'ancient', 'question', 'Long ago', 'answered')
     const year = await (await send(get('?days=365'), db)).json() as Record<string, any>
     expect(year.logDays).toBe(90)
-    expect(year.log.map((e: { visitor: string }) => e.visitor)).toEqual(['abc', 'old'])
+    expect(year.log.map((e: { visitor: string }) => e.visitor)).toEqual(['long', 'abc', 'old'])
     db.failOn = /ask_log/
     const response = await send(get('?days=7'), db)
     expect(response.status).toBe(200)

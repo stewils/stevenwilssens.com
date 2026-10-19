@@ -10,6 +10,7 @@ import { D1AskStore, dayOf, monthStart } from '../../_lib/ask/store'
 // The log keeps 90 days and the card shows at most this many questions.
 const LOG_DAYS = 90
 const LOG_LIMIT = 2000
+const ANSWER_CHARS = 1500
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })
 
@@ -46,7 +47,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     votes,
     questions,
     resolved,
-    log: log ?? undefined,
+    // Answers can be long; the card needs enough to read, not every word.
+    log: log?.map((entry) => entry.answer && entry.answer.length > ANSWER_CHARS ? { ...entry, answer: `${entry.answer.slice(0, ANSWER_CHARS)}…` } : entry),
     logDays: Math.min(days, LOG_DAYS),
     logCapped: log ? log.length >= LOG_LIMIT : undefined,
   })

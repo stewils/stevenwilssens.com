@@ -96,12 +96,13 @@ describe('DataTable', () => {
   it('opens and closes a detail row from the keyboard, with Enter and Space on its button', async () => {
     const user = userEvent.setup()
     render(<DataTable columns={columns} rows={rows.slice(0, 2)} rowKey={(row) => row.name} expand={(row) => <p>Details of {row.name}</p>} />)
-    const [first, second] = screen.getAllByRole('button', { name: 'Open details' })
+    const first = screen.getByRole('button', { name: 'Open details for Microsoft' })
+    const second = screen.getByRole('button', { name: 'Open details for Amazon' })
     expect(first).toHaveAttribute('aria-expanded', 'false')
     first.focus()
     await user.keyboard('{Enter}')
     expect(screen.getByText('Details of Microsoft')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Close details' })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: 'Close details for Microsoft' })).toHaveAttribute('aria-expanded', 'true')
     await user.keyboard(' ')
     expect(screen.queryByText('Details of Microsoft')).not.toBeInTheDocument()
     second.focus()
@@ -111,6 +112,6 @@ describe('DataTable', () => {
 
   it('has no row buttons when rows do not open', () => {
     render(<DataTable columns={columns} rows={rows.slice(0, 2)} rowKey={(row) => row.name} />)
-    expect(screen.queryByRole('button', { name: 'Open details' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /details for/ })).not.toBeInTheDocument()
   })
 })

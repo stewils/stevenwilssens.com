@@ -197,6 +197,16 @@ describe('resume site', () => {
     expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument()
   })
 
+  it('says on /privacy what the assistant keeps, for how long, and what it removes', () => {
+    setPath('/privacy')
+    render(<App />)
+    const text = screen.getByText(/If you use “Ask about Steven”/).textContent
+    expect(text).toContain('kept for 90 days with the same daily code')
+    expect(text).toContain('Email addresses, phone numbers and keys are removed first')
+    expect(text).toContain('kept only as its length and first words')
+    expect(text).toContain('requirements the site does not cover are kept, without the posting')
+  })
+
   it('updates SEO title and description for the current page', () => {
     setPath('/experience')
     document.head.innerHTML = '<meta name="description" content="">'

@@ -4,6 +4,7 @@ import { MemoryStore } from '../mcp/store'
 import { answerIsOurs, ask, askStatus, CHECK_AFTER_ALL_HITS, CHECK_AFTER_IP_HITS, costMicro, feedback, HEADER, humanCheck, ipHash, MAX_JD, missingRequirements, parseBody, redact, signAnswer, words, type StreamFactory } from './agent'
 import { articlePages, articleText, dossierText, loadArticles, sources, systemPrompt } from './prompt'
 import { dayOf, MemoryAskStore } from './store'
+import { visitorHash } from '../visitor'
 
 const env = { HASH_SALT: 'salt', ANTHROPIC_API_KEY: 'sk-test' } as unknown as Env
 const url = 'https://steven.wilssens.com/api/ask'
@@ -276,7 +277,8 @@ describe('answering', () => {
     await run(asked('Where is he based?', '198.51.100.7'))
     expect(store.entries).toHaveLength(3)
     expect(store.entries[0]).toMatchObject({ kind: 'question', page: 'experience', question: 'What did he ship? Mail [email]', answer: 'He did.', outcome: 'answered' })
-    expect(store.entries[0].visitor).toMatch(/^[0-9a-f]{16}$/)
+    // The visitor code is the one Traffic records for that browser that day, so the visit can be found.
+    expect(store.entries[0].visitor).toBe(await visitorHash('salt', dayOf(now), '203.0.113.9', 'Firefox'))
     expect(store.entries[1].visitor).toBe(store.entries[0].visitor)
     expect(store.entries[2].visitor).not.toBe(store.entries[0].visitor)
     // Nothing is logged for a browser that opted out, or on a preview deployment.
@@ -285,6 +287,9 @@ describe('answering', () => {
     await run(asked('q', '192.0.2.1', {}, 'https://branch.stevenwilssens.pages.dev/api/ask'))
     expect(store.entries).toHaveLength(3)
     expect(store.rows[0]).toMatchObject({ questions: 6 })
+    // Without a salt the code would be a plain hash of the IP address: nothing is logged.
+    await (await ask(asked('q', '192.0.2.1'), { ...deps(scripted('[[in: site:about]]\n\nHe did.'), store), env: { ANTHROPIC_API_KEY: 'sk-test' } as unknown as Env })).text()
+    expect(store.entries).toHaveLength(3)
   })
 
   it('still answers when the log cannot be written', async () => {

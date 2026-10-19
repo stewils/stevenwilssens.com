@@ -59,6 +59,11 @@ describe('what needs Steven', () => {
     const logged = (visitors: string[]) => computeSummaries({ ...data, days: 7, ask: { ...ask, log: visitors.map((visitor, id) => ({ id, ts: id, visitor, kind: 'question' as const, page: null, question: 'q', answer: null, outcome: 'answered' as const, country: null, asOrg: null })) } }).assistant
     expect(logged(['a', 'a'])).toBe('$1.25 of $25.00 this month · 10 questions · 2 gaps · 1 person asked in 7 days')
     expect(logged(['a', 'b', 'a'])).toBe('$1.25 of $25.00 this month · 10 questions · 2 gaps · 2 people asked in 7 days')
+    // A year asked for: the log holds 90 days, and the line says so.
+    const year = computeSummaries({ ...data, days: 365, ask: { ...ask, log: [], logDays: 90 } }).assistant
+    expect(year).toBe('$1.25 of $25.00 this month · 10 questions · 2 gaps · 0 people asked in 90 days')
+    expect(computeSummaries({ ...data, days: 365, ask: { ...ask, log: [] } }).assistant).toMatch(/in 90 days$/)
+    expect(computeSummaries({ ...data, days: 1, ask: { ...ask, log: [] } }).assistant).toMatch(/0 people asked in the last day$/)
     expect(summaries.mcp).toBe('40 dossier entries across 6 roles · 8 public · 12 public calls')
     expect(computeSummaries({ days: 30, stats: null, mcp: null, ask: null, resume: { report: null, history: [] } }).resume).toBe('No résumé report in this deployment')
   })

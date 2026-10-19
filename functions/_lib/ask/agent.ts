@@ -313,8 +313,9 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
   // like visitors. Not on preview deployments (they share the database) or when the browser opted out.
   // Under GPC or DNT nothing about the visitor is kept, not even an unanswered question (as /privacy says).
   const optOut = optedOut(request)
-  const visitor = optOut || new URL(request.url).hostname.endsWith('.pages.dev') ? null
-    : await visitorHash(env.HASH_SALT ?? '', day, request.headers.get('CF-Connecting-IP') ?? '', request.headers.get('User-Agent') ?? '')
+  // Without HASH_SALT the code would be a plain hash of the IP address, so nothing is logged.
+  const visitor = optOut || !env.HASH_SALT || new URL(request.url).hostname.endsWith('.pages.dev') ? null
+    : await visitorHash(env.HASH_SALT, day, request.headers.get('CF-Connecting-IP') ?? '', request.headers.get('User-Agent') ?? '')
   const logAs = async (outcome: Outcome, answer: string) => {
     if (!visitor) return
     const asked = fit ? `Job description (${question.length} characters): ${redact(question).slice(0, 240).trim()}…` : redact(question).slice(0, MAX_QUESTION)

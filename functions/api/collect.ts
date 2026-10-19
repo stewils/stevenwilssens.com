@@ -37,6 +37,7 @@ const hostOf = (url: string | null) => {
 const originHost = (url: string) => { try { return new URL(url).host } catch { return null } }
 
 const retentionMs = 395 * 86_400_000 // 13 months, as stated on /privacy
+const askLogMs = 90 * 86_400_000
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   const requestUrl = new URL(request.url)
@@ -83,7 +84,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     ratings.has(payload.rating ?? '') ? payload.rating : null,
   ).run()
 
-  if (Math.random() < 0.02) waitUntil(env.DB.prepare('DELETE FROM events WHERE ts < ?').bind(now - retentionMs).run())
+  if (Math.random() < 0.02) waitUntil(env.DB.batch([
+    env.DB.prepare('DELETE FROM events WHERE ts < ?').bind(now - retentionMs),
+    // The assistant's log keeps 90 days, also when nobody asks anything for a while (as /privacy says).
+    env.DB.prepare('DELETE FROM ask_log WHERE ts < ?').bind(now - askLogMs),
+  ]))
 
   return new Response(null, { status: 204 })
 }

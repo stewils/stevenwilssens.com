@@ -16,7 +16,8 @@ export type Column<T> = {
   className?: string
 }
 
-type Props<T> = { columns: Column<T>[]; rows: T[]; rowKey: (row: T, index: number) => string; empty?: string; label?: string; expand?: (row: T) => ReactNode }
+// rowName names a row for its open button ("Open details for …"); by default the first column's value.
+type Props<T> = { columns: Column<T>[]; rows: T[]; rowKey: (row: T, index: number) => string; empty?: string; label?: string; expand?: (row: T) => ReactNode; rowName?: (row: T) => string }
 
 // A search box from this many rows on; phones stack tables this wide into cards.
 const SEARCH_FROM = 6
@@ -24,7 +25,7 @@ const STACK_FROM = 5
 
 const classes = (...names: (string | false | undefined | null)[]) => names.filter(Boolean).join(' ') || undefined
 
-export function DataTable<T>({ columns, rows, rowKey, empty = 'No data yet', label, expand }: Props<T>) {
+export function DataTable<T>({ columns, rows, rowKey, empty = 'No data yet', label, expand, rowName = (row) => String(columns[0].value(row) ?? '') }: Props<T>) {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<Sort>(null)
   const [open, setOpen] = useState<string | null>(null)
@@ -68,7 +69,7 @@ export function DataTable<T>({ columns, rows, rowKey, empty = 'No data yet', lab
                       return (
                         <td key={column.key} data-label={column.label} className={classes(column.num && 'num', column.strong && 'strong', column.className)}>
                           {/* The keyboard way in: a button in the first cell opens the row like a click on it does. */}
-                          {expand && at === 0 && <button type="button" className="row-toggle" aria-expanded={isOpen} aria-label={isOpen ? 'Close details' : 'Open details'} onClick={(event) => { event.stopPropagation(); setOpen(isOpen ? null : key) }}>{isOpen ? '▾' : '▸'}</button>}
+                          {expand && at === 0 && <button type="button" className="row-toggle" aria-expanded={isOpen} aria-label={`${isOpen ? 'Close' : 'Open'} details for ${rowName(row)}`} onClick={(event) => { event.stopPropagation(); setOpen(isOpen ? null : key) }}>{isOpen ? '▾' : '▸'}</button>}
                           {column.render ? column.render(row) : typeof value === 'number' ? formatNumber(value) : value || '—'}
                         </td>
                       )

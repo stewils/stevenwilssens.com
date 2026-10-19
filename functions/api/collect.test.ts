@@ -143,4 +143,14 @@ describe('POST /api/collect records', () => {
     expect(rows(db).map((row) => row.visitor)).not.toContain('old')
     expect(rows(db)).toHaveLength(2)
   })
+
+  it("and with them the assistant's questions older than 90 days", async () => {
+    const db = fakeD1()
+    const add = db.sqlite.prepare("INSERT INTO ask_log (ts, visitor, kind, question, outcome) VALUES (?, ?, 'question', 'q', 'answered')")
+    add.run(Date.now() - 91 * 86_400_000, 'old')
+    add.run(Date.now() - 89 * 86_400_000, 'kept')
+    vi.spyOn(Math, 'random').mockReturnValue(0.01)
+    await send(post({ type: 'pageview' }), db)
+    expect((db.sqlite.prepare('SELECT visitor FROM ask_log').all() as { visitor: string }[]).map((row) => row.visitor)).toEqual(['kept'])
+  })
 })
