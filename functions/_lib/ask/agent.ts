@@ -49,6 +49,7 @@ export const words = {
   notAPosting: "That does not read like a job description. Paste the posting itself (the role, the requirements, the responsibilities) and I'll compare it with Steven's record.",
   failed: 'Something went wrong on my side. Please try again, or email Steven at steven@wilssens.com.',
   tooLong: 'That question is too long for me. Could you shorten it?',
+  longConversation: 'This conversation has grown too long for me. Start a new one with the + button and ask again.',
   busy: 'Too many questions from this connection in the last hour. Please try again later, or email steven@wilssens.com.',
   budget: "The assistant has reached this month's budget. You can still read everything on the site, or email Steven at steven@wilssens.com.",
   human: 'I could not confirm you are a person, so I did not answer. Please send your question again, or email Steven at steven@wilssens.com.',
@@ -61,9 +62,11 @@ export type AskBody = { messages: Turn[]; page: string; turnstileToken: string }
 const str = (value: unknown, max: number) => (typeof value === 'string' ? value.slice(0, max) : '')
 const sourceIds = (value: unknown) => (Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string' && /^(role|site):[a-z0-9-]{1,40}$|^notes$/.test(id)).slice(0, MAX_SOURCES_FIT) : [])
 
-export function parseBody(raw: unknown): AskBody | 'tooLong' | 'failed' {
+/** The panel sends only the newest turns within MAX_TURNS and MAX_HISTORY_CHARS, so `longConversation` is a guard against other clients. */
+export function parseBody(raw: unknown): AskBody | 'tooLong' | 'longConversation' | 'failed' {
   const body = (raw ?? {}) as Record<string, unknown>
-  if (!Array.isArray(body.messages) || !body.messages.length || body.messages.length > MAX_TURNS) return 'tooLong'
+  if (!Array.isArray(body.messages) || !body.messages.length) return 'tooLong'
+  if (body.messages.length > MAX_TURNS) return 'longConversation'
   const messages: Turn[] = []
   let total = 0
   for (const [index, raw] of (body.messages as unknown[]).entries()) {
@@ -77,7 +80,8 @@ export function parseBody(raw: unknown): AskBody | 'tooLong' | 'failed' {
     if (role === 'user') messages.push(fit ? { role, content, kind: 'fit' } : { role, content })
     else messages.push({ role, content, sources: sourceIds(turn.sources), id: Number.isInteger(turn.id) && (turn.id as number) > 0 ? turn.id as number : null, sig: str(turn.sig, 100) })
   }
-  if (messages[messages.length - 1].role !== 'user' || total > MAX_HISTORY_CHARS) return 'tooLong'
+  if (messages[messages.length - 1].role !== 'user') return 'tooLong'
+  if (total > MAX_HISTORY_CHARS) return 'longConversation'
   const page = str(body.page, 40)
   return { messages, page: /^[a-z0-9-]{1,40}$/.test(page) ? page : 'home', turnstileToken: str(body.turnstileToken, 2048) }
 }

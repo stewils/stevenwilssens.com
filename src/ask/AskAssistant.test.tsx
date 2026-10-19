@@ -82,6 +82,25 @@ describe('AskAssistant', () => {
     expect(saved[1].sig).toBe('sig-1')
   })
 
+  it('sends the newest exchanges that fit the server\'s limits with a question, leaving the oldest and the failed ones behind', async () => {
+    // Eight earlier exchanges in this tab, the third of which failed.
+    const saved = Array.from({ length: 8 }, (_, i) => [
+      { role: 'user', content: `Question ${i + 1}` },
+      i === 2 ? { role: 'assistant', content: 'Something went wrong.', sources: [], id: null, sig: '', scope: 'in', error: true } : { role: 'assistant', content: `Answer ${i + 1}`, sources: [], id: null, sig: `sig-${i + 1}`, scope: 'in' },
+    ]).flat()
+    sessionStorage.setItem('sw-ask', JSON.stringify(saved))
+    render(<AskAssistant page="home" />)
+    await userEvent.click(await screen.findByRole('button', { name: /ask about steven/i }))
+    await userEvent.type(screen.getByLabelText('Your question'), 'Question 9{enter}')
+    await screen.findByText('data products')
+    const body = JSON.parse((fetchMock.mock.calls.find((call) => call[1]?.method === 'POST')![1] as RequestInit).body as string) as { messages: { role: string; content: string }[] }
+    // Eleven turns at most: the five newest complete exchanges and the new question, in order.
+    expect(body.messages.map((turn) => turn.content)).toEqual(['Question 4', 'Answer 4', 'Question 5', 'Answer 5', 'Question 6', 'Answer 6', 'Question 7', 'Answer 7', 'Question 8', 'Answer 8', 'Question 9'])
+    expect(body.messages.map((turn) => turn.role).join('')).toBe('userassistant'.repeat(5) + 'user')
+    // The panel still shows the whole conversation.
+    expect(screen.getByText('Question 1')).toBeInTheDocument()
+  })
+
   it('shows the server\'s message when it turns the question away', async () => {
     fetchMock.mockImplementation(async (_input: RequestInfo | URL, init?: RequestInit) => init?.method === 'POST' ? Response.json({ error: 'busy', message: 'Too many questions.' }, { status: 429 }) : Response.json({ ready: true, siteKey: null }))
     render(<AskAssistant page="home" />)
