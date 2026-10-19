@@ -31,6 +31,8 @@ export type GitHub = {
   run(id: number): Promise<WorkflowRun | null>
   pulls(state?: 'open' | 'closed' | 'all'): Promise<PullRequest[]>
   pull(number: number): Promise<PullRequest | null>
+  // How many closed pull requests from branches with this prefix were merged (the site's own Building feed).
+  mergedPulls(branchPrefix: string): Promise<number>
   merge(number: number): Promise<MergeResult>
   // Closes a pull request with a comment saying why; the branch is deleted when the token may (best effort).
   close(number: number, comment: string): Promise<{ closed: boolean; branchDeleted: boolean }>
@@ -109,6 +111,10 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
     run: async (id) => { try { return shapeRun((await api(`/actions/runs/${id}`)) as Record<string, unknown>) } catch (error) { if (notFound(error)) return null; throw error } },
     pulls: async (state = 'open') => ((await api(`/pulls?state=${state}&per_page=20&sort=created&direction=desc`)) as unknown as Record<string, unknown>[]).map(shapePull),
     pull: async (number) => { try { return shapePull((await api(`/pulls/${number}`)) as Record<string, unknown>) } catch (error) { if (notFound(error)) return null; throw error } },
+    mergedPulls: async (branchPrefix) => {
+      const closed = (await api(`/pulls?state=closed&per_page=100&sort=created&direction=desc`)) as unknown as Record<string, unknown>[]
+      return closed.filter((pull) => pull.merged_at && String((pull.head as Record<string, unknown>)?.ref ?? '').startsWith(branchPrefix)).length
+    },
     merge: async (number) => {
       const body = await api(`/pulls/${number}/merge`, { method: 'PUT', body: JSON.stringify({ merge_method: 'merge' }) }) as { merged: boolean; message: string; sha?: string }
       return { merged: body.merged, message: body.message, sha: body.sha }

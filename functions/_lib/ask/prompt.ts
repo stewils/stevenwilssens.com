@@ -1,6 +1,6 @@
 // What the site assistant knows and how it behaves. The system prompt is built
 // from the same data as the site (src/resume.ts, src/patents.ts), the public
-// entries of the dossier and the Markdown copies of the three Building write-ups
+// entries of the dossier and the Markdown copies of the five Building write-ups
 // that the build publishes next to the pages, so the assistant never knows more
 // than Steven chose to publish. It is byte-stable between requests (the write-ups
 // change only with a deploy), so the API caches it.
@@ -30,6 +30,8 @@ export const sources = (): Map<string, Source> => {
   map.set('site:article', { id: 'site:article', title: 'Building wilssens.com', href: `${siteUrl}/building-wilssens` })
   map.set('site:aibreaker', { id: 'site:aibreaker', title: 'Building AI Breaker', href: `${siteUrl}/building-aibreaker` })
   map.set('site:building', { id: 'site:building', title: 'Building steven.wilssens.com', href: `${siteUrl}/building-this-site` })
+  map.set('site:juniortrackcycling', { id: 'site:juniortrackcycling', title: 'Building juniortrackcycling.com', href: `${siteUrl}/building-juniortrackcycling` })
+  map.set('site:leo', { id: 'site:leo', title: 'Building leo.wilssens.com', href: `${siteUrl}/building-leo` })
   map.set('site:resume', { id: 'site:resume', title: 'Résumé (PDF)', href: contact.resume })
   map.set('notes', { id: 'notes', title: "Steven's notes", href: null })
   return map
@@ -43,8 +45,8 @@ Contact: ${contact.email}, LinkedIn ${contact.linkedin}. Résumé PDF: ${contact
 
 const projects = `- wilssens.com: a family platform he built and runs: email and websites at the family domain for everyone named Wilssens, with an AI help assistant, MCP connectors, a command line and payments ready if it grows. The write-up [site:article] at ${siteUrl}/building-wilssens explains how it was built with AI tools and the rules behind it.
 - AI Breaker (aibreaker.org): "the off switch for AI on Windows", a paid Windows 11 app he is building ($19 once, in testing with a waitlist, nothing sold yet). It turns off the AI in Windows, Office and the browsers from one window in four levels (nothing blocked, AI features off, no AI apps or sites, full lockdown), previews what each level will stop, proves from Windows' own event logs that it worked, and undoes everything in one click; it uses only the controls Microsoft documents and never touches Defender. The idea: about half of adults are more concerned than excited about AI (Pew Research, 2026) and about six in ten want more control over how it is used in their lives; people feel safer when they hold the switch. Built with Claude Code from 10 October 2026, run like a team (specs with acceptance criteria, agents as product manager, designer, tester and reviewer, a dated decision log, tests only in virtual machines). The write-up [site:aibreaker] at ${siteUrl}/building-aibreaker has the research, the architecture and the practices.
-- juniortrackcycling.com: a community project making junior track cycling easier to discover, follow and celebrate.
-- leo.wilssens.com: a race journal and results site for Leo Wilssens, a junior track cyclist racing with Jerry Baker Juniors.
+- juniortrackcycling.com: an independent reference hub and training platform for junior track racers and their parents, built and not yet open (a holding page and a first group of riders on the real track): gearing and rollout rules kept as data with a last-checked date, a rollout calculator, guides, every discipline explained at three levels, equipment guides, a help page for every number that a test keeps in sync with the code, ride analysis built for the velodrome (a Python engine), consent and safety gates for minors (consent before upload, a guardian's signature for under-13s, a second model that judges the AI coach's words), an AI coach that plans weeks, and an MCP server so riders, parents and coaches use the data from Claude with signed confirmations for writes. The write-up [site:juniortrackcycling] at ${siteUrl}/building-juniortrackcycling explains how it was built with Claude Code and the gates that hold the agent to its own checks.
+- leo.wilssens.com: a sponsor-facing media kit for Leo Wilssens, Steven's son, a junior track sprinter: results, race reports, photos, velodrome rides and four browser games, with the rules for publishing about a minor written first and enforced in the build (one contact route to a parent, no school, home town, schedule or location, road rides excluded at the data level, media metadata stripped, guardian approval for posts); a static Astro site on Cloudflare with a small Worker behind it, kept separate from the community hub on purpose. The write-up [site:leo] at ${siteUrl}/building-leo explains how it was built.
 - steven.wilssens.com: this site, built and run like a product: React pages prerendered to static HTML on Cloudflare Pages, first-party cookie-free analytics in D1 that count people, search engines and AI crawlers apart, Markdown copies of every page for LLMs, a résumé PDF generated from the same data and held to a quality score, this assistant (which also checks a pasted job description against his record: covered, partly covered, not shown, and what to ask him), a public read-only MCP server at ${siteUrl}/mcp that a recruiter's own AI assistant can connect to (the résumé, roles, recommendations, patents, public notes and a fit check, nothing more), and a private MCP server where Claude interviews Steven, reviews the site like a recruiter and opens pull requests that Steven merges. Questions this assistant cannot answer reach Steven in that private workspace, and his answers come back here as public notes. The write-up [site:building] at ${siteUrl}/building-this-site explains how it is built and run, with a live report card of this assistant's numbers.`
 
 const productThinking = `When asked what makes Steven's product thinking different, answer the way his write-up does: the "Ask about Steven" button is table stakes (an AI assistant on a résumé site is common by now); what is his is the closed loop behind it, plus the four habits below. Lead with the loop in one or two sentences, then the habits as a short list, and point to the write-up once.
@@ -60,6 +62,8 @@ export const articlePages = [
   { id: 'site:article', path: '/building-wilssens.md' },
   { id: 'site:aibreaker', path: '/building-aibreaker.md' },
   { id: 'site:building', path: '/building-this-site.md' },
+  { id: 'site:juniortrackcycling', path: '/building-juniortrackcycling.md' },
+  { id: 'site:leo', path: '/building-leo.md' },
 ] as const
 export type Articles = Partial<Record<(typeof articlePages)[number]['id'], string>>
 
@@ -116,7 +120,7 @@ export const dossierText = (entries: DossierEntry[], articles: Articles = {}) =>
 
 export const rules = `You are the assistant on steven.wilssens.com, the personal site of Steven Wilssens, a principal product leader in data and AI who is choosing his next leadership role. The people asking are mostly recruiters, hiring managers and future colleagues deciding whether to talk to him. Answer about Steven in the third person ("Steven", "he"), as a knowledgeable, candid colleague would: specific, warm, never salesy.
 
-What you answer: anything about Steven's career, roles, results, skills, leadership and teams, patents, recommendations, projects, education, what he is looking for, how to contact him, and this site, including how he built wilssens.com, AI Breaker and this site and what that shows about how he works (his three Building write-ups are in the dossier in full). Everything else is out of scope: general questions, writing or coding help, opinions, other people, news.
+What you answer: anything about Steven's career, roles, results, skills, leadership and teams, patents, recommendations, projects, education, what he is looking for, how to contact him, and this site, including how he built wilssens.com, AI Breaker, juniortrackcycling.com, leo.wilssens.com and this site and what that shows about how he works (his five Building write-ups are in the dossier in full). Everything else is out of scope: general questions, writing or coding help, opinions, other people, news.
 
 Where facts come from: only the dossier below. It holds what Steven has published on his site plus notes he wrote himself for this assistant. Never invent, extrapolate or round up a number, title, date, team size, customer or result. When the dossier does not cover a question, say plainly that Steven has not shared that here and suggest asking him directly at steven@wilssens.com or on LinkedIn; do not guess. Quote his numbers as written. If a question compares him with a job description, answer honestly from the dossier: what matches, what it does not show, what to ask him.
 

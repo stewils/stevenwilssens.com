@@ -6,6 +6,8 @@ import { ConcernChart, FeedDiagram, JournalFlowDiagram, LayersDiagram, LevelsDia
 // The reading tools (progress bar, contents, counters, lightbox) and the styles are
 // shared with the wilssens.com write-up; both articles use the same .wx classes.
 import { enhanceArticle } from '../wilssens/article'
+import { Stats, type Stat } from '../wilssens/Stats'
+import feed from './feed.json'
 import '../wilssens/article.css'
 
 // The write-up of why and how AI Breaker (aibreaker.org) was built, linked from /projects.
@@ -31,8 +33,9 @@ const sections = [
 const articleUrl = 'https://steven.wilssens.com/building-aibreaker'
 const linkedInShare = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(articleUrl)}`
 
-// What is built and proven, not effort, as of 17 October 2026. [value, prefix, decimals, label]
-const stats: [number, string, number, string][] = [[4, '', 0, 'levels, from nothing blocked to full lockdown'], [36, '', 0, 'of 37 documented AI settings in Windows, Office and browsers covered'], [26, '', 0, 'chatbot domains blocked in three browsers, proven on Windows Home and Pro'], [1, '', 0, 'click to undo everything, even when the app won’t open']]
+// What is built and proven, not effort: feed.json, from the project's specs as of the last refresh
+// (aibreaker.org/api/building adds what its database knows). [key in the feed, prefix, decimals, label]
+const stats: Stat[] = [['levels', '', 0, 'levels, from nothing blocked to full lockdown'], ['settingsCovered', '', 0, `of ${feed.numbers.settingsDocumented} documented AI settings in Windows, Office and browsers covered`], ['chatbotDomainsBlocked', '', 0, 'chatbot domains blocked in three browsers, proven on Windows Home and Pro'], ['clicksToUndo', '', 0, 'click to undo everything, even when the app won’t open']]
 
 const Figure = ({ children, caption }: { children: ReactNode; caption: string }) => <figure className="wx-figure wx-diagram"><div className="wx-diagram-scroll" role="group" aria-label={caption} tabIndex={0}>{children}</div><figcaption>{caption}</figcaption></figure>
 
@@ -62,7 +65,7 @@ export default function AIBreakerArticle() {
       <h1>Building AI Breaker</h1>
       <p className="wx-dek">The off switch for AI on Windows: why a product for people who are wary of AI starts with the research on fear and control, and how it was built so that every claim can be checked and every change undone.</p>
       <p className="wx-meta">Steven Wilssens · October 2026 · <span data-read-time>19 min read</span></p>
-      <dl className="wx-stats">{stats.map(([value, prefix, decimals, label]) => <div key={label}><dt>{prefix}<span data-count={value} data-decimals={decimals}>{value.toFixed(decimals)}</span></dt><dd>{label}</dd></div>)}</dl>
+      <Stats project="aibreaker" feed={feed} items={stats} />
       <div className="wx-actions">
         <a className="primary-button" href="https://aibreaker.org" target="_blank" rel="noreferrer">Visit aibreaker.org ↗</a>
         <a className="text-link" href={linkedInShare} target="_blank" rel="noreferrer">Share on LinkedIn ↗</a>

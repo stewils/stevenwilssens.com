@@ -81,10 +81,12 @@ Steven Wilssens · 2026 · [LinkedIn](https://www.linkedin.com/in/x) · steven@w
 
     const read = async (path: string) => path === '/building-aibreaker.md' ? null : `# ${path}\n\nBody of ${path}\n`
     const articles = await loadArticles(read)
-    expect(Object.keys(articles).sort()).toEqual(['site:article', 'site:building'])
+    expect(Object.keys(articles).sort()).toEqual(['site:article', 'site:building', 'site:juniortrackcycling', 'site:leo'])
     const prompt = systemPrompt([], articles)
     expect(prompt).toContain("# [site:building] Building steven.wilssens.com, his write-up in full (page https://steven.wilssens.com/building-this-site)")
     expect(prompt).toContain('Body of /building-this-site.md')
+    expect(prompt).toContain('# [site:juniortrackcycling] Building juniortrackcycling.com, his write-up in full (page https://steven.wilssens.com/building-juniortrackcycling)')
+    expect(prompt).toContain('Body of /building-juniortrackcycling.md')
     expect(prompt).toContain('# [site:article] Building wilssens.com, his write-up in full')
     expect(prompt).not.toContain('# [site:aibreaker] Building AI Breaker, his write-up in full')
     expect(prompt.indexOf('[site:recommendations]')).toBeLessThan(prompt.indexOf('[site:article] Building wilssens.com, his write-up'))

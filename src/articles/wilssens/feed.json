@@ -1,0 +1,11 @@
+{
+  "project": "wilssens",
+  "asOf": "2026-10-15T00:00:00.000Z",
+  "numbers": {
+    "mailboxes": 3,
+    "sitesLive": 5,
+    "helpQuestionsThisMonth": 16,
+    "helpCostThisMonth": 1.26,
+    "helpBudgetUsd": 25
+  }
+}

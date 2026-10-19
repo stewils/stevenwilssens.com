@@ -29,3 +29,6 @@ dist-ssr
 
 # LinkedIn profile import for the MCP (personal data, stays local)
 .linkedin
+
+# Project repositories checked out by the Site update workflow for a Building write-up refresh
+sources

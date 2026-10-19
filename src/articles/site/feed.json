@@ -1,0 +1,10 @@
+{
+  "project": "site",
+  "asOf": "2026-10-18T00:00:00.000Z",
+  "numbers": {
+    "countries": 10,
+    "vitalsGoodPercent": 100,
+    "proposalsApproved": 18,
+    "pullRequestsMerged": 5
+  }
+}
