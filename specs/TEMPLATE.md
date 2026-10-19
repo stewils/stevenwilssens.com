@@ -41,6 +41,8 @@ Numbered, each one testable, each one mapped to a test or a check in the test pl
 - Copy: the exact wording of headings, labels, buttons and messages, and how long it
   may get (with the recruiter).
 - Accessibility: keyboard path, focus, labels, contrast, reduced motion.
+- Flow diagram: when the change explains or changes how work flows (the agent team, a
+  reader's path), the diagram that shows it, and which existing diagram it updates.
 - Pages to screenshot: `home`, `<page>`, `admin`, `admin#<part>` (the designer's UI
   check and the before/after pairs for Steven).
 

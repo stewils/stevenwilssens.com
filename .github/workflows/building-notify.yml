@@ -1,5 +1,6 @@
 # Tells steven.wilssens.com that this project changed, so its "Building steven.wilssens.com"
-# write-up can be refreshed from CLAUDE.md: the Site update workflow there reads the pushed
+# write-up can be refreshed from CLAUDE.md and the agent team (.claude/, the Review and
+# Site update workflows, the gate scripts): the Site update workflow there reads the pushed
 # commits and the files, and opens a pull request when the write-up needs a change.
 # Secret: BUILDING_TOKEN, a fine-grained token with Contents: read and write on
 # stewils/stevenwilssens.com (repository_dispatch needs write). Without it, nothing happens.
@@ -8,7 +9,7 @@ name: Building write-up
 on:
   push:
     branches: [main]
-    paths: ['CLAUDE.md', 'README.md']
+    paths: ['CLAUDE.md', 'README.md', '.claude/**', '.github/workflows/review.yml', '.github/workflows/site-update.yml', 'scripts/*-check.mjs', 'scripts/*-gate.mjs', 'scripts/*-compare.mjs']
 
 permissions: {}
 

@@ -38,7 +38,8 @@ Go through the acceptance criteria one by one against the branch (code, tests, t
 built pages, the preview if there is one). For each: met / not met, with the evidence.
 Any criterion not met is a `major`. A change to the agent orchestration (`.claude/`,
 the Review or Site update workflow, a gate script) that does not update
-`/building-this-site` ("The loop", `src/articles/site/SiteArticle.tsx`) to match is a
+`/building-this-site` ("The loop", `src/articles/site/SiteArticle.tsx`) to match, including
+its diagram (`TeamFlowDiagram`) and the Mermaid chart in `.claude/team.md`, is a
 `major` too (CLAUDE.md, The team). Then return the verdict block.
 
 ## Output
