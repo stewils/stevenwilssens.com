@@ -4,6 +4,7 @@
 import type { Env } from '../_lib/env'
 import { isAdmin } from '../_lib/auth'
 import { D1Store } from '../_lib/mcp/store'
+import { syncProposals } from '../_lib/mcp/proposals'
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })
 
@@ -14,6 +15,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const origin = url.origin
   const store = new D1Store(env.DB)
   const now = Date.now()
+  // An approved proposal the deployed résumé already carries is applied, whichever pull request brought it.
+  await syncProposals(store, now).catch((error: unknown) => console.error('proposal sync', error))
   const [entries, proposals, calls] = await Promise.all([store.list({}), store.listProposals(), store.toolCalls(now - days * 86_400_000, 500)])
   const byTool = new Map<string, number>()
   for (const call of calls) byTool.set(call.tool, (byTool.get(call.tool) ?? 0) + 1)
