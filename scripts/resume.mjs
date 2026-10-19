@@ -34,7 +34,7 @@ const early = experiences.slice(2).filter((item) => item.company !== 'Microsoft'
 const granted = grantedPatents.flatMap((item) => item.records).length
 const published = patentApplications.flatMap((item) => item.records).length
 
-const role = (item, points) => `<article class="role">
+const role = (item, points) => `<article class="role${points.length > 4 ? ' long' : ''}">
   <div class="when">${esc(item.dates)}</div>
   <div>
     <h3>${esc(item.role)}</h3>
@@ -81,6 +81,10 @@ h2::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .skills span { padding: 2px 7px; border: 1px solid var(--line); border-radius: 999px; font-size: 8.3pt; font-weight: 600; }
 .role { display: grid; grid-template-columns: 1.3in 1fr; gap: 12px; padding: 5px 0 5px; border-top: 1px solid var(--line); break-inside: avoid; }
 .role:first-of-type { border-top: 0; padding-top: 0; }
+/* A role with many bullets may continue on the next page rather than leave a gap; its title and summary stay with its first bullets. */
+.role.long { break-inside: auto; }
+.role.long .summary, .role.long h3, .role.long .where { break-after: avoid; }
+.role li { break-inside: avoid; }
 .when { font-family: 'DM Mono', monospace; font-size: 7.6pt; color: var(--muted); padding-top: 2px; white-space: nowrap; }
 h3 { margin: 0; font-size: 10.8pt; font-weight: 700; letter-spacing: -0.2pt; line-height: 1.25; }
 .where { margin: 1px 0 4px; font-size: 8.8pt; color: var(--muted); }
