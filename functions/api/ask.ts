@@ -5,7 +5,7 @@ import { ask, askStatus } from '../_lib/ask/agent'
 import { D1AskStore } from '../_lib/ask/store'
 import { D1Store } from '../_lib/mcp/store'
 
-export const onRequestGet: PagesFunction<Env> = ({ env }) => askStatus(env)
+export const onRequestGet: PagesFunction<Env> = ({ request, env }) => askStatus(request, env, new D1AskStore(env.DB))
 
 export const onRequestPost: PagesFunction<Env> = ({ request, env, waitUntil }) => {
   // The site's own static files (the Markdown copies of the Building write-ups), served by Pages next to the functions.

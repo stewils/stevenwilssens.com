@@ -3,7 +3,7 @@
 // open questions it could not answer, and how many Steven has closed (admin token).
 import type { Env } from '../../_lib/env'
 import { isAdmin } from '../../_lib/auth'
-import { budgetMicro, DEFAULT_BUDGET_USD, MODEL } from '../../_lib/ask/agent'
+import { budgetMicro, checkAfterMicro, DEFAULT_BUDGET_USD, humanCheck, MODEL } from '../../_lib/ask/agent'
 import { D1AskStore, dayOf, monthStart } from '../../_lib/ask/store'
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })
@@ -15,7 +15,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const store = new D1AskStore(env.DB)
   const sinceDay = dayOf(now - days * 86_400_000)
   const ninetyDays = now - 90 * 86_400_000
-  const [daily, votes, questions, resolved, monthRows] = await Promise.all([store.daily(sinceDay), store.votes(sinceDay), store.questions(ninetyDays, 200), store.resolvedCounts(ninetyDays), store.daily(monthStart(now))])
+  const [daily, votes, questions, resolved, monthRows, check] = await Promise.all([store.daily(sinceDay), store.votes(sinceDay), store.questions(ninetyDays, 200), store.resolvedCounts(ninetyDays), store.daily(monthStart(now)), humanCheck(env, store, now, null)])
   const month = { questions: 0, answered: 0, gap: 0, off: 0, limited: 0, failed: 0, costMicro: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
   for (const row of monthRows) {
     month.questions += row.questions
@@ -33,6 +33,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     budgetUsd: Number(env.ASK_BUDGET_USD) || DEFAULT_BUDGET_USD,
     budgetMicro: budgetMicro(env),
     humanCheck: Boolean(env.TURNSTILE_SECRET_KEY && env.TURNSTILE_SITE_KEY),
+    // off: no keys; standby: nobody is asked; on: every question needs a Turnstile token, because of `why`.
+    check: { state: check.state, why: check.why, lastHour: check.allHits, spentTodayMicro: check.spentTodayMicro, afterMicro: checkAfterMicro(env) },
     days,
     month,
     daily,

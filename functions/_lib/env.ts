@@ -14,6 +14,7 @@ export type Env = {
   ANTHROPIC_WORKSPACE_ID?: string   // when the key was made outside a workspace
   ASK_BUDGET_USD?: string           // monthly cap, default 25
   ASK_MOCK?: string                 // '1' locally: canned answers, no API call
-  TURNSTILE_SECRET_KEY?: string     // with TURNSTILE_SITE_KEY: a human check before the first question
+  ASK_CHECK_AFTER_USD?: string      // the human check switches on once the day's spend passes this, default 10
+  TURNSTILE_SECRET_KEY?: string     // with TURNSTILE_SITE_KEY: a human check when the assistant looks under attack
   TURNSTILE_SITE_KEY?: string
 }

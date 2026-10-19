@@ -90,38 +90,61 @@ describe('AskAssistant', () => {
     expect(screen.queryByRole('button', { name: 'Helpful' })).not.toBeInTheDocument()
   })
 
-  it('waits for the human check\'s token before sending, and asks for a fresh one when the server rejects it', async () => {
-    // A fake Turnstile: render() keeps the callback, the test hands out tokens when it likes.
-    let giveToken: ((token: string) => void) | null = null
-    let resets = 0
-    const turnstile = { render: (_el: HTMLElement, options: Record<string, unknown>) => { giveToken = options.callback as (token: string) => void; return 'w1' }, reset: () => { resets++ } }
+  // A fake Turnstile: render() keeps the callback, the test hands out tokens when it likes.
+  const fakeTurnstile = () => {
+    const fake = { giveToken: null as ((token: string) => void) | null, resets: 0, rendered: 0 }
+    const turnstile = { render: (_el: HTMLElement, options: Record<string, unknown>) => { fake.rendered++; fake.giveToken = options.callback as (token: string) => void; return 'w1' }, reset: () => { fake.resets++ } }
     Object.defineProperty(window, 'turnstile', { configurable: true, writable: true, value: turnstile })
+    return fake
+  }
+  const humanCheckServer = (posted: string[], siteKeyAtStart: string | null) => async (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method !== 'POST') return Response.json({ ready: true, siteKey: siteKeyAtStart })
+    const token = (JSON.parse(init.body as string) as { turnstileToken: string }).turnstileToken
+    posted.push(token)
+    if (token !== 'token-2') return Response.json({ error: 'human', message: 'Not a person.', siteKey: 'site-key' }, { status: 403 })
+    return stream(sseBody([['meta', { scope: 'in', sources: [] }], ['delta', { text: 'Answered.' }], ['done', { id: null, sig: 'sig-2' }]]))
+  }
+
+  it('waits for the human check\'s token before sending, and asks for a fresh one when the server rejects it', async () => {
+    const fake = fakeTurnstile()
     const posted: string[] = []
-    fetchMock.mockImplementation(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method !== 'POST') return Response.json({ ready: true, siteKey: 'site-key' })
-      const token = (JSON.parse(init.body as string) as { turnstileToken: string }).turnstileToken
-      posted.push(token)
-      if (token !== 'token-2') return Response.json({ error: 'human', message: 'Not a person.' }, { status: 403 })
-      return stream(sseBody([['meta', { scope: 'in', sources: [] }], ['delta', { text: 'Answered.' }], ['done', { id: null, sig: 'sig-2' }]]))
-    })
+    fetchMock.mockImplementation(humanCheckServer(posted, 'site-key'))
     render(<AskAssistant page="home" />)
     await userEvent.click(await screen.findByRole('button', { name: /ask about steven/i }))
-    await waitFor(() => expect(giveToken).not.toBeNull())
+    await waitFor(() => expect(fake.giveToken).not.toBeNull())
     await userEvent.type(screen.getByLabelText('Your question'), 'Hello{enter}')
 
     // Nothing is posted until the widget hands over its first token.
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(posted).toEqual([])
-    await act(async () => { giveToken!('token-1') })
+    await act(async () => { fake.giveToken!('token-1') })
     await waitFor(() => expect(posted).toEqual(['token-1']))
 
     // The server rejected it: the widget is reset and the question goes again with the next token.
-    await waitFor(() => expect(resets).toBe(1))
-    await act(async () => { giveToken!('token-2') })
+    await waitFor(() => expect(fake.resets).toBe(1))
+    await act(async () => { fake.giveToken!('token-2') })
     await screen.findByText('Answered.')
     expect(posted).toEqual(['token-1', 'token-2'])
     expect(screen.queryByText('Not a person.')).not.toBeInTheDocument()
-    expect(resets).toBe(2) // spent: the next one is being prepared
+    expect(fake.resets).toBe(2) // spent: the next one is being prepared
+    Reflect.deleteProperty(window, 'turnstile')
+  })
+
+  it('brings up the human check mid-conversation when the server starts asking for it', async () => {
+    const fake = fakeTurnstile()
+    const posted: string[] = []
+    fetchMock.mockImplementation(humanCheckServer(posted, null)) // a quiet day when the panel opened
+    render(<AskAssistant page="home" />)
+    await userEvent.click(await screen.findByRole('button', { name: /ask about steven/i }))
+    await userEvent.type(screen.getByLabelText('Your question'), 'Hello{enter}')
+
+    // No widget yet, so the question goes straight out; the answer says the check is on now.
+    await waitFor(() => expect(posted).toEqual(['']))
+    await waitFor(() => expect(fake.rendered).toBe(1))
+    await act(async () => { fake.giveToken!('token-2') })
+    await screen.findByText('Answered.')
+    expect(posted).toEqual(['', 'token-2'])
+    expect(screen.queryByText('Not a person.')).not.toBeInTheDocument()
     Reflect.deleteProperty(window, 'turnstile')
   })
 

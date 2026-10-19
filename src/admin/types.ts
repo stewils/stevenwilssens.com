@@ -60,6 +60,8 @@ export type AskInfo = {
   model: string
   budgetUsd: number
   humanCheck: boolean
+  // The Turnstile check right now: off (no keys), standby (a quiet day, nobody is asked) or on, and why.
+  check?: { state: 'off' | 'standby' | 'on'; why: 'spend' | 'connection' | 'everyone' | null; lastHour: number; spentTodayMicro: number; afterMicro: number }
   month: { questions: number; answered: number; gap: number; off: number; limited: number; failed: number; costMicro: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number }
   daily: { day: string; outcome: string; questions: number; costMicro: number; msFirst: number; msTotal: number }[]
   votes: { day: string; helpful: number; unhelpful: number }[]

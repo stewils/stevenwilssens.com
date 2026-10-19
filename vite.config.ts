@@ -49,11 +49,13 @@ const staticPages = (): Plugin => {
       const scriptHashes = [...inlineScripts].map((code) => `'sha256-${createHash('sha256').update(code).digest('base64')}'`)
       const csp = [
         "default-src 'self'",
-        `script-src 'self' ${scriptHashes.join(' ')}`,
+        // challenges.cloudflare.com is Turnstile, the assistant's human check: its script and the frame it draws in.
+        `script-src 'self' https://challenges.cloudflare.com ${scriptHashes.join(' ')}`,
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data:",
         "font-src 'self' data:",
         "connect-src 'self'",
+        'frame-src https://challenges.cloudflare.com',
         "frame-ancestors 'none'",
         "base-uri 'self'",
         "form-action 'self'",

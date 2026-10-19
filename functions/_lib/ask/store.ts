@@ -19,6 +19,8 @@ export type ReportTotals = { since: string | null; questions: number; answered: 
 
 export interface AskStore {
   countHits(ipHash: string, since: number): Promise<number>
+  // Questions from everyone since `since`: the signal that the site is under load or attack.
+  countAllHits(since: number): Promise<number>
   addHit(ipHash: string, now: number): Promise<void>
   spentMicroSince(day: string): Promise<number>
   recordUsage(day: string, outcome: Outcome, usage: Usage, costMicro: number, msFirst: number, msTotal: number): Promise<void>
@@ -47,6 +49,11 @@ export class D1AskStore implements AskStore {
 
   async countHits(ipHash: string, since: number) {
     const row = await this.db.prepare('SELECT COUNT(*) AS n FROM ask_hits WHERE ip_hash = ? AND ts >= ?').bind(ipHash, since).first<{ n: number }>()
+    return row?.n ?? 0
+  }
+
+  async countAllHits(since: number) {
+    const row = await this.db.prepare('SELECT COUNT(*) AS n FROM ask_hits WHERE ts >= ?').bind(since).first<{ n: number }>()
     return row?.n ?? 0
   }
 
@@ -138,6 +145,7 @@ export class MemoryAskStore implements AskStore {
   saved: SavedQuestion[] = []
 
   async countHits(ipHash: string, since: number) { return this.hits.filter((hit) => hit.ipHash === ipHash && hit.ts >= since).length }
+  async countAllHits(since: number) { return this.hits.filter((hit) => hit.ts >= since).length }
   async addHit(ipHash: string, now: number) { this.hits.push({ ipHash, ts: now }) }
   async spentMicroSince(day: string) { return this.rows.filter((row) => row.day >= day).reduce((sum, row) => sum + row.costMicro, 0) }
 

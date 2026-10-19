@@ -8,9 +8,11 @@
 // session. A user turn marked `kind: 'fit'` is a pasted job description: the
 // model compares it with the dossier (covered, partly covered, not shown, what
 // to ask) and the requirements it could not match are saved the same way, as
-// questions for Steven. Limits: an optional Turnstile check, 30 questions an
-// hour per IP, short questions and history, and a monthly budget from the API's
-// own token counts. Answers carry our signature so the browser can send the
+// questions for Steven. Limits: 30 questions an hour per IP, short questions and
+// history, a monthly budget from the API's own token counts, and a Turnstile
+// human check that only switches on when the assistant looks under attack (many
+// questions from one connection or from everyone in the last hour) or the day's
+// spend has passed a threshold; a quiet day asks nobody to prove anything. Answers carry our signature so the browser can send the
 // conversation back and vote on them without being able to forge an earlier answer.
 import Anthropic from '@anthropic-ai/sdk'
 import type { Env } from '../env'
@@ -23,6 +25,12 @@ export const MODEL = 'claude-opus-5-5'
 export const PRICE = { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 8 }
 export const DEFAULT_BUDGET_USD = 25
 const PER_IP_PER_HOUR = 30
+/** The human check switches on for the rest of the day once the day's spend passes this (ASK_CHECK_AFTER_USD)… */
+export const DEFAULT_CHECK_AFTER_USD = 10
+/** …or for the next hour when one connection asked this often… */
+export const CHECK_AFTER_IP_HITS = 10
+/** …or when everyone together asked this often: more than a quiet site sees, so likely a script. */
+export const CHECK_AFTER_ALL_HITS = 60
 const MAX_QUESTION = 1000
 /** A pasted job description: long enough for a full posting, short enough to keep the cost of one check near a few cents. */
 export const MAX_JD = 8000
@@ -117,6 +125,21 @@ export const ipHash = async (request: Request, env: Env) => {
 
 export const costMicro = (u: Usage) => Math.round(u.input * PRICE.input + u.output * PRICE.output + u.cacheRead * PRICE.cacheRead + u.cacheWrite * PRICE.cacheWrite)
 export const budgetMicro = (env: Env) => Math.round((Number(env.ASK_BUDGET_USD) || DEFAULT_BUDGET_USD) * 1_000_000)
+export const checkAfterMicro = (env: Env) => Math.round((Number(env.ASK_CHECK_AFTER_USD) || DEFAULT_CHECK_AFTER_USD) * 1_000_000)
+
+/**
+ * The human check: `off` without Turnstile keys, `standby` on a quiet day (nobody is
+ * asked anything), `on` when the last hour or the day's spend says a script may be at work.
+ * `why` names the signal for /admin.
+ */
+export type HumanCheck = { state: 'off' | 'standby' | 'on'; why: 'spend' | 'connection' | 'everyone' | null; ipHits: number; allHits: number; spentTodayMicro: number }
+export async function humanCheck(env: Env, store: AskStore, now: number, ipHash: string | null): Promise<HumanCheck> {
+  const hour = now - 3_600_000
+  const [ipHits, allHits, spentTodayMicro] = await Promise.all([ipHash ? store.countHits(ipHash, hour) : Promise.resolve(0), store.countAllHits(hour), store.spentMicroSince(dayOf(now))])
+  const why = spentTodayMicro >= checkAfterMicro(env) ? 'spend' : ipHits >= CHECK_AFTER_IP_HITS ? 'connection' : allHits >= CHECK_AFTER_ALL_HITS ? 'everyone' : null
+  const keys = Boolean(env.TURNSTILE_SECRET_KEY && env.TURNSTILE_SITE_KEY)
+  return { state: !keys ? 'off' : why ? 'on' : 'standby', why: keys ? why : null, ipHits, allHits, spentTodayMicro }
+}
 
 // ------------------------------------------------------------------ the model
 
@@ -216,8 +239,10 @@ const verifyTurnstile = async (secret: string, token: string, ip: string | null,
   form.set('response', token)
   if (ip) form.set('remoteip', ip)
   const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: form }).catch(() => null)
-  const result = (await response?.json().catch(() => null)) as { success?: boolean; hostname?: string } | null
-  return Boolean(result?.success) && (!result?.hostname || result.hostname === host)
+  const result = (await response?.json().catch(() => null)) as { success?: boolean; hostname?: string; 'error-codes'?: string[] } | null
+  const ok = Boolean(result?.success) && (!result?.hostname || result.hostname === host)
+  if (!ok) console.warn('turnstile', JSON.stringify({ codes: result?.['error-codes'] ?? null, hostname: result?.hostname ?? null, host }))
+  return ok
 }
 
 /** `pages` reads one of the site's own static files by path (the Markdown copies of the Building write-ups); without it the assistant knows the write-ups only from the projects section. */
@@ -234,8 +259,12 @@ const articles = (pages: AskDeps['pages']): Promise<Articles> => {
   return articleCache
 }
 
-/** GET /api/ask: whether the assistant is on, and the Turnstile site key when a human check is wanted. */
-export const askStatus = (env: Env) => json({ ready: Boolean(env.ANTHROPIC_API_KEY) || env.ASK_MOCK === '1', siteKey: env.TURNSTILE_SECRET_KEY && env.TURNSTILE_SITE_KEY ? env.TURNSTILE_SITE_KEY : null }, 200)
+/** GET /api/ask: whether the assistant is on, and the Turnstile site key while the human check is on (null on a quiet day; a later answer can still hand it over). */
+export async function askStatus(request: Request, env: Env, store: AskStore, now = Date.now()) {
+  const ready = Boolean(env.ANTHROPIC_API_KEY) || env.ASK_MOCK === '1'
+  const check = ready && env.TURNSTILE_SECRET_KEY && env.TURNSTILE_SITE_KEY ? await humanCheck(env, store, now, await ipHash(request, env)) : null
+  return json({ ready, siteKey: check?.state === 'on' ? env.TURNSTILE_SITE_KEY : null }, 200)
+}
 
 /** POST /api/ask: the answer as Server-Sent Events, or a JSON error { error, message }. */
 export async function ask(request: Request, { env, store, dossier, waitUntil, pages, stream, now = Date.now }: AskDeps): Promise<Response> {
@@ -247,14 +276,16 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
 
   const started = now()
   const day = dayOf(started)
-  const turnedAway = async (error: 'busy' | 'budget' | 'human', status: number) => {
+  const turnedAway = async (error: 'busy' | 'budget' | 'human', status: number, extra: Record<string, unknown> = {}) => {
     await store.recordUsage(day, 'limited', { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, 0, 0, 0).catch((err: unknown) => console.error('ask usage', err))
-    return fail(error, status)
+    return json({ error, message: words[error], ...extra }, status)
   }
-  const ip = request.headers.get('CF-Connecting-IP')
-  if (env.TURNSTILE_SECRET_KEY && env.TURNSTILE_SITE_KEY && !(await verifyTurnstile(env.TURNSTILE_SECRET_KEY, parsed.turnstileToken, ip, new URL(request.url).host))) return turnedAway('human', 403)
   const hash = await ipHash(request, env)
-  if (await store.countHits(hash, started - 3_600_000) >= PER_IP_PER_HOUR) return turnedAway('busy', 429)
+  const check = await humanCheck(env, store, started, hash)
+  if (check.ipHits >= PER_IP_PER_HOUR) return turnedAway('busy', 429)
+  // The check is on: the token must verify. The answer carries the site key so a panel
+  // that opened on a quiet day can bring up the widget now and send the question again.
+  if (check.state === 'on' && !(await verifyTurnstile(env.TURNSTILE_SECRET_KEY!, parsed.turnstileToken, request.headers.get('CF-Connecting-IP'), new URL(request.url).host))) return turnedAway('human', 403, { siteKey: env.TURNSTILE_SITE_KEY })
   await store.addHit(hash, started)
   if (await store.spentMicroSince(monthStart(started)) >= budgetMicro(env)) return turnedAway('budget', 503)
 
