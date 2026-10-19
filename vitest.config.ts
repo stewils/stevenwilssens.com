@@ -1,6 +1,6 @@
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [react()],
@@ -9,6 +9,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // Not this repository's tests: a reviewer's copy of main under .review/, and the projects
+    // the Site update workflow checks out into sources/.
+    exclude: [...configDefaults.exclude, '.review/**', 'sources/**'],
     css: false,
     // `npm run test:coverage` (and the Review workflow) fail when any file is below 90%
     // (perFile). Left out: the code that only starts the app in a browser or the build

@@ -180,7 +180,7 @@ describe('the team diagram on /building-this-site', () => {
     render(<SiteArticle />)
     const step = within(document.getElementById('loop')!.closest('section')!).getByText('Put every change past a team.').closest('li')!
     const sentence = step.textContent!.match(/[^.]*unread updates[^.]*\./)![0].trim()
-    expect(sentence).toBe('Changes to the team itself reach me in my admin as unread updates until I have seen them.')
+    expect(sentence).toBe('Changes to the agent team itself reach me in my admin as unread updates until I have seen them.')
     expect(sentence).not.toMatch(/\d/)
   })
 })

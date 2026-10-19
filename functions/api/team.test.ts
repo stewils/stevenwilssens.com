@@ -96,6 +96,18 @@ describe('POST /api/team checks what it is sent', () => {
     expect(db.queries).toHaveLength(0)
   })
 
+  it('answers 413 from a Content-Length over 16 KB before reading the body, even when the body is small', async () => {
+    const db = fakeD1()
+    const small = postRequest({ action: 'read', ids: [id('a')] }, { ...auth, 'Content-Type': 'application/json', 'Content-Length': '20000' })
+    expect(small.headers.get('Content-Length')).toBe('20000')
+    const read = vi.spyOn(small, 'text')
+    const response = await sendPost(small, db)
+    expect(response.status).toBe(413)
+    expect(small.bodyUsed).toBe(false)
+    expect(read).not.toHaveBeenCalled()
+    expect(db.queries).toHaveLength(0)
+  })
+
   it('answers 400 with a fixed body that echoes nothing for every malformed request', async () => {
     const db = fakeD1()
     const bad: string[] = [
