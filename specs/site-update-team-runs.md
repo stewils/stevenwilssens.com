@@ -969,9 +969,9 @@ Answered on 2026-10-19:
 
 | Role | Spec | Merge | Notes |
 |---|---|---|---|
-| Product manager | APPROVE (reconciled 2026-10-19) | | Open questions 4 and 5 do not block the build |
-| Senior recruiter | APPROVE | | three conditions, held in AC-9 and AC-12 |
-| Senior designer | APPROVE | | conditions met: the back edge in team.md, `articles.test.tsx` in the files |
-| Senior developer | feasible | | corrections taken: own no-change step, AC-13 |
-| Security engineer | APPROVE | | C-1 to C-10 in AC-14; no artifact |
-| Senior tester | APPROVE (test plan updated 2026-10-19) | | AC-1 to AC-14 mapped; AC-2, T-10 and the AC-10/AC-11 review halves are named checks; the three scripts go into `coverage.include` |
+| Product manager | APPROVE (reconciled 2026-10-19) | APPROVE (r2) | AC-1 to AC-14 met; spec wording brought in line with the build (45952d5) |
+| Senior recruiter | APPROVE | APPROVE (r1) | check:recruiter 80 = main, ATS 100 = live; AI Breaker header 4 / 36 of 37 / 26 / 1 |
+| Senior designer | APPROVE | APPROVE (r1) | stop box readable at 1440, 390 and 320; Team page keeps two lanes, step 5 marked New |
+| Senior developer | feasible | APPROVE (r2) | M-1 (open PRs past 20), M-2 (AC-2 record) fixed; m-7 and m-8 fixed in a839dea |
+| Security engineer | APPROVE | APPROVE (r3) | F-1 (fork PR taken as the run's) fixed; fork guard on redo, status and close; two nits deferred |
+| Senior tester | APPROVE (test plan updated 2026-10-19) | APPROVE (r3) | 993 tests; 99.48 / 97.54 / 99.26 / 99.87; every mutation of the new guards caught |
