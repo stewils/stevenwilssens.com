@@ -1,6 +1,6 @@
 # steven.wilssens.com
 
-Personal resume site for Steven Wilssens: a React + TypeScript + Vite single-page app hosted on Cloudflare Pages, with first-party, cookie-free analytics stored in Cloudflare D1.
+Personal resume site for Steven Wilssens: a React + TypeScript + Vite single-page app hosted on Cloudflare Pages, with first-party, cookie-free analytics stored in Cloudflare D1. Tested from a branch on 19 October 2026.
 
 - **Site:** https://steven.wilssens.com (https://stevenwilssens.pages.dev and every name under wilssens.net redirect to it)
 - **Admin:** https://steven.wilssens.com/admin (token protected): visitors, the résumé score, the assistant, the career MCP, the agent team
