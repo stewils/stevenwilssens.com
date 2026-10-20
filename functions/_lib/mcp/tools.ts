@@ -11,8 +11,8 @@ import { dossierText } from '../ask/prompt'
 import { compareLinkedIn, linkedInTexts, parseLinkedInCsv, parseLinkedInText, type LinkedInProfile } from '../review/linkedin'
 import { reviewForRecruiters, type ResumeReport } from '../review/recruiter'
 import { describeTraffic, type TrafficSummary } from '../traffic'
-import { achievementOf, achievementsSection, briefFor, liveResume, norm, parseAchievement, syncProposals } from './proposals'
-import { aboutFields, aboutFlags, aboutSection, checkAboutProposal, matchParagraph } from './about'
+import { aboutSection, achievementOf, achievementsSection, briefFor, liveResume, norm, parseAchievement, syncProposals } from './proposals'
+import { aboutFields, aboutReview, checkAboutProposal, matchParagraph, staleNote } from './about'
 
 export const updateWorkflow = 'site-update.yml'
 
@@ -313,8 +313,13 @@ const parseRoleEntry = (text: string): RoleEntry => {
   if (!Array.isArray(value.points) || !value.points.length || value.points.some((point) => typeof point !== 'string' || !point.trim())) throw new ToolError('the role needs "points": a non-empty array of bullet strings')
   return { role: (value.role as string).trim(), company: (value.company as string).trim(), dates: (value.dates as string).trim(), location: (value.location as string).trim(), summary: (value.summary as string).trim(), points: (value.points as string[]).map((point) => point.trim()) }
 }
-// An About proposal carries its flags, recomputed from the résumé as it is now (they are not stored).
-const shapeProposal = (p: Proposal) => { const flags = aboutFlags(p, liveResume()); return { id: p.id, status: p.status, role: p.role, field: p.field, kind: p.kind, currentText: p.currentText, proposedText: p.proposedText, rationale: p.rationale, basedOn: p.basedOn, decisionNote: p.decisionNote, ...(flags ? { flags } : {}), updated: new Date(p.updatedAt).toISOString().slice(0, 10) } }
+// An About proposal carries its flags, recomputed from the résumé as it is now (they are not
+// stored), and, while it waits, a note when the page no longer has its current text.
+const shapeProposal = (p: Proposal) => {
+  const review = aboutReview(p, liveResume())
+  const waiting = p.status === 'proposed' || p.status === 'approved'
+  return { id: p.id, status: p.status, role: p.role, field: p.field, kind: p.kind, currentText: p.currentText, proposedText: p.proposedText, rationale: p.rationale, basedOn: p.basedOn, decisionNote: p.decisionNote, ...(review ? { flags: review.flags, ...(review.stale && waiting ? { stale: staleNote } : {}) } : {}), updated: new Date(p.updatedAt).toISOString().slice(0, 10) }
+}
 const flagsNote = 'Before Steven decides, show him each flag (a number without a source, present tense about a past role, a lost keyword, self-promotion); he can approve over a flag.'
 
 // An About proposal (owner only): the intro can only be replaced, a paragraph replaced,
@@ -326,7 +331,8 @@ const aboutProposal = (args: Args, kind: Proposal['kind']) => {
   if (field === 'intro' && kind !== 'replace') throw new ToolError('the About intro can only be replaced')
   const where = 'read the current text with get_resume (about)'
   let currentText = str(args, 'current_text', 4000, kind !== 'add')
-  const proposedText = kind === 'remove' ? null : str(args, 'proposed_text', 4000, true)!.normalize('NFC')
+  // Kept whole (up to a sane bound) so a refusal names the real length.
+  const proposedText = kind === 'remove' ? null : str(args, 'proposed_text', 20_000, true)!.normalize('NFC')
   if (field === 'intro') {
     if (norm(currentText) !== norm(about.intro)) throw new ToolError(`current_text does not match the About intro; ${where}`)
     currentText = about.intro

@@ -1,5 +1,5 @@
 // The About page as a proposal target: how a proposal changes the copy, and the guards
-// every About proposal (and the live copy in src/resume.ts, through its test) has to pass.
+// every About proposal (and the live copy in src/resume.ts, through about.test.ts) has to pass.
 // Refusals stop a proposal; flags are shown to Steven before he decides and he can
 // approve over them. Every check runs on the result: the live copy with the one proposal
 // applied. Flags are not stored; they are recomputed from the live data each time a
@@ -8,7 +8,6 @@ import type { About } from '../../../src/resume'
 import { aboutSection, norm, type ResumeData } from './proposals'
 import type { Proposal } from './store'
 
-export { aboutSection }
 // What an About proposal can change: the line under the title (replace only) or one paragraph.
 export const aboutFields = ['intro', 'paragraph']
 // The designer's limits: what the layout carries well (specs/mcp-about-proposals.md, Design).
@@ -43,7 +42,11 @@ export const applyAbout = (about: About, p: AboutChange): About => {
 // a reader cannot see, and nothing that imitates the assistant's own markers.
 const markup: [RegExp, string][] = [
   [/[\r\n]/, 'a line break'],
-  [/(?![\r\n])[\p{Cc}\p{Cf}]/u, 'an invisible or control character'],
+  // An allowlist, after NFC: letters, digits, punctuation, spaces, currency and math signs.
+  // Everything else is refused: control and format characters, line and paragraph
+  // separators, combining marks and variation selectors (which can smuggle bytes after a
+  // visible letter), symbols such as the braille blank, and the Hangul filler letters.
+  [/[^\p{L}\p{N}\p{P}\p{Zs}\p{Sc}\p{Sm}\r\n]|[\u115F\u1160\u3164\uFFA0]/u, 'an invisible character, a mark or a symbol outside plain text'],
   [/<[a-z/!]/i, 'HTML'],
   [/\]\(/, 'a Markdown link or image'],
   [/^\s*(?:#|[-*+>]|\d+[.)]\s|```|~~~)/, 'a Markdown heading, list marker, quote or fence at the start'],
@@ -102,30 +105,51 @@ const sentencesOf = (about: About) => [about.intro, ...about.paragraphs].flatMap
 const stringsOf = (value: unknown): string[] => (typeof value === 'string' ? [value] : Array.isArray(value) ? value.flatMap(stringsOf) : value && typeof value === 'object' ? Object.values(value).flatMap(stringsOf) : [])
 const numbersIn = (text: string) => text.match(/\d+(?:[.,]\d+)*/g) ?? []
 
+// The flags that read the sentences themselves: present tense about a past role (guard 4)
+// and a number without a source in the résumé data, not the About copy itself (guard 2).
+const sentenceFlags = (texts: string[], resume: ResumeData) => {
+  const flags: string[] = []
+  const sentences = texts.flatMap((text) => norm(text).split(/(?<=[.!?])\s+/)).filter(Boolean)
+  for (const sentence of sentences) if (pastRole.test(sentence) && presentTense.test(sentence)) flags.push(`"${sentence}" is in the present tense about a past role (Steven left Microsoft in September 2026)`)
+  const known = new Set(stringsOf([resume.profile, resume.experiences, resume.impact, resume.selectedWork, resume.education, resume.honors]).flatMap(numbersIn))
+  for (const number of new Set(sentences.flatMap(numbersIn))) if (!known.has(number)) flags.push(`the number ${number} needs a source: no role bullet, key achievement or profile field in src/resume.ts carries it`)
+  return flags
+}
+// Recruiter guard 7: self-promotion.
+const superlativeFlags = (texts: string[]) => { const all = texts.map(norm).join(' '); return superlatives.filter((word) => new RegExp(`\\b${word}\\b`, 'i').test(all)).map((word) => `"${word}" reads as self-promotion to a hiring manager`) }
+
 /** The guards on the About copy with this proposal applied: refusals stop it, flags go to Steven. */
 export const checkAboutProposal = (p: AboutChange, resume: ResumeData): AboutCheck => {
   const result = applyAbout(resume.about, p)
+  const texts = [result.intro, ...result.paragraphs]
   const refusals = checkAboutText(result)
-  const flags: string[] = []
-  const sentences = sentencesOf(result)
   const roles = resume.experiences.map((item) => item.role.toLowerCase())
-  for (const sentence of sentences) {
+  for (const sentence of sentencesOf(result)) {
     const lower = sentence.toLowerCase()
     const fact = sideNote.find(({ pattern, value }) => pattern.test(sentence) && !lower.includes(norm(value(resume)).toLowerCase()))
     const title = titlesIn(sentence).find((name) => !roles.some((role) => role.includes(name.toLowerCase())))
     if (fact || title) refusals.push(`"${sentence}" states ${title ? `the title "${title}"` : 'a location, work authorization or availability'} that the résumé does not: ${sideNoteRefusal}`)
-    if (pastRole.test(sentence) && presentTense.test(sentence)) flags.push(`"${sentence}" is in the present tense about a past role (Steven left Microsoft in September 2026)`)
   }
-  // Recruiter guard 2: a number needs a source in the résumé data (not the About copy itself).
-  const known = new Set(stringsOf([resume.profile, resume.experiences, resume.impact, resume.selectedWork, resume.education, resume.honors]).flatMap(numbersIn))
-  for (const number of new Set(sentences.flatMap(numbersIn))) if (!known.has(number)) flags.push(`the number ${number} needs a source: no role bullet, key achievement or profile field in src/resume.ts carries it`)
+  const flags = sentenceFlags(texts, resume)
   // Recruiter guard 6: what a recruiter's search and a hiring manager's skim look for.
-  const all = [result.intro, ...result.paragraphs].map(norm).join(' ')
+  const all = texts.map(norm).join(' ')
   for (const [pattern, word] of [[/\bproducts?\b/i, 'product'], [/\bdata\b/i, 'data'], [/\bAI\b/, 'AI']] as const) if (!pattern.test(all)) flags.push(`the page would no longer say "${word}", a word recruiters search for`)
   if (!/Windows (?:&|and) Devices Data/.test(all)) flags.push('the page would no longer name the last Microsoft role (Windows & Devices Data)')
-  for (const word of superlatives) if (new RegExp(`\\b${word}\\b`, 'i').test(all)) flags.push(`"${word}" reads as self-promotion to a hiring manager`)
-  return { refusals, flags }
+  return { refusals, flags: [...flags, ...superlativeFlags(texts)] }
 }
 
-/** The flags of an About proposal against the résumé as it is now; none for any other proposal. */
-export const aboutFlags = (p: Proposal, resume: ResumeData) => (p.role === aboutSection ? checkAboutProposal(p, resume).flags : null)
+/** True when the page no longer has the text the proposal changes (another change merged first): applying it would change nothing. */
+export const isStale = (p: AboutChange, about: About) => {
+  if (p.field === 'intro') return norm(p.currentText) !== norm(about.intro)
+  if (p.field !== 'paragraph' || !p.currentText) return false
+  return matchParagraph(about.paragraphs, p.currentText).length === 0
+}
+export const staleNote = 'The About page no longer has this proposal\'s current text (another change went live first): read get_resume and propose again. The flags read the proposed text alone.'
+
+/** An About proposal against the résumé as it is now: its flags, and whether it is stale; null for any other proposal. */
+export const aboutReview = (p: Proposal, resume: ResumeData) => {
+  if (p.role !== aboutSection) return null
+  if (!isStale(p, resume.about)) return { flags: checkAboutProposal(p, resume).flags, stale: false }
+  const texts = p.proposedText ? [p.proposedText] : []
+  return { flags: [...sentenceFlags(texts, resume), ...superlativeFlags(texts)], stale: true }
+}

@@ -133,7 +133,7 @@ export function ResumePage({ resume, proposals }: { resume: ResumeInfo; proposal
 
       <section className="card" data-part="Proposals">
         <div className="card-head"><h2>Proposals from Claude</h2></div>
-        <p className="note">At the end of an MCP session Claude compares the dossier with the résumé and proposes edits; you approve or reject them in that conversation. Approved ones reach the site through a site update (request_site_update, several at once) and are marked applied when its pull request merges, or as soon as the résumé is seen to carry them.</p>
+        <p className="note">At the end of an MCP session Claude compares the dossier with the résumé and the About page and proposes edits; you approve or reject them in that conversation. Approved ones reach the site through a site update (request_site_update, several at once) and are marked applied when its pull request merges, or as soon as the résumé is seen to carry them.</p>
         {proposals === null ? <p className="empty">Loading…</p> : <DataTable columns={proposalColumns} rows={proposals} rowKey={(row) => String(row.id)} empty="None yet. When you wrap up a session, Claude proposes edits to the résumé and the About page; they show up here." label="Résumé proposals" />}
       </section>
 

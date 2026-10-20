@@ -136,7 +136,11 @@ Technical approach table.
   - It refuses HTML (`<` followed by a letter, `/` or `!`), Markdown links and images
     (`](`), a heading, list marker, quote or fence at the start, backticks, `[[` and `]]`
     (the assistant's source markers, C-10), URLs (`://`), line breaks (`\r`, `\n`), and any control or format character (`\p{Cc}`, `\p{Cf}`,
-    which covers zero-width, bidi and tag characters).
+    which covers zero-width, bidi and tag characters). Since the r1 review this is an
+    allowlist: after NFC, every character outside letters, digits, punctuation, spaces,
+    currency and math signs (`\p{L}\p{N}\p{P}\p{Zs}\p{Sc}\p{Sm}`) is refused, and so are
+    the Hangul filler letters. That also refuses line and paragraph separators, combining
+    marks, variation selectors and symbols such as the braille blank.
   - Length caps (the designer's): the intro is one sentence of 120 characters or fewer.
     The first paragraph has 220 characters or fewer, and each other paragraph 700 or
     fewer. There are 2 to 4 paragraphs, with 1,200 characters or fewer in total. Text
@@ -194,7 +198,9 @@ Technical approach table.
   Otherwise it returns false, including for an unknown field with role `about`.
 - AC-19: The deploy sends no "your résumé is live" email when `diffResume` finds no change
   and the PDF is not in the diff. This covers this pull request and every later About-only
-  change. The fix is in `scripts/resume-mail.mjs`, with a test in
+  change. The Site update's "résumé ready to review" email follows the same rule, since it
+  would have nothing to describe (GitHub still notifies Steven of the pull request). The fix
+  is in `scripts/resume-mail.mjs` (`mailPlan`), with a test in
   `scripts/resume-mail.test.mjs`; no workflow file changes.
 
 ### The assistant reads the same About copy (Steven, 2026-10-19)
@@ -283,6 +289,10 @@ Files: `functions/_lib/ask/prompt.ts` (the `about` template, line ~40, and its u
   proposal target of its own in that follow-up. The side-note facts never become About
   prose (AC-3, AC-8).
 - An About section in the "résumé is live" email.
+- The AC-8 phrase lists refuse some ordinary product prose ("now available in every Windows
+  PC", "executive sponsor", "citizen developers", "moving to AI"), and a refusal has no
+  override in the MCP. Follow-up (senior developer, r1): turn the ambiguous phrases into
+  flags, or require a capitalised place or a date after them.
 - The About page's search description in `src/pageMeta.ts`; proposal targets on other
   pages; readable labels for résumé rows in the Where column.
 - Any change to the Site update or Review workflow or to the agent team.

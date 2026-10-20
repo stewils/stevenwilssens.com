@@ -144,8 +144,22 @@ export function diffResume(before, after) {
 }
 
 const PDF_PATH = 'public/steven-wilssens-resume-2026.pdf'
-/** Whether a change is worth an email: one diffResume sees, or a new PDF. A change only to data the email does not describe (the About copy) sends nothing. */
+/** Whether a change is worth an email: one diffResume sees, or a new PDF. A change only to data the email does not describe (the About page, for one) sends nothing. */
 export const shouldMail = (touched, changes) => changes.length > 0 || touched.split(/\s+/).includes(PDF_PATH)
+
+/**
+ * What an email between two commits would describe, or why there is none to send: nothing
+ * in src/resume.ts or the PDF changed, or only data the email does not describe changed
+ * (the About page, for one) and the PDF did not. The same for the live and the review email.
+ * `touched` is what git lists as changed among those two files; `load` reads src/resume.ts at a commit.
+ */
+export async function mailPlan({ before, after, touched, load = loadResumeAt }) {
+  if (!touched.trim()) return { skip: 'The resume did not change between these commits; no email.' }
+  const [was, now] = await Promise.all([load(before), load(after)])
+  const changes = diffResume(was, now)
+  if (!shouldMail(touched, changes)) return { skip: 'Only resume data the email does not describe changed (such as the About page), and the PDF did not; no email.' }
+  return { changes }
+}
 
 // ---------------------------------------------------------------------------------
 // The summary: Claude when there is a key, the records themselves when there is not
@@ -408,12 +422,9 @@ async function main() {
 
   const after = values.after
   const before = isCommit(values.before) ? values.before : `${after}^`
-  const touched = git('diff', '--name-only', before, after, '--', 'src/resume.ts', PDF_PATH).trim()
-  if (!touched) { console.log('The resume did not change between these commits; no email.'); return }
-
-  const [was, now] = await Promise.all([loadResumeAt(before), loadResumeAt(after)])
-  const changes = diffResume(was, now)
-  if (!shouldMail(touched, changes)) { console.log('Only resume data the email does not describe changed (the About page), and the PDF did not; no email.'); return }
+  const plan = await mailPlan({ before, after, touched: git('diff', '--name-only', before, after, '--', 'src/resume.ts', PDF_PATH) })
+  if (plan.skip) { console.log(plan.skip); return }
+  const { changes } = plan
   const report = values.report && existsSync(values.report) ? JSON.parse(readFileSync(values.report, 'utf8')) : null
   const newFindings = values['new-findings'] && existsSync(values['new-findings']) ? readFileSync(values['new-findings'], 'utf8').split('\n').map((line) => line.trim()).filter(Boolean) : []
   const title = firstLine(values.title)

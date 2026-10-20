@@ -531,8 +531,8 @@ describe('the About page', () => {
 
   it('proposes a new intro, and replaces, adds and removes a paragraph, storing the live wording', async () => {
     const store = new MemoryStore()
-    // Quoted the way read_site_page shows it: curly quotes, extra spaces.
-    const intro = await propose(store, { field: 'intro', kind: 'replace', current_text: `  ${about.intro.replace(/'/g, '’')}  `, proposed_text: 'A product leader building in data and AI after Microsoft.' })
+    // Quoted with extra spaces around and inside (the quotes and dashes are matchParagraph's, in about.test.ts).
+    const intro = await propose(store, { field: 'intro', kind: 'replace', current_text: `  ${about.intro.replace(/ /g, '  ')}  `, proposed_text: 'A product leader building in data and AI after Microsoft.' })
     expect(intro.isError).toBe(false)
     expect(intro.json!.proposed).toMatchObject({ role: 'about', field: 'intro', kind: 'replace', currentText: about.intro, flags: [] })
     expect(intro.json!.next).toMatch(/^Show Steven the current and proposed About text side by side/)
@@ -566,6 +566,8 @@ describe('the About page', () => {
     expect((await propose(store, { field: 'paragraph', kind: 'replace', current_text: third, proposed_text: 'See <b>this</b>.' })).text).toMatch(/^the About page would not pass its checks: paragraph 3 has HTML/)
     expect((await propose(store, { field: 'paragraph', kind: 'replace', current_text: third, proposed_text: 'I am based in Austin, Texas.' })).text).toContain('the side-note facts change through the résumé proposals')
     expect((await propose(store, { field: 'intro', kind: 'replace', current_text: about.intro, proposed_text: 'One.\nTwo.' })).text).toContain('the intro has a line break')
+    // The refusal names the real length, not one cut at 4,000.
+    expect((await propose(store, { field: 'paragraph', kind: 'replace', current_text: third, proposed_text: `${'a'.repeat(4999)}.` })).text).toContain('paragraph 3 has 5000 characters; at most 700')
     expect(store.proposals).toHaveLength(0)
   })
 
@@ -581,9 +583,19 @@ describe('the About page', () => {
     const reviewed = (await call(store, 'review_resume_proposal', { id: proposed.id, decision: 'approve' })).json!.reviewed as Shaped & { status: string }
     expect(reviewed).toMatchObject({ status: 'approved', flags: proposed.flags })
     expect((await call(store, 'review_resume_proposal', { id: proposed.id, decision: 'reject' })).json!.reviewed).toMatchObject({ status: 'rejected' })
+    expect(reviewed).not.toHaveProperty('stale')
     // A résumé proposal has no flags.
     await store.insertProposal({ role: 'headline', field: null, kind: 'replace', currentText: 'a', proposedText: 'b', rationale: 'r', basedOn: null }, 1)
     expect(((await call(store, 'list_resume_proposals')).json!.proposals as Shaped[])[1]).not.toHaveProperty('flags')
+    // An approved About proposal whose current text is no longer on the page says so, and
+    // keeps the flags of its own text; once applied or rejected it no longer warns.
+    const stale = await store.insertProposal({ role: 'about', field: 'paragraph', kind: 'replace', currentText: 'A paragraph that went away.', proposedText: 'I am a visionary.', rationale: 'r', basedOn: null }, 1)
+    await store.decideProposal(stale.id, 'approved', null, 2)
+    const listedStale = ((await call(store, 'list_resume_proposals', { status: 'approved' })).json!.proposals as (Shaped & { stale?: string })[])[0]
+    expect(listedStale).toMatchObject({ id: stale.id, flags: ['"visionary" reads as self-promotion to a hiring manager'] })
+    expect(listedStale.stale).toMatch(/^The About page no longer has this proposal's current text/)
+    await store.decideProposal(stale.id, 'rejected', null, 3)
+    expect(((await call(store, 'list_resume_proposals', { status: 'rejected' })).json!.proposals as Shaped[]).find((p) => p.id === stale.id)).not.toHaveProperty('stale')
   })
 
   it('is not there on the public server: the same refusal as any owner tool, nothing stored, no About in get_resume (T-1, T-8)', async () => {

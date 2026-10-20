@@ -3,7 +3,7 @@
 // in src/resume.ts, which has to pass every rule with no flag.
 import { describe, expect, it } from 'vitest'
 import { about as liveAbout } from '../../../src/resume'
-import { aboutFlags, aboutLimits, applyAbout, checkAboutProposal, checkAboutText, matchParagraph, sideNoteRefusal, superlatives, titlesIn, type AboutChange } from './about'
+import { aboutLimits, aboutReview, applyAbout, checkAboutProposal, checkAboutText, isStale, matchParagraph, sideNoteRefusal, superlatives, titlesIn, type AboutChange } from './about'
 import { normWording } from '../../../src/admin/where'
 import { liveResume, norm, type ResumeData } from './proposals'
 import type { Proposal } from './store'
@@ -81,6 +81,20 @@ describe('the plain-text validator', () => {
       ['Tag \u{E0041}character.', /invisible/],
       ['Byte﻿order mark.', /invisible/],
       ['Bell\u0007.', /invisible/],
+      // Beyond control and format characters: line and paragraph separators, variation
+      // selectors (byte smuggling after a visible letter), the combining grapheme joiner,
+      // a mark NFC cannot compose, the Hangul fillers, the braille blank and other symbols.
+      ['Line\u2028separator.', /invisible/],
+      ['Paragraph\u2029separator.', /invisible/],
+      ['Selector\uFE0F here.', /invisible/],
+      ['Selector \u{E0100}here.', /invisible/],
+      ['Joiner\u034F here.', /invisible/],
+      ['A lone mark x\u0301 here.', /invisible/],
+      ['Filler \u115F\u1160 here.', /invisible/],
+      ['Filler \u3164 here.', /invisible/],
+      ['Filler \uFFA0 here.', /invisible/],
+      ['Braille \u2800 blank.', /invisible/],
+      ['A symbol © here.', /invisible/],
     ]
     for (const [text, why] of cases) {
       const refusals = withParagraph(text)
@@ -92,8 +106,9 @@ describe('the plain-text validator', () => {
     expect(checkAboutText({ intro: 'A <i>leader</i>.', paragraphs: [first, second] })[0]).toMatch(/^the intro has HTML/)
   })
 
-  it('takes plain prose with an ampersand, curly quotes, dashes and a less-than sign', () => {
-    expect(withParagraph('Windows & Devices — it’s “data”, 3 < 4 and 2 > 1.')).toEqual([])
+  it('takes plain prose with an ampersand, curly quotes, dashes, signs and accents, also when they come decomposed', () => {
+    expect(withParagraph('Windows & Devices — it’s “data”, 3 < 4 and 2 > 1, 30% for $5 · 1.6B+.')).toEqual([])
+    expect(withParagraph('Zoë, Kraków and Café, written decomposed: Zoe\u0308, Krako\u0301w and Cafe\u0301.')).toEqual([])
     expect(checkAboutText(liveAbout)).toEqual([])
   })
 
@@ -145,6 +160,11 @@ describe('the side-note facts (recruiter guard 1)', () => {
     expect(refusalsFor('I am based in Austin, Texas.')[0]).toContain('a location, work authorization or availability')
   })
 
+  it('refuses each location, authorization and availability phrase when it does not say what profile says', () => {
+    const phrases = ['I live in Austin.', 'I am living in Austin.', 'I am located in Austin.', 'I am relocating to Austin.', 'I would relocate for it.', 'I am moving to Austin.', 'I have a green card.', 'I hold a visa.', 'I need an H-1B.', 'My employer will sponsor me.', 'I am a citizen of Belgium.', 'I am a permanent resident.', 'I am authorised to work in the EU.', 'I am authorized to work in the EU.', 'I am available from May.', 'I am available in May.', 'I am available immediately.', 'I am available starting May.', 'My start date is open.', 'My notice period is short.']
+    for (const text of phrases) expect(refusalsFor(text), text).toEqual([`"${text}" states a location, work authorization or availability that the résumé does not: ${sideNoteRefusal}`])
+  })
+
   it('takes what profile and the roles say, and sentences that only mention a place or a team', () => {
     for (const text of ['I am based in Seattle, Washington.', 'I am a US permanent resident (green card).', 'I am available now.', 'I was a Senior Product Manager at Microsoft.', 'I was a developer and team lead in Belgium.', 'The Operating System Group shipped it.', 'I led a team of engineers.']) expect(refusalsFor(text), text).toEqual([])
   })
@@ -173,6 +193,7 @@ describe('the recruiter flags', () => {
     expect(flagsFor('I am leading the data work for Windows.')).toHaveLength(1)
     expect(flagsFor('I’m leading spatial audio on Xbox.')).toHaveLength(1)
     expect(flagsFor('I work at Microsoft.')).toHaveLength(1)
+    for (const text of ['I manage the Windows data team.', 'I run audio for Xbox.', 'I own the Windows data budget.', 'I work on Windows.']) expect(flagsFor(text), text).toEqual([`"${text}" is in the present tense about a past role (Steven left Microsoft in September 2026)`])
     expect(flagsFor('I led the Windows data team at Microsoft.')).toEqual([])
     expect(flagsFor('I lead product on my own AI projects.')).toEqual([])
   })
@@ -206,10 +227,26 @@ describe('the recruiter flags', () => {
     expect(check(change, { ...resume, honors: [['Seven', 'In 7 days']] }).flags).toEqual([])
   })
 
-  it('gives flags for an About proposal only', () => {
+  it('reviews an About proposal only, and reads a stale one on its proposed text alone', () => {
     const p: Proposal = { id: 1, createdAt: 0, updatedAt: 0, role: 'about', field: 'paragraph', kind: 'replace', currentText: third, proposedText: 'A visionary.', rationale: 'r', basedOn: null, status: 'proposed', decisionNote: null }
-    expect(aboutFlags(p, resume)).toEqual(['"visionary" reads as self-promotion to a hiring manager'])
-    expect(aboutFlags({ ...p, role: 'headline' }, resume)).toBeNull()
+    expect(aboutReview(p, resume)).toEqual({ flags: ['"visionary" reads as self-promotion to a hiring manager'], stale: false })
+    expect(aboutReview({ ...p, role: 'headline' }, resume)).toBeNull()
+    // Another change went live first: the current text is gone, so applying it would change
+    // nothing; the flags still read the proposed text (numbers, tense, superlatives).
+    const gone = { ...p, currentText: 'A paragraph no longer on the page.', proposedText: 'I lead the Windows team as a visionary of 45.' }
+    expect(aboutReview(gone, resume)).toEqual({ flags: ['"I lead the Windows team as a visionary of 45." is in the present tense about a past role (Steven left Microsoft in September 2026)', 'the number 45 needs a source: no role bullet, key achievement or profile field in src/resume.ts carries it', '"visionary" reads as self-promotion to a hiring manager'], stale: true })
+    expect(aboutReview({ ...gone, kind: 'remove', proposedText: null }, resume)).toEqual({ flags: [], stale: true })
+  })
+
+  it('knows when the page no longer has the text a proposal changes', () => {
+    const about = resume.about
+    expect(isStale({ field: 'intro', kind: 'replace', currentText: ` ${intro} `, proposedText: 'x' }, about)).toBe(false)
+    expect(isStale({ field: 'intro', kind: 'replace', currentText: 'An older intro.', proposedText: 'x' }, about)).toBe(true)
+    expect(isStale(replace(second, 'x'), about)).toBe(false)
+    expect(isStale(replace('gone', 'x'), about)).toBe(true)
+    expect(isStale({ field: 'paragraph', kind: 'add', currentText: 'gone', proposedText: 'x' }, about)).toBe(true)
+    expect(isStale({ field: 'paragraph', kind: 'add', currentText: null, proposedText: 'x' }, about)).toBe(false)
+    expect(isStale({ field: 'title', kind: 'replace', currentText: 'gone', proposedText: 'x' }, about)).toBe(false)
   })
 })
 
