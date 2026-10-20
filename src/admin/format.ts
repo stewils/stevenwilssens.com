@@ -49,8 +49,11 @@ export function fillDays(rows: { day: string }[], days: number, now = new Date()
 }
 
 export const formatUsd = (micro: number) => `$${(micro / 1_000_000).toFixed(2)}`
-// Whole dollars, for a chart axis ($100, not $100.00).
-export const formatUsdWhole = (micro: number) => `$${Math.round(micro / 1_000_000).toLocaleString('en-US')}`
+// For a chart axis: the cents only when there are some ($100 and $12.50, never $13 for $12.50).
+export const formatUsdAxis = (micro: number) => {
+  const whole = micro % 1_000_000 === 0
+  return `$${(micro / 1_000_000).toLocaleString('en-US', { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 })}`
+}
 
 export const formatBytes = (bytes: number) => (bytes >= 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`)
 

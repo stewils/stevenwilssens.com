@@ -18,7 +18,8 @@ export type Column<T> = {
 
 // rowName names a row for its open button ("Open details for …"); by default the first column that holds text.
 // search={false} leaves out the search box for a table whose rows are fixed (twelve months).
-type Props<T> = { columns: Column<T>[]; rows: T[]; rowKey: (row: T, index: number) => string; empty?: string; label?: string; expand?: (row: T) => ReactNode; rowName?: (row: T) => string; search?: boolean }
+// stack makes a narrower table stack into cards on a phone too, like the wide ones next to it.
+type Props<T> = { columns: Column<T>[]; rows: T[]; rowKey: (row: T, index: number) => string; empty?: string; label?: string; expand?: (row: T) => ReactNode; rowName?: (row: T) => string; search?: boolean; stack?: boolean }
 
 // A search box from this many rows on; phones stack tables this wide into cards.
 const SEARCH_FROM = 6
@@ -26,7 +27,7 @@ const STACK_FROM = 5
 
 const classes = (...names: (string | false | undefined | null)[]) => names.filter(Boolean).join(' ') || undefined
 
-export function DataTable<T>({ columns, rows, rowKey, empty = 'No data yet', label, expand, search = true, rowName = (row) => String(columns.map((column) => column.value(row)).find((value) => typeof value === 'string' && value) ?? '') }: Props<T>) {
+export function DataTable<T>({ columns, rows, rowKey, empty = 'No data yet', label, expand, search = true, stack = columns.length >= STACK_FROM, rowName = (row) => String(columns.map((column) => column.value(row)).find((value) => typeof value === 'string' && value) ?? '') }: Props<T>) {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<Sort>(null)
   const [open, setOpen] = useState<string | null>(null)
@@ -47,7 +48,7 @@ export function DataTable<T>({ columns, rows, rowKey, empty = 'No data yet', lab
         </div>
       )}
       <div className="table-scroll">
-        <table className={classes('data', columns.length >= STACK_FROM && 'stack')} aria-label={label}>
+        <table className={classes('data', stack && 'stack')} aria-label={label}>
           <thead>
             <tr>
               {columns.map((column) => (

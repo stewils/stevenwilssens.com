@@ -30,12 +30,16 @@ export const MAX_ROWS = 64
 // The server takes 16 KB a body; a long branch name makes 64 rows larger than that.
 export const MAX_BODY_BYTES = 15 * 1024
 export const REQUEST_MS = 2500
-// Stop starting new requests after this, so the last one ends inside the hook's 5 seconds.
+// Counted from the hook's start, lock waits included: no new request starts after SEND_FOR_MS,
+// so the last one ends by SEND_FOR_MS + REQUEST_MS, and the last lock wait ends by FINISH_BY_MS,
+// inside the hook's 5 seconds.
 export const SEND_FOR_MS = 2000
+export const FINISH_BY_MS = 4500
 // Two sessions can end at once: each change to the queue holds its lock file. A session waits
 // for it this long, then goes on without it; a lock older than STALE_LOCK_MS was left by a kill.
 export const LOCK_WAIT_MS = 1000
 export const STALE_LOCK_MS = 10_000
+const LOCK_PAUSE_MS = 20
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const ROLE = /^[a-z][a-z0-9-]{0,40}$/
@@ -255,20 +259,24 @@ export const writeQueue = (root, entries) => {
 const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 
 // Runs `change` on the queue while holding its lock file (`<queue>.lock`, created with wx).
-export const withQueueLock = (root, change, { now = Date.now } = {}) => {
+// It waits at most `waitMs`, by the clock and by the number of tries, so a clock that does not
+// move (a test's fake Date) cannot make it spin.
+export const withQueueLock = (root, change, { now = Date.now, waitMs = LOCK_WAIT_MS } = {}) => {
   const lock = join(root, `${QUEUE_FILE}.lock`)
-  const until = now() + LOCK_WAIT_MS
+  const until = now() + waitMs
+  let tries = Math.ceil(waitMs / LOCK_PAUSE_MS) + 2
   let fd = null
-  while (fd === null) {
+  while (fd === null && tries-- > 0) {
     try {
       fd = openSync(lock, 'wx')
     } catch (error) {
       if (error?.code !== 'EEXIST') throw error
       let age = 0
+      // The lock went between the open and the stat: the next open takes it.
       try { age = now() - statSync(lock).mtimeMs } catch { continue }
       if (age > STALE_LOCK_MS) { rmSync(lock, { force: true }); continue }
       if (now() >= until) break
-      pause(20)
+      pause(LOCK_PAUSE_MS)
     }
   }
   try {
@@ -279,11 +287,11 @@ export const withQueueLock = (root, change, { now = Date.now } = {}) => {
 }
 
 // Adds payloads at the end of the queue, under the lock.
-export const appendQueue = (root, lines) => withQueueLock(root, (queued) => writeQueue(root, [...queued, ...lines]))
+export const appendQueue = (root, lines, options) => withQueueLock(root, (queued) => writeQueue(root, [...queued, ...lines]), options)
 
 // Takes out the entries this session sent or dropped, under the lock, keeping anything another
 // session queued meanwhile.
-export const settleQueue = (root, handled) => withQueueLock(root, (queued) => {
+export const settleQueue = (root, handled, options) => withQueueLock(root, (queued) => {
   const done = new Map()
   for (const line of handled) done.set(line, (done.get(line) ?? 0) + 1)
   return writeQueue(root, queued.filter((line) => {
@@ -292,7 +300,7 @@ export const settleQueue = (root, handled) => withQueueLock(root, (queued) => {
     done.set(line, left - 1)
     return false
   }))
-})
+}, options)
 
 // Sends the queue in order. Accepted: removed. 429 (the day's cap), a server error, a timeout
 // or no network: kept, and nothing more is tried now. Any other refusal: dropped, one line.
@@ -339,12 +347,18 @@ export async function main({ argv = [], env = {}, stdin = '', fetch = globalThis
     const projects = projectsDir(env, home)
     const token = env.COSTS_INGEST_TOKEN || ''
     const url = ingestUrl(env)
-    const flush = async (deadline) => {
+    const started = now()
+    const elapsed = () => now() - started
+    // At a session end the time already spent counts against the hook's 5 seconds (SEND_FOR_MS,
+    // FINISH_BY_MS); the backfill has no limit.
+    const flush = async (inHook) => {
       const queued = readQueue(root)
       if (!token || !queued.length) return { remaining: queued, sentRows: 0, stopped: queued.length > 0 }
-      const result = await sendQueue(queued, { fetch, token, url, now, stderr, deadline })
-      const remaining = settleQueue(root, queued.slice(0, queued.length - result.remaining.length))
-      return { ...result, remaining }
+      const result = await sendQueue(queued, { fetch, token, url, now, stderr, deadline: inHook ? SEND_FOR_MS - elapsed() : Infinity })
+      const handled = queued.slice(0, queued.length - result.remaining.length)
+      if (!handled.length) return result
+      const waitMs = inHook ? Math.min(LOCK_WAIT_MS, Math.max(0, FINISH_BY_MS - elapsed())) : LOCK_WAIT_MS
+      return { ...result, remaining: settleQueue(root, handled, { now, waitMs }) }
     }
 
     if (argv.includes('--backfill')) {
@@ -359,8 +373,8 @@ export async function main({ argv = [], env = {}, stdin = '', fetch = globalThis
         if (!UUID.test(sessionId)) continue
         sessions++
         const payloads = sessionPayloads({ sessionId, transcript: join(folder, name), env, now: now() })
-        appendQueue(root, payloads.map((payload) => JSON.stringify(payload)))
-        const result = await flush(Infinity)
+        appendQueue(root, payloads.map((payload) => JSON.stringify(payload)), { now })
+        const result = await flush(false)
         sent += result.sentRows
         left = result.remaining
         // The day's cap or no network: the rest waits for the next session end or the next backfill.
@@ -377,9 +391,9 @@ export async function main({ argv = [], env = {}, stdin = '', fetch = globalThis
     if (UUID.test(sessionId) && transcript && isInside(projects, transcript)) {
       const payloads = sessionPayloads({ sessionId, transcript, env, now: now() })
       // Queued first, so a kill at the hook's timeout loses nothing.
-      if (payloads.length) appendQueue(root, payloads.map((payload) => JSON.stringify(payload)))
+      if (payloads.length) appendQueue(root, payloads.map((payload) => JSON.stringify(payload)), { now })
     }
-    await flush(SEND_FOR_MS)
+    await flush(true)
   } catch {
     stderr('dev-costs: the costs of this session could not be recorded')
   }

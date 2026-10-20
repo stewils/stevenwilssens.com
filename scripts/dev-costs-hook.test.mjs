@@ -10,8 +10,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  appendQueue, billingOf, capQueue, collect, ingestUrl, isBranch, isInside, LOCK_WAIT_MS, main, MAX_BODY_BYTES, MAX_QUEUE, MAX_QUEUE_BYTES, MAX_ROWS, parseLines, payloadsOf, PRODUCTION_URL, QUEUE_FILE,
-  readAgents, readQueue, sendQueue, sessionPayloads, STALE_LOCK_MS, summarize, withQueueLock, writeQueue,
+  appendQueue, billingOf, capQueue, collect, FINISH_BY_MS, ingestUrl, isBranch, isInside, LOCK_WAIT_MS, main, MAX_BODY_BYTES, MAX_QUEUE, MAX_QUEUE_BYTES, MAX_ROWS, parseLines, payloadsOf, PRODUCTION_URL, QUEUE_FILE,
+  readAgents, readQueue, SEND_FOR_MS, sendQueue, sessionPayloads, settleQueue, STALE_LOCK_MS, summarize, withQueueLock, writeQueue,
 } from '../.claude/hooks/dev-costs.mjs'
 import { parseIngest } from '../functions/_lib/costs/ingest.ts'
 
@@ -293,6 +293,49 @@ describe('the hook never gets in the way', () => {
     await run({ env: { COSTS_INGEST_TOKEN: TOKEN }, fetch: ok.fetch })
     expect(ok.calls).toHaveLength(2)
     expect(queueText()).toBe('')
+  })
+
+  it('leaves no lock behind after adding to the queue and after settling it (real clock)', () => {
+    const lock = join(root, `${QUEUE_FILE}.lock`)
+    const entry = JSON.stringify({ v: 1, source: 'local', rows: [] })
+    appendQueue(root, [entry, entry])
+    expect(existsSync(lock)).toBe(false)
+    expect(settleQueue(root, [entry])).toEqual([entry])
+    expect(existsSync(lock)).toBe(false)
+    expect(readdirSync(root)).toEqual([QUEUE_FILE])
+  })
+
+  it('gives up on a held lock after a bounded number of tries when the clock does not move', () => {
+    const lock = join(root, `${QUEUE_FILE}.lock`)
+    writeFileSync(lock, '')
+    const started = Date.now()
+    const frozen = Date.now()
+    expect(withQueueLock(root, (queued) => queued.length, { now: () => frozen })).toBe(0)
+    // About LOCK_WAIT_MS of pauses, not forever; the other session's lock stays.
+    expect(Date.now() - started).toBeLessThan(LOCK_WAIT_MS * 4)
+    expect(existsSync(lock)).toBe(true)
+  })
+
+  it('counts the time already spent against its two seconds: no request starts once they are gone', async () => {
+    let clock = NOW
+    const { calls, fetch } = fetchStub([200])
+    await run({ env: { COSTS_INGEST_TOKEN: TOKEN }, fetch, now: () => (clock += SEND_FOR_MS / 2 + 1) })
+    expect(calls).toHaveLength(0)
+    expect(readQueue(root)).toHaveLength(1)
+  })
+
+  it('does not wait for a lock after the request when the hook’s time is up, and still settles the queue', async () => {
+    const lock = join(root, `${QUEUE_FILE}.lock`)
+    let clock = NOW
+    const { calls, fetch } = fetchStub([200])
+    // Another session takes the lock while the request is out, and the request takes the time that is left.
+    const slow = async (...args) => { writeFileSync(lock, ''); clock += FINISH_BY_MS; return fetch(...args) }
+    const started = Date.now()
+    await run({ env: { COSTS_INGEST_TOKEN: TOKEN }, fetch: slow, now: () => clock })
+    expect(Date.now() - started).toBeLessThan(LOCK_WAIT_MS / 2)
+    expect(calls).toHaveLength(1)
+    expect(queueText()).toBe('')
+    expect(existsSync(lock)).toBe(true)
   })
 
   it('aborts a request that never answers after 2.5 seconds and keeps the payload', async () => {

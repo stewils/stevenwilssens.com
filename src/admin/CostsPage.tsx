@@ -2,7 +2,7 @@ import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { BarChart } from './Charts'
 import { amountText, commitLink, costOf, isOver, lineName, markOf, monthTitle, overBudget, parseAmount, pullLink, roleName, sum, total, zero } from './costs'
 import { DataTable, type Column } from './DataTable'
-import { formatAgo, formatCost, formatNumber, formatPercent, formatUsd, formatUsdWhole, niceMax, trendOf } from './format'
+import { formatAgo, formatCost, formatNumber, formatPercent, formatUsd, formatUsdAxis, niceMax, trendOf } from './format'
 import type { CostFeature, CostMoney, CostMonth, CostRole, CostsInfo } from './types'
 
 // What each change cost to build with Claude (specs/dev-costs.md): this month, every feature
@@ -241,7 +241,7 @@ export function CostsPage({ info, onBudget, roleNames = new Map() }: { info: Cos
             title="The last 12 months"
             legend={<span className="chart-legend"><span><i className="billed" />billed</span><span><i className="est" />estimated</span></span>}
             readout={lastFull}
-            format={formatUsdWhole}
+            format={formatUsdAxis}
             max={niceMax(Math.max(...months.map((month) => total(month.money)), 1))}
             axisLabels={months.map((month) => monthTitle(month.month, 'short'))}
             bars={months.map((month) => {
@@ -269,7 +269,7 @@ export function CostsPage({ info, onBudget, roleNames = new Map() }: { info: Cos
           <div><span>Reviews after the first</span><strong><Money money={info.waste.reviews} /></strong><small>{share(info.waste.reviews)}</small></div>
           <div><span>Closed or redone</span><strong><Money money={info.waste.closed} /></strong><small>{share(info.waste.closed)}</small></div>
         </div>
-        <DataTable columns={wasteColumns} rows={wasted} rowKey={(row) => row.feature.branch ?? '(no feature)'} label="Waste per feature" empty="No waste yet: every pull request merged after its first review." />
+        <DataTable columns={wasteColumns} rows={wasted} rowKey={(row) => row.feature.branch ?? '(no feature)'} label="Waste per feature" stack empty="No waste yet: every pull request merged after its first review." />
       </section>
     </>
   )

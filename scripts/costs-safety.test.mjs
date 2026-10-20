@@ -101,10 +101,13 @@ describe('the Costs page’s styles', () => {
     expect(css).toMatch(/\.primary:focus-visible \{[^}]*outline: 2px solid var\(--focus\)/)
   })
 
-  it('puts each month label under its bar, every other one on a narrow plot', () => {
+  it('puts each month label under its bar, every other one on a narrow plot, unclipped', () => {
     expect(css).toMatch(/\.chart--stacked \{[^}]*container-type: inline-size/)
     expect(css).toMatch(/\.chart--stacked \.chart-axis \{[^}]*display: grid/)
-    expect(css).toMatch(/@container \(max-width: 480px\) \{ \.chart--stacked \.chart-axis span:nth-child\(even\) \{ visibility: hidden; \} \}/)
+    const narrow = /@container \(max-width: 480px\) \{([^@]*?)\n\}/.exec(css)?.[1] ?? ''
+    expect(narrow).toMatch(/\.chart--stacked \.chart-axis span:nth-child\(even\) \{ visibility: hidden; \}/)
+    // The labels it keeps are not clipped: they overflow into the hidden cells beside them, centred.
+    expect(narrow).toMatch(/\.chart--stacked \.chart-axis span \{ overflow: visible; display: flex; justify-content: center; white-space: nowrap; \}/)
   })
 
   it('draws a note beside the Team flow quieter than a step: dashed, muted, 12px', () => {

@@ -113,7 +113,7 @@ describe('Features', () => {
   })
 
   it('opens a row by click, Enter or Space and shows every round on its own line with its roles, and the lead', async () => {
-    const user = userEvent.setup({ advanceTimers: () => {} })
+    const user = userEvent.setup({ delay: null })
     show()
     const toggle = within(card('Features')).getByRole('button', { name: 'Open details for dev-costs' })
     toggle.focus()
@@ -142,7 +142,7 @@ describe('Features', () => {
   })
 
   it('sorts by any column, searches, and keeps an open row open when its budget moves it (AC-21, D-7)', async () => {
-    const user = userEvent.setup({ advanceTimers: () => {} })
+    const user = userEvent.setup({ delay: null })
     const info = makeCosts({ features: makeCosts().features.toSpliced(4, 0, makeFeature({ branch: 'big-one', pull: null, total: money(20), budgetMicro: 30_000_000 })) })
     const { rerender } = show(info)
     const part = card('Features')
@@ -205,13 +205,14 @@ describe('Over time', () => {
     expect(within(part).queryByRole('searchbox')).not.toBeInTheDocument()
   })
 
-  it('reads an empty month as nothing recorded, and the axis in whole dollars', () => {
+  it('reads an empty month as nothing recorded, and the axis in dollars with cents only when there are some', () => {
     const months = makeCosts().months.map((month) => (month.month === '2025-11' ? { ...month, money: money(0), features: 0 } : month))
     show(makeCosts({ months }))
     const part = card('Over time')
     expect(within(part).getByRole('button', { name: 'November: nothing recorded' })).toBeInTheDocument()
     const axis = [...part.querySelectorAll('.chart-grid em')].map((label) => label.textContent)
-    for (const label of axis) expect(label).toMatch(/^\$\d[\d,]*$/)
+    expect(axis).toHaveLength(2)
+    for (const label of axis) expect(label).toMatch(/^\$\d[\d,]*(\.\d\d)?$/)
     // One axis column per month, so each label sits under its bar.
     expect(part.querySelector<HTMLElement>('.chart-axis')!.style.gridTemplateColumns).toBe('repeat(12, minmax(0, 1fr))')
   })
@@ -258,8 +259,9 @@ describe('Waste', () => {
     expect(within(part).getByText('1 more review')).toHaveClass('badge', 'warn')
     expect(within(part).getByText('closed, not merged')).toHaveClass('badge', 'error')
     expect(within(part).getByText('redone by #56')).toHaveClass('badge', 'info')
-    // Four short headers, so the table fits a phone; the badges wrap inside their cell.
+    // Four short headers; on a small phone it stacks into cards like the other Costs tables.
     expect(within(within(part).getByRole('table')).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(['Feature', 'Why', 'Waste', 'Share'])
+    expect(within(part).getByRole('table')).toHaveClass('stack')
     expect(within(part).getByText('2 fix rounds').parentElement).toHaveClass('cost-why')
     // Roles and Waste are full-width cards, not squeezed into a grid.
     expect(part.parentElement!.matches('.grid')).toBe(false)
@@ -287,9 +289,11 @@ describe('a budget, by keyboard', () => {
     await user.keyboard('{Enter}')
     return screen.getByLabelText(`Budget for ${name}, in US dollars`)
   }
+  // The open row's budget form: role queries over the whole page are slow in jsdom.
+  const form = (field: HTMLElement) => within(field.closest('form')!)
 
   it('saves what is typed on Enter, says Saving… while it saves and keeps focus, then says it was saved', async () => {
-    const user = userEvent.setup({ advanceTimers: () => {} })
+    const user = userEvent.setup({ delay: null })
     let finish: (value: { ok: true }) => void = () => {}
     const onBudget = vi.fn<BudgetSave>(() => new Promise((resolve) => { finish = resolve }))
     show(makeCosts(), onBudget)
@@ -298,7 +302,7 @@ describe('a budget, by keyboard', () => {
     await user.clear(field)
     await user.type(field, '$10,50{Enter}')
     expect(onBudget).toHaveBeenCalledWith('dev-costs', 10_500_000)
-    const save = screen.getByRole('button', { name: 'Saving…' })
+    const save = form(field).getByRole('button', { name: 'Saving…' })
     expect(save).toHaveAttribute('aria-disabled', 'true')
     // A second Enter while it saves sends nothing more.
     await user.type(field, '{Enter}')
@@ -311,7 +315,7 @@ describe('a budget, by keyboard', () => {
   })
 
   it('puts the saved amount back on Escape, and refuses what is not an amount with a message tied to the field', async () => {
-    const user = userEvent.setup({ advanceTimers: () => {} })
+    const user = userEvent.setup({ delay: null })
     const onBudget = vi.fn<BudgetSave>(saved)
     show(makeCosts(), onBudget)
     const field = await open(user)
@@ -332,11 +336,10 @@ describe('a budget, by keyboard', () => {
   })
 
   it('removes a budget, moves focus to the empty field and says so', async () => {
-    const user = userEvent.setup({ advanceTimers: () => {} })
+    const user = userEvent.setup({ delay: null })
     const onBudget = vi.fn<BudgetSave>(saved)
     show(makeCosts(), onBudget)
-    await open(user)
-    await user.click(screen.getByRole('button', { name: 'Remove budget' }))
+    await user.click(form(await open(user)).getByRole('button', { name: 'Remove budget' }))
     expect(onBudget).toHaveBeenCalledWith('dev-costs', null)
     expect(await screen.findByText('Budget removed for dev-costs.')).toBeInTheDocument()
     expect(screen.getByLabelText('Budget for dev-costs, in US dollars')).toHaveValue('')
@@ -344,20 +347,20 @@ describe('a budget, by keyboard', () => {
   })
 
   it('keeps the typed amount and focus on Save when saving fails', async () => {
-    const user = userEvent.setup({ advanceTimers: () => {} })
+    const user = userEvent.setup({ delay: null })
     show(makeCosts(), async () => ({ ok: false, reason: 'HTTP 500' }))
     const field = await open(user, 'resume-mail')
-    expect(screen.queryByRole('button', { name: 'Remove budget' })).not.toBeInTheDocument()
+    expect(form(field).queryByRole('button', { name: 'Remove budget' })).not.toBeInTheDocument()
     await user.type(field, '12')
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await user.click(form(field).getByRole('button', { name: 'Save' }))
     const status = await screen.findByText('Could not save (HTTP 500). Your amount is still in the field.')
     expect(status).toHaveClass('status-text', 'poor')
     expect(field).toHaveValue('12')
-    expect(screen.getByRole('button', { name: 'Save' })).toHaveFocus()
+    expect(form(field).getByRole('button', { name: 'Save' })).toHaveFocus()
   })
 
   it('says how close a feature is to its budget from 80%', async () => {
-    const user = userEvent.setup({ advanceTimers: () => {} })
+    const user = userEvent.setup({ delay: null })
     show(makeCosts({ features: [makeFeature({ total: money(8.6), budgetMicro: 10_000_000 })] }))
     await open(user)
     expect(screen.getByText('At 86% of its budget.')).toHaveClass('status-text', 'needs-improvement')

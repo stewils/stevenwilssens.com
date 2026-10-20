@@ -208,7 +208,12 @@ button { cursor: pointer; }
 .chart--stacked { container-type: inline-size; }
 .chart--stacked .chart-axis { display: grid; gap: 2px; text-align: center; }
 .chart--stacked .chart-axis span { min-width: 0; overflow: hidden; }
-@container (max-width: 480px) { .chart--stacked .chart-axis span:nth-child(even) { visibility: hidden; } }
+/* On a phone every other month is named, each overflowing into the hidden cells beside it so it
+   is not clipped ("Jar" for Jan), and centred under its bar. */
+@container (max-width: 480px) {
+  .chart--stacked .chart-axis span { overflow: visible; display: flex; justify-content: center; white-space: nowrap; }
+  .chart--stacked .chart-axis span:nth-child(even) { visibility: hidden; }
+}
 .chart--stacked .chart-bar { justify-content: center; }
 .chart--stacked .chart-bar > .chart-stack { display: flex; flex-direction: column; gap: 2px; width: 100%; max-width: 24px; background: none; border-radius: 4px 4px 0 0; overflow: hidden; }
 .chart-part { display: block; min-height: 0; flex-basis: 0; }

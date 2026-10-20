@@ -440,8 +440,8 @@ describe('the history (AC-6, AC-7)', () => {
     const m = generate({ root: r.dir })
     expect(m.history.updates.map((update) => update.summary)).toEqual(['Feature work', 'Base'])
     expect(m.history.updates[0].sha).toBe(own)
-    for (const subject of ["Merge branch 'main' into feature", "Merge remote-tracking branch 'origin/main' into x", "Merge branch 'review-team' into admin-team-page", "Merge branch 'a' of https://github.com/x/y into b", `Merge ${"a".repeat(40)} into ${"b".repeat(40)}`]) expect(SYNC_MERGE.test(subject), subject).toBe(true)
-    for (const subject of ['Merge pull request #4 from a/b', 'Merge feature: the page says so', "Merge branch 'feature'"]) expect(SYNC_MERGE.test(subject), subject).toBe(false)
+    for (const subject of ["Merge branch 'main' into feature", "Merge remote-tracking branch 'origin/main' into x", "Merge branch 'review-team' into admin-team-page", "Merge branch 'a' of https://github.com/x/y into b", `Merge ${"a".repeat(40)} into ${"b".repeat(40)}`, 'Merge main into dev-costs: the costs meter alongside the workflow team runs', 'Merge origin/main into x']) expect(SYNC_MERGE.test(subject), subject).toBe(true)
+    for (const subject of ['Merge pull request #4 from a/b', 'Merge feature: the page says so', "Merge branch 'feature'", 'Merge main-menu: the menu says so', 'Merge maintenance into x']) expect(SYNC_MERGE.test(subject), subject).toBe(false)
   }, SLOW)
 
   it('reads the pull request title from the merge alone: separators in a body cannot add a record', () => {

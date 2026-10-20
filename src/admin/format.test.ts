@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dayAxis, formatAgo, formatCost, formatDuration, formatUsd, formatUsdWhole, formatVital, niceMax, periodBefore, projectMonth, rateVital, trendOf } from './format'
+import { dayAxis, formatAgo, formatCost, formatDuration, formatUsd, formatUsdAxis, formatVital, niceMax, periodBefore, projectMonth, rateVital, trendOf } from './format'
 
 describe('chart and comparison helpers', () => {
   it('rounds an axis up to a clean maximum', () => {
@@ -67,10 +67,16 @@ describe('a development cost', () => {
 })
 
 describe('dollars', () => {
-  it('shows cents, or whole dollars on a chart axis', () => {
+  it('shows cents, and on a chart axis drops them only when they are zero', () => {
     expect(formatUsd(100_000_000)).toBe('$100.00')
-    expect(formatUsdWhole(100_000_000)).toBe('$100')
-    expect(formatUsdWhole(49_600_000)).toBe('$50')
-    expect(formatUsdWhole(1_234_000_000)).toBe('$1,234')
+    expect(formatUsdAxis(100_000_000)).toBe('$100')
+    expect(formatUsdAxis(1_234_000_000)).toBe('$1,234')
+    expect(formatUsdAxis(0)).toBe('$0')
+    // The mid line of a $25 or a $5 axis, and a month under $1.
+    expect(formatUsdAxis(12_500_000)).toBe('$12.50')
+    expect(formatUsdAxis(2_500_000)).toBe('$2.50')
+    expect(formatUsdAxis(500_000)).toBe('$0.50')
+    expect(formatUsdAxis(250_000)).toBe('$0.25')
+    expect(formatUsdAxis(1_250_500_000)).toBe('$1,250.50')
   })
 })

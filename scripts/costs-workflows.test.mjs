@@ -179,6 +179,27 @@ describe('the scripts, run', () => {
     expect(extract(null).written).toBe('micro=5645206\nturns=16\nms=418786\n')
   })
 
+  runs('read the file the step names before the one in RUNNER_TEMP when both are there', () => {
+    writeFileSync(`${temp}/claude-execution-output.json`, readFileSync(join(fixtures, 'long-tail.json')))
+    expect(extract('execution.json').written).toBe('micro=5645206\nturns=16\nms=418786\n')
+  })
+
+  runs('take up to $1,000, the most /api/costs takes, and name the cause above it', () => {
+    const own = (cost) => {
+      const file = `${temp}/own.json`
+      writeFileSync(file, JSON.stringify([{ type: 'result', total_cost_usd: cost, num_turns: 3, duration_ms: 999_999_999 }]))
+      writeFileSync(`${temp}/output`, '')
+      const result = bash(readScript, { EXECUTION_FILE: file, GITHUB_OUTPUT: `${temp}/output` })
+      return { out: result.stdout + result.stderr, written: readFileSync(`${temp}/output`, 'utf8') }
+    }
+    expect(own(1000).written).toBe('micro=1000000000\nturns=3\nms=999999999\n')
+    const over = own(1000.01)
+    expect(over.written).toBe('turns=3\nms=999999999\n')
+    expect(over.out.match(/::warning::/g)).toHaveLength(1)
+    expect(over.out).toContain('::warning::The run cost more than $1,000, more than the costs page takes: it is not recorded.')
+    expect(extract('huge.json').out).toContain('more than $1,000')
+  })
+
   runs('refuse an injected or a huge value, keeping the plain ones', () => {
     const injected = extract('injected.json')
     expect(injected.written).toBe('ms=100\n')
@@ -238,11 +259,17 @@ describe('the scripts, run', () => {
   })
 
   runs('warn once and make no call without numbers, a run id, or the secret', () => {
-    for (const env of [{ MICRO: '' }, { MICRO: '5.6452057' }, { MICRO: '0123' }, { MICRO: '12345678901' }, { TURNS: '1.5' }, { DURATION: '' }, { MICRO: '1; curl evil' }, { RUN_ID: 'x' }, { RUN_ATTEMPT: '0' }, { COSTS_INGEST_TOKEN: '' }]) {
+    for (const env of [{ MICRO: '' }, { MICRO: '5.6452057' }, { MICRO: '0123' }, { MICRO: '12345678901' }, { MICRO: '1000000001' }, { TURNS: '1.5' }, { TURNS: '0123' }, { DURATION: '1234567890' }, { DURATION: '' }, { MICRO: '1; curl evil' }, { RUN_ID: 'x' }, { RUN_ATTEMPT: '0' }, { COSTS_INGEST_TOKEN: '' }]) {
       const result = post(env)
       expect([result.status, result.called], JSON.stringify(env)).toEqual([0, false])
       expect(result.out.match(/::warning::/g)).toHaveLength(1)
     }
+  })
+
+  runs('post the most /api/costs takes: $1,000 and 9-digit turns and milliseconds', () => {
+    const result = post({ MICRO: '1000000000', TURNS: '0', DURATION: '999999999' })
+    expect(result.called).toBe(true)
+    expect(result.body).toMatchObject({ costMicro: 1_000_000_000, numTurns: 0, durationMs: 999_999_999 })
   })
 
   runs('warn and still pass when the post fails, and never print the secret', () => {

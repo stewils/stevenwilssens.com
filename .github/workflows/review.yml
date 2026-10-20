@@ -340,7 +340,10 @@ jobs:
           fi
           for key in micro turns ms; do
             value=$(printf '%s' "$result" | /usr/bin/jq -r --arg key "$key" '.[$key] // empty | tostring' 2>/dev/null || true)
-            if [[ "$value" =~ ^(0|[1-9][0-9]{0,9})$ ]]; then echo "$key=$value" >> "$GITHUB_OUTPUT"; else echo "::warning::The run's $key is not a plain number: it is not recorded."; fi
+            # What /api/costs takes: at most 10^9 micro-dollars ($1,000), turns and milliseconds of 9 digits at most.
+            if [[ "$value" =~ ^(0|[1-9][0-9]{0,8})$ ]] || [[ "$key" = micro && "$value" = 1000000000 ]]; then echo "$key=$value" >> "$GITHUB_OUTPUT"
+            elif [[ "$key" = micro && "$value" =~ ^[1-9][0-9]{9,}$ ]]; then echo "::warning::The run cost more than \$1,000, more than the costs page takes: it is not recorded."
+            else echo "::warning::The run's $key is not a plain number: it is not recorded."; fi
           done
       - name: Post the sign-offs and pass or fail
         if: ${{ !cancelled() && steps.who.outputs.dependabot != 'true' }}
@@ -417,7 +420,7 @@ jobs:
           PR: ${{ github.event.pull_request.number || inputs.pr }}
         run: |
           warn() { echo "::warning::This run's cost is not recorded: $1"; exit 0; }
-          [[ "$MICRO" =~ ^(0|[1-9][0-9]{0,9})$ && "$TURNS" =~ ^[0-9]{1,9}$ && "$DURATION" =~ ^[0-9]{1,9}$ ]] || warn "the Claude step reported no cost (cancelled, timed out or skipped)."
+          [[ ( "$MICRO" =~ ^(0|[1-9][0-9]{0,8})$ || "$MICRO" = 1000000000 ) && "$TURNS" =~ ^(0|[1-9][0-9]{0,8})$ && "$DURATION" =~ ^(0|[1-9][0-9]{0,8})$ ]] || warn "the Claude step reported no cost (cancelled, timed out or skipped)."
           [[ "$RUN_ID" =~ ^[1-9][0-9]{0,12}$ && "$RUN_ATTEMPT" =~ ^[1-9][0-9]?$ ]] || warn "the run id is not a number."
           # The branch rule of /api/costs; a Site update branch always starts with update/.
           [[ "$BRANCH" =~ ^[A-Za-z0-9._/-]{1,200}$ && "$BRANCH" != *..* && "$BRANCH" != *//* && "$BRANCH" != [-/]* && "$BRANCH" != */ && "$BRANCH" != *.lock ]] || warn "the branch name is not one the costs page takes."

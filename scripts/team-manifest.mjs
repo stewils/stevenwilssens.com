@@ -626,8 +626,9 @@ export const summaryOf = (subject, body) => {
 // git's own text when a branch is brought up to date ("Merge branch 'main' into x",
 // "Merge remote-tracking branch 'origin/main' into x"): not written for Steven, and what it
 // brings in is on the commits it merges.
-// Branch syncs, and the merge commit GitHub makes to test a pull request ("Merge <sha> into <sha>").
-export const SYNC_MERGE = /^Merge (?:(?:remote-tracking )?branch '?[^'\s]+'?(?: of \S+)?|[0-9a-f]{40}) into /
+// Branch syncs, also written by hand ("Merge main into x: …"), and the merge commit GitHub makes
+// to test a pull request ("Merge <sha> into <sha>").
+export const SYNC_MERGE = /^Merge (?:(?:remote-tracking )?branch '?[^'\s]+'?(?: of \S+)?|(?:origin\/)?main|[0-9a-f]{40}) into /
 
 // The first-parent log, one record per commit. A record that does not read as one (a subject
 // carrying the separators) is dropped, never half read. The body is not in it: see bodyOf.
