@@ -658,6 +658,21 @@ describe('the chart parser (AC-20 a, b)', () => {
     expect(built.diagram.nodes.length).toBeLessThanOrEqual(10)
     for (const note of built.diagram.notes) expect(built.diagram.nodes.map((node) => node.label)).toEqual(expect.arrayContaining(note.alongside))
   })
+
+  // A Site update run that builds nothing goes back to Steven as a labelled edge, not a node:
+  // from 11 nodes the Team page drops its two lanes (fd-long).
+  it('the real chart has the labelled edge from build back to ask, still 10 nodes', () => {
+    const team = parseTeam(readFileSync(join(repoRoot, '.claude/team.md'), 'utf8'), { agents: [], jobs: [] })
+    expect(team.chart.order).toHaveLength(10)
+    expect(team.chart.edges).toContainEqual({ from: 'build', to: 'ask', label: 'nothing changed, so the run fails and Steven is told' })
+    const build = buildDiagram(team.chart, team.steps.map((step) => step.n)).diagram.nodes.find((node) => node.id === 'build')
+    expect(build).toMatchObject({ steps: [5], loop: { to: 'ask', label: 'nothing changed, so the run fails and Steven is told' } })
+  })
+
+  it('the team.md introduction says a run that changes nothing fails and Steven is told', () => {
+    const intro = readFileSync(join(repoRoot, '.claude/team.md'), 'utf8').split('## ')[0].replace(/\s+/g, ' ')
+    expect(intro).toContain('a run that changes nothing beyond the spec fails and Steven is told the request was not carried out')
+  })
 })
 
 describe('the parts that read text', () => {
