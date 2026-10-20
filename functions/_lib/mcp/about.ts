@@ -47,12 +47,12 @@ const markup: [RegExp, string][] = [
   // separators, combining marks and variation selectors (which can smuggle bytes after a
   // visible letter), symbols such as the braille blank, and the Hangul filler letters.
   [/[^\p{L}\p{N}\p{P}\p{Zs}\p{Sc}\p{Sm}\r\n]|[\u115F\u1160\u3164\uFFA0]/u, 'an invisible character, a mark or a symbol outside plain text'],
-  [/<[a-z/!]/i, 'HTML'],
+  [/<\s*[a-z/!]/i, 'HTML'],
   [/\]\(/, 'a Markdown link or image'],
   [/^\s*(?:#|[-*+>]|\d+[.)]\s|```|~~~)/, 'a Markdown heading, list marker, quote or fence at the start'],
   [/`/, 'a backtick'],
   [/\[\[|\]\]/, 'the [[ or ]] of the assistant’s source markers'],
-  [/:\/\//, 'a URL'],
+  [/:\/\/|\bwww\./i, 'a URL'],
 ]
 const length = (text: string) => [...text].length
 const sentenceEnds = (text: string) => (text.match(/[.!?](?=\s|$)/g) ?? []).length
@@ -90,9 +90,13 @@ const sideNote: { pattern: RegExp; value: (resume: ResumeData) => string }[] = [
 ]
 const titleStart = /\b(?:Head of|Vice President|Principal|Senior|Group|Lead|Chief|Director|VP)\b(?: (?:[A-Z][\w&-]*|of|and|&))*/g
 const titleEnd = /^(.*\b(?:Product Manager|Manager|Director|Officer|Engineer|Lead|VP|Vice President))\b/
-/** The job titles a sentence names: a seniority word up to the last title word, or "Head of" and what follows. */
-export const titlesIn = (sentence: string) => (sentence.match(titleStart) ?? []).flatMap((phrase) => {
-  const title = phrase.match(titleEnd)?.[1] ?? (/^Head of [A-Z]/.test(phrase) ? phrase : null)
+// Only a title Steven claims for himself counts ("I was a Director", "as Head of Product"),
+// not someone else's ("I worked with the Chief Data Officer") or "Lead" opening a sentence.
+const claim = /(?:\bI am|\bI'm|\bI was|\bI've been|\bI have been|\bI (?:served|worked|joined|started) as|\bas|\bmy (?:role|title|job) (?:is|was)(?: as)?)\s+(?:(?:an?|the)\s+)?$/i
+/** The job titles a sentence has Steven claim: a seniority word up to the last title word, or "Head of" and what follows. */
+export const titlesIn = (sentence: string) => [...sentence.matchAll(titleStart)].flatMap((match) => {
+  if (!claim.test(sentence.slice(0, match.index))) return []
+  const title = match[0].match(titleEnd)?.[1] ?? (/^Head of [A-Z]/.test(match[0]) ? match[0] : null)
   return title ? [title.trim()] : []
 })
 

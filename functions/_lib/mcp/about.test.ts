@@ -96,6 +96,8 @@ describe('the plain-text validator', () => {
       ['Filler \uFFA0 here.', /invisible/],
       ['Braille \u2800 blank.', /invisible/],
       ['A symbol © here.', /invisible/],
+      ['A spaced < /b> tag.', /HTML/],
+      ['See www.example.com for more.', /a URL/],
     ]
     for (const [text, why] of cases) {
       const refusals = withParagraph(text)
@@ -167,7 +169,7 @@ describe('the side-note facts (recruiter guard 1)', () => {
   })
 
   it('takes what profile and the roles say, and sentences that only mention a place or a team', () => {
-    for (const text of ['I am based in Seattle, Washington.', 'I am a US permanent resident (green card).', 'I am available now.', 'I was a Senior Product Manager at Microsoft.', 'I was a developer and team lead in Belgium.', 'The Operating System Group shipped it.', 'I led a team of engineers.']) expect(refusalsFor(text), text).toEqual([])
+    for (const text of ['I am based in Seattle, Washington.', 'I am a US permanent resident (green card).', 'I am available now.', 'I was a Senior Product Manager at Microsoft.', 'I was a developer and team lead in Belgium.', 'The Operating System Group shipped it.', 'I led a team of engineers.', 'I worked with the Chief Data Officer of Fabrikam.', 'Lead with the customer, I tell my teams.']) expect(refusalsFor(text), text).toEqual([])
   })
 
   it('reads a title from a seniority word up to the last title word', () => {
@@ -176,6 +178,12 @@ describe('the side-note facts (recruiter guard 1)', () => {
     expect(titlesIn('I was Head of Product.')).toEqual(['Head of Product'])
     expect(titlesIn('In the Operating System Group.')).toEqual([])
     expect(titlesIn('a team lead.')).toEqual([])
+    // Only a title Steven claims for himself: not someone else's, not "Lead" opening a sentence.
+    expect(titlesIn('Lead with data, I say.')).toEqual([])
+    expect(titlesIn('I worked with the Chief Data Officer every week.')).toEqual([])
+    expect(titlesIn('My manager was a Senior Director at Microsoft.')).toEqual([])
+    expect(titlesIn('I’m a Director now.'.replace('’', "'"))).toEqual(['Director'])
+    for (const text of ['I am a Director.', 'I have been Head of Data.', 'I served as Chief Officer.', 'My title was Senior Engineer.', 'My role is the Lead.']) expect(titlesIn(text), text).toHaveLength(1)
   })
 })
 

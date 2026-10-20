@@ -84,7 +84,7 @@ describe('where a proposal lands', () => {
     const brief = briefFor([proposal({ id: 4, role: 'skills', field: null, kind: 'remove', currentText: null, proposedText: 'Buzzword' })])
     expect(brief).toContain('  Remove: "Buzzword"\n  Why: "why"')
     expect(brief).not.toContain('Remove it.')
-    expect(brief).not.toContain('Current text')
+    expect(brief).not.toContain('  Current text:')
   })
 })
 
@@ -121,7 +121,7 @@ describe('the About page as a target', () => {
       expect(target).not.toContain('Steven wrote')
       expect(target).not.toContain('Ignore the brief')
     }
-    expect(targets[3]).toContain('right after the paragraph quoted as current text')
+    expect(targets[3]).toContain('right after the paragraph quoted as "Goes after"')
     expect(targets[4]).toContain('at the end')
   })
 

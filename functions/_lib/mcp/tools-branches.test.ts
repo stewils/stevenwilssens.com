@@ -1,12 +1,19 @@
 // The tools' refusals and less travelled paths, through the MCP transport: argument
 // validation, proposals for every part of a role, the LinkedIn tools without data, and
 // the site-update tools against a GitHub that is slow, conflicted, closed or refusing.
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { encodeUpdateRequest, noChangeStep, previewUrl, resumeScoreFromBody, updateRequestFromBody, type GitHub, type PullRequest, type RunFailure, type WorkflowRun } from '../github'
 import { about, experiences, impact } from '../../../src/resume'
 import { handleMcp } from './server'
 import { MemoryStore } from './store'
 import { quotedReason, recruiterLens, runOutcome } from './tools'
+
+// A fixed About page of three paragraphs, so Steven's own About changes never turn these
+// tests red (the live copy is checked on its own in about.test.ts). The rest of src/resume.ts is real.
+vi.mock('../../../src/resume', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../../src/resume')>()
+  return { ...real, about: { intro: 'A product and data leader after Microsoft.', paragraphs: ['After nearly 20 years at Microsoft, I build AI products.', 'Most recently, I led the Windows & Devices Data PM team.', 'Earlier still, I was a developer and team lead in Belgium.'] } }
+})
 
 const now = Date.UTC(2026, 9, 17)
 const latest = experiences[0]
@@ -631,7 +638,7 @@ describe('the About page', () => {
     expect(started.isError).toBe(false)
     const instruction = calls.dispatched[0].instruction
     expect(instruction).toMatch(/^Apply these approved résumé proposals/)
-    expect(instruction).toContain(`Proposal #${proposal.id}: add in a new paragraph of the About page (about.paragraphs in src/resume.ts), placed right after the paragraph quoted as current text.`)
+    expect(instruction).toContain(`Proposal #${proposal.id}: add in a new paragraph of the About page (about.paragraphs in src/resume.ts), placed right after the paragraph quoted as "Goes after".`)
     expect(instruction).toContain(`  Goes after: ${JSON.stringify(first)}`)
     expect(instruction).toContain('  New text: "Since October 2026, I \\"build\\" AI products."')
   })
