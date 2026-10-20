@@ -4,7 +4,9 @@ Every change to steven.wilssens.com goes through the same team, whether Steven s
 in a Claude Code session (`/feature`), through the MCP server (`request_site_update`) or
 a Building write-up refresh. In the Site update workflow the team writes the spec and
 builds from it without stopping for Steven (his questions go into the spec and the pull
-request); the Review workflow then runs the review on the pull request. The site is Steven's job search: recruiters and hiring
+request), every agent in the foreground until it is done; a run that changes nothing
+beyond the spec fails and Steven is told the request was not carried out, and he decides
+whether to ask again. The Review workflow then runs the review on the pull request. The site is Steven's job search: recruiters and hiring
 managers are the readers who matter most, so the recruiter sits on the team next to
 product, design, engineering, security and test.
 
@@ -31,6 +33,7 @@ flowchart TD
   q -- yes, asked once --> steven1([Steven answers]) --> build
   q -- no --> build
   build[Developer builds, with tests] --> reviews
+  build -- nothing changed, so the run fails and Steven is told --> ask
   subgraph reviews [Six reviews in parallel, fresh agents]
     r1[Code] & r2[Security] & r3[Tests 90%] & r4[Design + screenshots] & r5[Recruiter: not worse] & r6[PM: acceptance]
   end
