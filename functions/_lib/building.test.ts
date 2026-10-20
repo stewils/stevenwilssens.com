@@ -16,6 +16,7 @@ const fakeGitHub = (merged: number | Error): GitHub => ({
   runs: async () => [],
   pulls: async () => [],
   pull: async () => null,
+  allPulls: async () => [],
   run: async () => null,
   close: async () => ({ closed: false, branchDeleted: false }),
   mergedPulls: async (prefix) => { expect(prefix).toBe(updateBranchPrefix); if (merged instanceof Error) throw merged; return merged },

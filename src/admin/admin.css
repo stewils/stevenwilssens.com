@@ -5,7 +5,7 @@
 :root {
   color-scheme: dark;
   --ink: #e4ebe6; --muted: #98a6a0; --paper: #0f1916; --card: #15221e; --line: #25352f;
-  --green: #6fd1a6; --on-green: #0b1a15; --accent: #6fd1a6; --series: #3fb98a; --series-track: #1f3a30; --yellow: #e8b84a; --warn-ink: #f2c66d; --focus: #e8b84a;
+  --green: #6fd1a6; --on-green: #0b1a15; --accent: #6fd1a6; --series: #3fb98a; --series-soft: #2b7f60; --series-track: #1f3a30; --yellow: #e8b84a; --warn-ink: #f2c66d; --focus: #e8b84a;
   --bad: #ff9b93; --bad-bg: #3a1a17; --good-bg: #1c3a2a; --warn-bg: #3d3115; --poor-bg: #3f1f1f;
   --side-bg: #0a120f; --side-text: rgba(255, 255, 255, 0.74); --side-hover: rgba(255, 255, 255, 0.08); --side-active: rgba(255, 255, 255, 0.14);
   --gutter: clamp(16px, 3.5vw, 44px);
@@ -13,7 +13,7 @@
 :root[data-theme='light'] {
   color-scheme: light;
   --ink: #172121; --muted: #586360; --paper: #f4f6f1; --card: #ffffff; --line: #d7dfd8;
-  --green: #096b50; --on-green: #ffffff; --series: #0b8a5f; --series-track: #e3ece6; --warn-ink: #8a5a00; --focus: #172121;
+  --green: #096b50; --on-green: #ffffff; --series: #0b8a5f; --series-soft: #7cc4a2; --series-track: #e3ece6; --warn-ink: #8a5a00; --focus: #172121;
   --bad: #b3261e; --bad-bg: #fdecea; --good-bg: #d8f0d8; --warn-bg: #fdecc4; --poor-bg: #f6d6d6;
   --side-bg: #13211d;
 }
@@ -21,7 +21,7 @@
   :root[data-theme='system'] {
     color-scheme: light;
     --ink: #172121; --muted: #586360; --paper: #f4f6f1; --card: #ffffff; --line: #d7dfd8;
-    --green: #096b50; --on-green: #ffffff; --series: #0b8a5f; --series-track: #e3ece6; --warn-ink: #8a5a00; --focus: #172121;
+    --green: #096b50; --on-green: #ffffff; --series: #0b8a5f; --series-soft: #7cc4a2; --series-track: #e3ece6; --warn-ink: #8a5a00; --focus: #172121;
     --bad: #b3261e; --bad-bg: #fdecea; --good-bg: #d8f0d8; --warn-bg: #fdecc4; --poor-bg: #f6d6d6;
     --side-bg: #13211d;
   }
@@ -201,6 +201,18 @@ button { cursor: pointer; }
 .chart-bars .chart-bar.active span { opacity: 1; }
 .chart-bar:focus-visible { outline: 2px solid var(--focus); }
 .chart-axis { display: flex; justify-content: space-between; margin-top: 6px; font: 11px 'DM Mono', monospace; color: var(--muted); }
+/* Stacked months (the Costs page): billed below in --series, estimated on top in --series-soft, a
+   2px gap in the card's colour between the parts and the columns, at most 24px wide, square at the
+   baseline and rounded at the top of the stack only. */
+.chart--stacked .chart-bar { justify-content: center; }
+.chart--stacked .chart-bar > .chart-stack { display: flex; flex-direction: column; gap: 2px; width: 100%; max-width: 24px; background: none; border-radius: 4px 4px 0 0; overflow: hidden; }
+.chart-part { display: block; min-height: 0; flex-basis: 0; }
+.chart-part.billed { background: var(--series); }
+.chart-part.est { background: var(--series-soft); }
+.chart-legend { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; margin-left: 12px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.chart-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.chart-legend .billed { background: var(--series); }
+.chart-legend .est { background: var(--series-soft); }
 
 /* Ranked lists */
 .ranked-block { min-width: 0; }
@@ -217,6 +229,16 @@ button { cursor: pointer; }
 .tbl-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 10px; }
 .tbl-search input { font: inherit; font-size: 13px; color: var(--ink); background: var(--card); border: 1.5px solid var(--line); border-radius: 999px; padding: 7px 14px; min-height: 36px; width: min(280px, 70vw); }
 .tbl-search input:focus { outline: 2px solid var(--yellow); outline-offset: 1px; }
+/* The budget of a feature, in its opened row on the Costs page. */
+.budget-form { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; margin-top: 14px; }
+.budget-form .budget-group { display: flex; flex-direction: column; gap: 4px; }
+.budget-form label { font-size: 13px; font-weight: 700; }
+.budget-form .budget-field { position: relative; display: inline-flex; align-items: center; }
+.budget-form .budget-field span { position: absolute; left: 12px; color: var(--muted); }
+.budget-form input { font: inherit; font-size: 14px; color: var(--ink); background: var(--card); border: 1.5px solid var(--line); border-radius: 8px; padding: 8px 12px 8px 24px; width: 11ch; min-height: 44px; font-variant-numeric: tabular-nums; }
+.budget-form input:focus { outline: 2px solid var(--yellow); outline-offset: 1px; }
+.budget-form button { min-height: 44px; }
+.budget-form + p, .budget-note { margin: 8px 0 0; font-size: 13px; }
 .tbl-count { font: 12px 'DM Mono', monospace; color: var(--muted); }
 .table-scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }

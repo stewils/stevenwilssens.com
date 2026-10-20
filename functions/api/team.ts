@@ -6,38 +6,19 @@
 // exactly the shape above is refused with a fixed body that echoes nothing.
 import type { Env } from '../_lib/env'
 import { isAdmin } from '../_lib/auth'
+import { isJson, json, readCapped } from '../_lib/http'
 import { TeamReads, type TeamAction } from '../_lib/team-reads'
 
 const MAX_BODY = 16 * 1024
 const MAX_IDS = 200
 const actions: TeamAction[] = ['read', 'unread', 'readAll']
 
-const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })
 const unauthorized = () => json({ error: 'unauthorized' }, 401)
 const badRequest = () => json({ error: 'bad request' }, 400)
 const tooLarge = () => json({ error: 'too large' }, 413)
 const unavailable = (error: unknown) => {
   console.error('team reads failed:', error instanceof Error ? error.message : 'unknown error')
   return json({ error: 'unavailable' }, 500)
-}
-
-// The body, but never more than MAX_BODY bytes of it: null when it is longer.
-const readCapped = async (request: Request) => {
-  if (!request.body) return ''
-  const reader = request.body.getReader()
-  const chunks: Uint8Array[] = []
-  let size = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    size += value.byteLength
-    if (size > MAX_BODY) { await reader.cancel(); return null }
-    chunks.push(value)
-  }
-  const bytes = new Uint8Array(size)
-  let offset = 0
-  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
-  return new TextDecoder().decode(bytes)
 }
 
 // { action, ids } and nothing else; ids lower-case 40-hex, 1 to 200, de-duplicated.
@@ -65,9 +46,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (!isAdmin(request, env)) return unauthorized()
-  if ((request.headers.get('Content-Type') ?? '').split(';')[0].trim().toLowerCase() !== 'application/json') return json({ error: 'unsupported media type' }, 415)
-  if (Number(request.headers.get('Content-Length') ?? 0) > MAX_BODY) return tooLarge()
-  const text = await readCapped(request)
+  if (!isJson(request)) return json({ error: 'unsupported media type' }, 415)
+  const text = await readCapped(request, MAX_BODY)
   if (text === null) return tooLarge()
   const parsed = parseTeamRequest(text)
   if (!parsed) return badRequest()

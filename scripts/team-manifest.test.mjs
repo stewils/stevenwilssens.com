@@ -613,6 +613,13 @@ describe('the chart parser (AC-20 a, b)', () => {
     expect(built.diagram.nodes.find((node) => node.id === 'd').loop).toEqual({ to: 'a', label: null })
   })
 
+  it('draws a parallelogram as a box without Mermaid’s slashes, and keeps a slash inside the label', () => {
+    const parsed = parseChart('flowchart TD\n  meter[/Runs metered: admin, Costs/]\n  b -.- meter\n  p[a/b]\n')
+    expect(parsed.nodes.get('meter')).toMatchObject({ label: 'Runs metered: admin, Costs', shape: 'box' })
+    expect(parsed.nodes.get('p').label).toBe('a/b')
+    expect(parsed.edges).toEqual([{ from: 'b', to: 'meter', label: null }])
+  })
+
   it('keeps the first label of a node and links a subgraph defined before it is referenced', () => {
     const parsed = parseChart('flowchart TD\n  subgraph g [Group]\n    m[Member]\n  end\n  g --> x[First]\n  x[Second] --> g\n  m --> x\n')
     expect(parsed.order).toEqual(['g', 'x'])

@@ -20,10 +20,12 @@ import type { DossierStore } from '../mcp/store'
 import { contact, jdPrefix, loadArticles, sources as allSources, systemPrompt, type Articles, type Source } from './prompt'
 import { dayOf, monthStart, type AskStore, type Outcome, type Usage } from './store'
 import { optedOut, visitorHash } from '../visitor'
+import { PRICES } from '../prices'
 
 export const MODEL = 'claude-opus-5-5'
-/** Micro-dollars per token (claude-opus-5-5: $4 / $20 per MTok; cache read $0.20, cache write with a 1-hour lifetime $8). */
-export const PRICE = { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 8 }
+/** Micro-dollars per token, from the one price table (functions/_lib/prices.ts); the prompt is cached with a 1-hour lifetime. */
+const table = PRICES[MODEL]
+export const PRICE = { input: table.input / 1_000_000, output: table.output / 1_000_000, cacheRead: table.cacheRead / 1_000_000, cacheWrite: table.cacheWrite1h / 1_000_000 }
 export const DEFAULT_BUDGET_USD = 25
 const PER_IP_PER_HOUR = 30
 /** The human check switches on for the rest of the day once the day's spend passes this (ASK_CHECK_AFTER_USD)… */

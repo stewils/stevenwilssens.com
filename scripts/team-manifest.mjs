@@ -33,6 +33,8 @@ export const ORCHESTRATION = [
   { glob: 'scripts/resume-gate.mjs', section: 'checks' },
   { glob: 'functions/_lib/review/**', exclude: '**/*.test.*', section: 'checks' },
   { glob: 'specs/TEMPLATE.md', section: 'flow' },
+  // The SessionEnd hook that meters the team's local runs (specs/dev-costs.md).
+  { glob: '.claude/settings.json', section: 'flow' },
   { glob: 'CLAUDE.md', section: 'rules', heading: TEAM_RULES },
 ]
 
@@ -44,6 +46,7 @@ export const IGNORED = [
   { path: 'scripts/resume-check.mjs', reason: 'scores the résumé for the site and the admin; resume-gate.mjs is the gate' },
   { path: 'scripts/site-check.mjs', reason: 'the browser site check, not a merge gate of the team' },
   { path: 'functions/_lib/review/*.test.ts', reason: 'the tests of the recruiter checker, not the checker' },
+  { path: '.claude/hooks/dev-costs.mjs', reason: 'measures the runs; hands nothing between agents or to Steven' },
 ]
 
 // Where orchestration files live: every tracked file here is in ORCHESTRATION or IGNORED.
@@ -173,7 +176,8 @@ export const parseChart = (source) => {
   const place = (id) => { if (!group && !members.has(id) && !order.includes(id)) order.push(id) }
   const define = (id, label, shape) => {
     const node = nodes.get(id) ?? { id, label: id, labelled: false, shape: 'box', members: [] }
-    if (label !== undefined && !node.labelled) Object.assign(node, { label: clean(unquote(label), 120), labelled: true, shape })
+    // A parallelogram ([/label/]) is drawn as a box; its slashes are Mermaid's, not the label's.
+    if (label !== undefined && !node.labelled) Object.assign(node, { label: clean(unquote(label).replace(/^\/(.*)\/$/, '$1'), 120), labelled: true, shape })
     nodes.set(id, node)
     if (group && group !== id && !members.has(id) && !order.includes(id)) {
       members.add(id)

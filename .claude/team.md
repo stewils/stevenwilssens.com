@@ -37,6 +37,10 @@ flowchart TD
   reviews -- changes requested, max 3 rounds --> fix[Developer fixes] --> reviews
   reviews -- all approve --> pr[Pull request + Review check on GitHub: main's gates and team review]
   pr --> merge([Steven merges]) --> deploy[Deploy to steven.wilssens.com]
+  meter[/Runs metered: admin, Costs/]
+  build -.- meter
+  reviews -.- meter
+  fix -.- meter
   classDef you stroke-width:3px
   classDef gate stroke-dasharray:4 3
   class ask,steven1,merge you
@@ -53,6 +57,12 @@ flowchart TD
   %% step 8: pr
   %% step 9: merge
 ```
+
+The team's runs are metered: on GitHub, a `costs` job after the Claude step of the Review and
+Site update workflows records the cost each run reported; in Steven's own Claude Code sessions,
+the SessionEnd hook (`.claude/hooks/dev-costs.mjs`) records the tokens per branch, batch of agents,
+role and model. Steven reads the figures on `/admin#costs`, per change, phase, role and month,
+with what had to be redone and a budget per change; a cancelled or timed-out GitHub run is not recorded.
 
 
 1. **Intake** (lead). Restate the ask in one sentence, find what it touches (public pages,

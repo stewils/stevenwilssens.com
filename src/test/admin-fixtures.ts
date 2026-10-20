@@ -1,8 +1,8 @@
 // Realistic answers from the admin APIs (functions/api/stats.ts, mcp.ts, ask/admin.ts,
-// resume.ts, team.ts) and the Team page's build-time manifest, for the dashboard's tests
+// resume.ts, team.ts, costs.ts) and the Team page's build-time manifest, for the dashboard's tests
 // (src/admin/*.test.tsx). Each builder takes overrides.
 import type { TeamManifest, TeamReads, TeamUpdate } from '../admin/team-types'
-import type { AskInfo, McpInfo, ResumeInfo, Stats } from '../admin/types'
+import type { AskInfo, CostFeature, CostMoney, CostsInfo, McpInfo, ResumeInfo, Stats } from '../admin/types'
 
 // The tests run on a fixed clock: Monday 19 October 2026, noon local time.
 export const NOW = new Date(2026, 9, 19, 12, 0, 0)
@@ -211,3 +211,46 @@ export const makeTeamManifest = (overrides: Partial<TeamManifest> = {}): TeamMan
 })
 
 export const makeTeamReads = (overrides: Partial<TeamReads> = {}): TeamReads => ({ read: [], unread: [], ...overrides })
+
+// GET /api/costs: money in dollars here, micro-dollars in the answer.
+export const money = (billed: number, estimated = 0, unknown = 0, unpriced: CostMoney['unpriced'] = []): CostMoney => ({ billed: Math.round(billed * 1e6), estimated: Math.round(estimated * 1e6), unknown: Math.round(unknown * 1e6), unpriced })
+const none = () => money(0)
+export const makeFeature = (overrides: Partial<CostFeature> = {}): CostFeature => ({
+  branch: 'dev-costs', pull: { state: 'open', number: 61, mergeCommit: null, supersededBy: null }, runs: 23, lastRunAt: ts(17),
+  spec: money(0, 0.8), build: money(0, 3.1), review: money(4.5), fix: money(1.2), lead: money(0, 2.8), total: money(5.7, 6.7),
+  reviewRounds: 3, fixRounds: 2, budgetMicro: 10_000_000, tokensIn: 4_100_000, tokensOut: 310_000,
+  phases: [
+    { kind: 'spec', round: 0, pr: null, at: ts(10), money: money(0, 0.8), roles: [{ role: 'product-manager', money: money(0, 0.5) }, { role: 'senior-recruiter', money: money(0, 0.3) }] },
+    { kind: 'build', round: 0, pr: null, at: ts(11), money: money(0, 3.1), roles: [{ role: 'senior-developer', money: money(0, 3.1) }] },
+    { kind: 'review', round: 1, pr: null, at: ts(12), money: money(2.6), roles: [{ role: 'security-engineer', money: money(0.4) }, { role: 'senior-tester', money: money(2.2) }] },
+    { kind: 'fix', round: 1, pr: null, at: ts(13), money: money(1.2), roles: [{ role: 'senior-developer', money: money(1.2) }] },
+    { kind: 'review', round: 2, pr: null, at: ts(14), money: money(1.0), roles: [{ role: 'senior-tester', money: money(1.0) }] },
+    { kind: 'review-workflow', round: 1, pr: 61, at: ts(15), money: money(0.9), roles: [{ role: 'review-workflow', money: money(0.9) }] },
+    { kind: 'lead', round: 0, pr: null, at: ts(10), money: money(0, 2.8), roles: [{ role: 'lead', money: money(0, 2.8) }] },
+  ],
+  waste: { money: money(2.2), fixRounds: 2, moreReviews: 1, closed: false, redoneBy: null },
+  ...overrides,
+})
+const role = (name: string, kind: 'team' | 'lead' | 'workflow' | 'other', runs: number, dollars: number, share: number) => ({ role: name, kind, runs, total: money(dollars), share, perFeatureMicro: Math.round(dollars * 1e6), byPhase: { spec: none(), build: money(dollars), review: none(), fix: none(), lead: none() } })
+export const makeCosts = (overrides: Partial<CostsInfo> = {}): CostsInfo => ({
+  generatedAt: NOW.getTime(), empty: false, month: '2026-10', repo: 'stewils/stevenwilssens.com', pricesRead: '2026-10-19',
+  features: [
+    makeFeature(),
+    makeFeature({ branch: 'resume-mail', pull: { state: 'merged', number: 57, mergeCommit: '3f2a1bc'.padEnd(40, '0'), supersededBy: null }, runs: 9, budgetMicro: null, total: money(5.7), waste: { money: none(), fixRounds: 0, moreReviews: 0, closed: false, redoneBy: null } }),
+    makeFeature({ branch: 'closed-idea', pull: { state: 'closed', number: 55, mergeCommit: null, supersededBy: null }, runs: 2, budgetMicro: null, total: money(1), waste: { money: money(1), fixRounds: 0, moreReviews: 0, closed: true, redoneBy: null } }),
+    makeFeature({ branch: 'update/redo-1', pull: { state: 'superseded', number: 54, mergeCommit: null, supersededBy: 56 }, runs: 1, budgetMicro: null, total: money(0.5), waste: { money: money(0.5), fixRounds: 0, moreReviews: 0, closed: true, redoneBy: 56 } }),
+    makeFeature({ branch: null, pull: null, runs: 4, budgetMicro: null, total: money(0, 0.3), phases: [], waste: { money: none(), fixRounds: 0, moreReviews: 0, closed: false, redoneBy: null } }),
+  ],
+  roles: [
+    role('senior-developer', 'team', 6, 5, 0.4), role('senior-tester', 'team', 4, 3, 0.24), role('review-workflow', 'workflow', 2, 1.5, 0.12), role('lead', 'lead', 5, 1.5, 0.12), role('security-engineer', 'team', 3, 1, 0.08),
+    role('other-agents', 'other', 2, 0.5, 0.04), role('product-manager', 'team', 0, 0, 0), role('senior-recruiter', 'team', 0, 0, 0), role('ux-designer', 'team', 0, 0, 0), role('site-update-workflow', 'workflow', 0, 0, 0),
+  ],
+  months: ['2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'].map((month) => ({
+    month,
+    money: month === '2026-10' ? money(12, 29.2) : month === '2026-09' ? money(20, 43.1) : month === '2026-08' ? money(10, 46.35) : none(),
+    features: month === '2026-10' ? 5 : month >= '2026-08' ? 3 : 0,
+    wasteMicro: month === '2026-10' ? 8_400_000 : 0,
+  })),
+  waste: { fix: money(1.2), reviews: money(1.0), closed: money(1.5) },
+  ...overrides,
+})

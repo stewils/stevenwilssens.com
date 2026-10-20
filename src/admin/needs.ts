@@ -1,6 +1,7 @@
 // What needs Steven, per page, and a line per page for the overview's tiles. Both are
 // derived from the loaded data, so they are pure and tested in needs.test.ts.
-import { formatNumber, formatUsd, projectMonth } from './format'
+import { costOf, costsTile, overBudget } from './costs'
+import { formatCost, formatNumber, formatUsd, projectMonth } from './format'
 import type { PageId } from './pages'
 import { cutLine, tileLine, unreadUpdates } from './team-state'
 import type { AdminData } from './types'
@@ -9,7 +10,7 @@ export type Need = { key: string; page: PageId; n: number; text: string }
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
 
-export const computeNeeds = ({ stats, mcp, ask, resume, team }: AdminData, now = new Date()): Need[] => {
+export const computeNeeds = ({ stats, mcp, ask, resume, team, costs }: AdminData, now = new Date()): Need[] => {
   const needs: Need[] = []
   const add = (key: string, page: PageId, n: number, text: string) => { if (n > 0) needs.push({ key, page, n, text }) }
 
@@ -46,6 +47,15 @@ export const computeNeeds = ({ stats, mcp, ask, resume, team }: AdminData, now =
     const line = unread[0] ? `“${cutLine(unread[0].summary)}”` : ''
     add('team-unread', 'team', unread.length, unread.length === 1 ? `change to your agent team you have not seen: ${line}` : `changes to your agent team you have not seen, the latest ${line}`)
   }
+  if (costs?.info && !costs.error) {
+    // Features over the budget Steven set; equal to it is not over (the Costs page).
+    const over = overBudget(costs.info)
+    const most = over[0]
+    if (most) {
+      const figures = `${costOf(most.total).text} of ${formatCost(most.budgetMicro!).text}`
+      add('costs-over', 'costs', over.length, over.length === 1 ? `feature is over its budget: ${cutLine(most.branch!, 40)}, ${figures}` : `features are over their budget, the most over ${cutLine(most.branch!, 40)} (${figures})`)
+    }
+  }
   if (stats) {
     const failing = stats.vitals.devices.filter((device) => device.passes === false).length
     add('vitals', 'speed', failing, plural(failing, 'device type fails Core Web Vitals', 'device types fail Core Web Vitals'))
@@ -61,7 +71,7 @@ export const badgeCounts = (needs: Need[]) => {
   return counts
 }
 
-export const computeSummaries = ({ stats, mcp, ask, resume, team, days }: AdminData): Partial<Record<PageId, string>> => {
+export const computeSummaries = ({ stats, mcp, ask, resume, team, costs, days }: AdminData): Partial<Record<PageId, string>> => {
   const summaries: Partial<Record<PageId, string>> = {}
   if (stats) {
     const { totals } = stats
@@ -88,5 +98,7 @@ export const computeSummaries = ({ stats, mcp, ask, resume, team, days }: AdminD
   }
   if (mcp) summaries.mcp = `${formatNumber(mcp.entries.total)} dossier entries across ${mcp.entries.roles} roles · ${formatNumber(mcp.entries.public)} public${mcp.publicCalls ? ` · ${formatNumber(mcp.publicCalls.total)} public ${plural(mcp.publicCalls.total, 'call', 'calls')}` : ''}`
   if (team) summaries.team = tileLine(team.manifest, unreadUpdates(team.manifest, team.reads).length)
+  if (costs?.error) summaries.costs = 'Could not load the costs'
+  else if (costs?.info) summaries.costs = costsTile(costs.info)
   return summaries
 }

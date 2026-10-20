@@ -144,7 +144,7 @@ describe('the GitHub client', () => {
     const pulls = await client.pulls()
     expect(calls[0].url).toContain('/pulls?state=open&per_page=20')
     expect(pulls[0]).toEqual({
-      number: 12, title: 'Add the patents', url: 'https://github.com/stewils/site/pull/12', branch: 'update/Add_Patents', draft: false, state: 'open', merged: false,
+      number: 12, title: 'Add the patents', url: 'https://github.com/stewils/site/pull/12', branch: 'update/Add_Patents', draft: false, state: 'open', merged: false, mergeCommit: null,
       createdAt: '2026-10-18T10:00:00Z', previewUrl: 'https://update-add-patents.stevenwilssens.pages.dev', mergeable: true, mergeableState: 'clean',
       resumeScore: { before: 90, after: 85, lower: true }, request: { title: 'Add the patents', instruction: 'Add the patents', proposals: [3], supersedes: null },
     })
@@ -154,6 +154,21 @@ describe('the GitHub client', () => {
     expect(await client.pull(12)).toMatchObject({ number: 12 })
     expect(await client.pull(99)).toBeNull()
     await expect(client.pull(500)).rejects.toThrow('GitHub 502 on /pulls/500: Bad gateway')
+  })
+
+  it('lists every pull request 100 a page, at most five pages, with the merge commit of a merged one only', async () => {
+    const sha = 'a'.repeat(40)
+    const full = Array.from({ length: 100 }, (_, index) => pullJson({ number: 1000 - index, state: 'closed', merged: true, merge_commit_sha: sha }))
+    const { calls, client } = fakeFetch({ 'GET /pulls?state=all': { body: full } })
+    const pulls = await client.allPulls()
+    expect(calls.map((call) => call.url.replace(/.*\/pulls/, '/pulls'))).toEqual([1, 2, 3, 4, 5].map((page) => `/pulls?state=all&per_page=100&page=${page}&sort=created&direction=desc`))
+    expect(pulls).toHaveLength(500)
+    expect(pulls[0]).toMatchObject({ merged: true, mergeCommit: sha })
+    const short = fakeFetch({ 'GET /pulls?state=all': { body: [pullJson({ merge_commit_sha: sha }), pullJson({ number: 13, state: 'closed', merged: true, merge_commit_sha: 'not-a-sha' })] } })
+    const few = await short.client.allPulls(3)
+    expect(short.calls).toHaveLength(1)
+    // An open pull request's merge_commit_sha is GitHub's test merge: not a merge commit.
+    expect(few.map((pull) => pull.mergeCommit)).toEqual([null, null])
   })
 
   it('counts the merged pull requests from branches with a prefix', async () => {

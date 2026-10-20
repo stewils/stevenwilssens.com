@@ -99,3 +99,19 @@ export const formatAgo = (ts: number, now = Date.now()) => {
   if (hours < 24) return `${hours} h ago`
   return formatTime(ts)
 }
+
+// A development cost (the Costs page, AC-26): no mark when all of it was billed, ≈ when some of
+// it is an estimate, ? when the run did not say which, a trailing + when a sum leaves out
+// tokens that have no price. `text` is shown (its marks hidden from screen readers), `words` is
+// read: "estimated $3.20", "billing unknown, $3.20", "…, plus unpriced runs".
+export type CostMark = 'billed' | 'estimated' | 'unknown'
+export const formatCost = (micro: number, mark: CostMark = 'billed', unpriced = false) => {
+  const plus = unpriced ? '+' : ''
+  const plusWords = unpriced ? ', plus unpriced runs' : ''
+  if (micro <= 0) return unpriced ? { text: '+', words: 'unpriced runs only' } : { text: '—', words: 'none' }
+  const amount = micro < 10_000 ? '<$0.01' : `$${(micro / 1_000_000).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const spoken = micro < 10_000 ? 'less than $0.01' : amount
+  const sign = mark === 'estimated' ? '≈' : mark === 'unknown' ? '?' : ''
+  const words = mark === 'estimated' ? `estimated ${spoken}` : mark === 'unknown' ? `billing unknown, ${spoken}` : spoken
+  return { text: `${sign}${amount}${plus}`, words: `${words}${plusWords}` }
+}

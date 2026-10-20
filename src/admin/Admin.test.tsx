@@ -1,14 +1,14 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import Admin from './Admin'
-import { makeAsk, makeMcp, makeResume, makeStats, makeTeamReads, NOW, sha } from '../test/admin-fixtures'
+import { makeAsk, makeCosts, makeMcp, makeResume, makeStats, makeTeamReads, NOW, sha } from '../test/admin-fixtures'
 
 // The dashboard against a fake admin API: /api/stats, /api/ask/admin, /api/mcp and
 // /api/resume and /api/team answer with the shapes the Pages Functions write.
 type Answer = { status?: number; body?: unknown } | Error | 'pending'
-type Routes = Partial<Record<'stats' | 'ask' | 'mcp' | 'resume' | 'team', Answer>>
-const routeOf = (url: string) => (url.startsWith('/api/stats') ? 'stats' : url.startsWith('/api/ask/admin') ? 'ask' : url.startsWith('/api/mcp') ? 'mcp' : url.startsWith('/api/team') ? 'team' : 'resume')
-const bodies = { stats: makeStats, ask: makeAsk, mcp: makeMcp, resume: makeResume, team: makeTeamReads }
+type Routes = Partial<Record<'stats' | 'ask' | 'mcp' | 'resume' | 'team' | 'costs' | 'budget', Answer>>
+const routeOf = (url: string) => (url.startsWith('/api/stats') ? 'stats' : url.startsWith('/api/ask/admin') ? 'ask' : url.startsWith('/api/mcp') ? 'mcp' : url.startsWith('/api/team') ? 'team' : url.startsWith('/api/costs/budget') ? 'budget' : url.startsWith('/api/costs') ? 'costs' : 'resume')
+const bodies = { stats: makeStats, ask: makeAsk, mcp: makeMcp, resume: makeResume, team: makeTeamReads, costs: () => makeCosts({ features: [] }), budget: () => ({ branch: 'dev-costs', budgetMicro: null }) }
 
 let fetchMock: Mock<(url: string, init?: RequestInit) => Promise<Response>>
 const serve = (routes: Routes = {}) => {
@@ -236,11 +236,11 @@ describe('the Team page', () => {
   const menu = () => within(screen.getByRole('navigation', { name: 'Admin pages' }))
   const teamPosts = () => fetchMock.mock.calls.filter(([url, init]) => url === '/api/team' && (init as RequestInit | undefined)?.method === 'POST')
 
-  it('lists Team after Career MCP and before Links and opens it at #team', async () => {
+  it('lists Team after Career MCP, then Costs, then Links, and opens it at #team', async () => {
     render(<Admin />)
     await screen.findByText('40', { selector: 'dd' })
     const titles = menu().getAllByRole('link').map((link) => link.querySelector('.lbl')!.textContent)
-    expect(titles.slice(titles.indexOf('Career MCP'), titles.indexOf('Links') + 1)).toEqual(['Career MCP', 'Team', 'Links'])
+    expect(titles.slice(titles.indexOf('Career MCP'), titles.indexOf('Links') + 1)).toEqual(['Career MCP', 'Team', 'Costs', 'Links'])
     expect(menu().getByRole('link', { name: /^Team/ })).toHaveAttribute('href', '#team')
     go('team')
     expect(heading()).toHaveTextContent('Team')
@@ -437,5 +437,86 @@ describe('preferences', () => {
     expect(heading()).toHaveTextContent('Overview')
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+  })
+})
+
+describe('the Costs page', () => {
+  const menu = () => within(screen.getByRole('navigation', { name: 'Admin pages' }))
+  const costGets = () => urls().filter((url) => url.startsWith('/api/costs?'))
+  const budgetPosts = () => fetchMock.mock.calls.filter(([url]) => url === '/api/costs/budget')
+
+  it('sits after Team without a time range, and its badge counts the features over budget', async () => {
+    serve({ costs: { body: makeCosts() } })
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    expect(menu().getByRole('link', { name: 'Costs, 1 over budget' })).toHaveAttribute('href', '#costs')
+    expect(screen.getByRole('link', { name: /feature is over its budget: dev-costs/ })).toHaveAttribute('href', '#costs')
+    go('costs')
+    expect(heading()).toHaveTextContent('Costs')
+    expect(screen.getByText(/^What each change costs to build: per feature and phase/)).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Time range' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'This month' })).toBeInTheDocument()
+    expect(costGets()).toEqual(['/api/costs?r=0'])
+  })
+
+  it('saves a budget and updates the row, the badge, Needs you and the tile without reading the costs again', async () => {
+    serve({ costs: { body: makeCosts() }, budget: { body: { branch: 'dev-costs', budgetMicro: 20_000_000 } } })
+    render(<Admin />)
+    go('costs')
+    fireEvent.click(await screen.findByRole('button', { name: 'Open details for dev-costs' }))
+    const field = screen.getByLabelText('Budget for dev-costs, in US dollars')
+    fireEvent.change(field, { target: { value: '20' } })
+    fireEvent.submit(field.closest('form')!)
+    expect(await screen.findByText('Saved: $20.00 for dev-costs.')).toBeInTheDocument()
+    expect(budgetPosts()).toHaveLength(1)
+    const [, init] = budgetPosts()[0]
+    expect(init).toMatchObject({ method: 'POST', headers: { Authorization: 'Bearer secret', 'Content-Type': 'application/json' } })
+    expect(JSON.parse(init!.body as string)).toEqual({ branch: 'dev-costs', amountUsd: 20 })
+    expect(menu().getByRole('link', { name: /^Costs/ })).not.toHaveAccessibleName('Costs, 1 over budget')
+    expect(screen.getByRole('button', { name: 'Close details for dev-costs' }).closest('tr')).toHaveTextContent('$20.00')
+    go('overview')
+    expect(screen.queryByRole('link', { name: /over its budget/ })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('heading', { name: 'Go to' }).closest('section')!).getByRole('link', { name: /^Costs/ })).toHaveTextContent('≈$41.20 this month ($12.00 billed) · 4 features')
+    expect(costGets()).toEqual(['/api/costs?r=0'])
+  })
+
+  it('says why a budget could not be saved, and signs out when the token is refused', async () => {
+    serve({ costs: { body: makeCosts() }, budget: { status: 400, body: { error: 'too many budgets' } } })
+    render(<Admin />)
+    go('costs')
+    fireEvent.click(await screen.findByRole('button', { name: 'Open details for resume-mail' }))
+    const field = screen.getByLabelText('Budget for resume-mail, in US dollars')
+    fireEvent.change(field, { target: { value: '5' } })
+    fireEvent.submit(field.closest('form')!)
+    expect(await screen.findByText('Could not save (500 budgets is the most). Your amount is still in the field.')).toBeInTheDocument()
+    serve({ costs: { body: makeCosts() }, budget: { status: 500, body: 'oops' } })
+    fireEvent.submit(field.closest('form')!)
+    expect(await screen.findByText('Could not save (HTTP 500). Your amount is still in the field.')).toBeInTheDocument()
+    serve({ costs: { body: makeCosts() }, budget: new TypeError('offline') })
+    fireEvent.submit(field.closest('form')!)
+    expect(await screen.findByText('Could not save (no connection). Your amount is still in the field.')).toBeInTheDocument()
+    serve({ costs: { body: makeCosts() }, budget: { status: 401 } })
+    fireEvent.submit(field.closest('form')!)
+    expect(await screen.findByText('That token was not accepted.')).toBeInTheDocument()
+  })
+
+  it('shows a banner and one card when the costs fail, with no Needs you line, and the rest keeps working', async () => {
+    serve({ costs: { status: 500 } })
+    render(<Admin />)
+    expect(await screen.findByText('Could not load the costs (HTTP 500).')).toHaveAttribute('role', 'alert')
+    await screen.findByText('40', { selector: 'dd' })
+    expect(within(screen.getByRole('heading', { name: 'Go to' }).closest('section')!).getByRole('link', { name: /^Costs/ })).toHaveTextContent('Could not load the costs')
+    expect(screen.queryByRole('link', { name: /over its budget/ })).not.toBeInTheDocument()
+    go('costs')
+    expect(screen.getByRole('heading', { name: 'Costs could not be loaded' })).toBeInTheDocument()
+    go('traffic')
+    expect(heading()).toHaveTextContent('Traffic')
+  })
+
+  it('shows placeholders until the costs answer', async () => {
+    serve({ costs: 'pending' })
+    render(<Admin />)
+    go('costs')
+    expect(screen.getByText('Loading costs…')).toBeInTheDocument()
   })
 })
