@@ -9,11 +9,13 @@
 // branch is GitHub's head_branch: the branch the workflow ran from, `main` for every run the
 // MCP dispatches. number is the run number, which the workflow puts at the end of the branch
 // it pushes (update/<slug>-<number>); that is how a run's pull request is found.
-export type WorkflowRun = { id: number; number: number | null; status: string; conclusion: string | null; createdAt: string; url: string; branch: string; title: string }
+// event is what started it: workflow_dispatch (a request) or repository_dispatch (a Building refresh).
+export type WorkflowRun = { id: number; number: number | null; event: string | null; status: string; conclusion: string | null; createdAt: string; url: string; branch: string; title: string }
 // Where a failed run stopped, from the jobs API (never from log text): the first failed step
 // of the update job, whether it is the no-change step, and that step's reason (its error
-// annotation without the fixed sentence; null when the token may not read annotations).
-export type RunFailure = { step: string; noChange: boolean; reason: string | null }
+// annotation without the fixed sentence; null when it is not there or cannot be read), and
+// whether GitHub refused the annotations (403: the token lacks Checks: read).
+export type RunFailure = { step: string; noChange: boolean; reason: string | null; refused?: boolean }
 // The Site update workflow's step that fails a run Claude made no change in
 // (scripts/site-update-outcome.mjs), and the sentence its error annotation starts with.
 // Keep both in step with .github/workflows/site-update.yml (github.test.ts reads it).
@@ -32,8 +34,9 @@ export type UpdateRequest = { title: string; instruction: string; proposals: num
 // mergeableState is GitHub's word for why a pull request can or cannot merge: clean,
 // unstable (checks failing), behind (main moved on, still merges), blocked (branch
 // protection), dirty (conflicts with main), unknown (still being computed), or null
-// when it was not asked for (the list endpoint does not compute it).
-export type PullRequest = { number: number; title: string; url: string; branch: string; draft: boolean; state: 'open' | 'closed'; merged: boolean; createdAt: string; previewUrl: string; mergeable: boolean | null; mergeableState: string | null; resumeScore: ResumeScore | null; request: UpdateRequest | null }
+// when it was not asked for (the list endpoint does not compute it). headRepo is the
+// repository the branch lives in (owner/name): a fork's pull request can carry any branch name.
+export type PullRequest = { number: number; title: string; url: string; branch: string; headRepo: string | null; draft: boolean; state: 'open' | 'closed'; merged: boolean; createdAt: string; previewUrl: string; mergeable: boolean | null; mergeableState: string | null; resumeScore: ResumeScore | null; request: UpdateRequest | null }
 export type MergeResult = { merged: boolean; message: string; sha?: string }
 
 export class GitHubError extends Error { constructor(message: string, public status: number) { super(message) } }
@@ -45,7 +48,8 @@ export type GitHub = {
   run(id: number): Promise<WorkflowRun | null>
   // Where a failed run stopped; null when no step of the update job failed (a cancellation, a failed setup).
   runFailure(runId: number): Promise<RunFailure | null>
-  pulls(state?: 'open' | 'closed' | 'all'): Promise<PullRequest[]>
+  // The newest pull requests first, 20 unless a larger page (at most 100) is asked for.
+  pulls(state?: 'open' | 'closed' | 'all', limit?: number): Promise<PullRequest[]>
   pull(number: number): Promise<PullRequest | null>
   // How many closed pull requests from branches with this prefix were merged (the site's own Building feed).
   mergedPulls(branchPrefix: string): Promise<number>
@@ -97,17 +101,17 @@ export const updateRequestFromBody = (body: string | null | undefined): UpdateRe
 }
 
 const shapePull = (pull: Record<string, unknown>): PullRequest => {
-  const head = pull.head as { ref: string }
+  const head = pull.head as { ref: string; repo?: { full_name?: string } | null }
   const body = pull.body as string | null
   const request = updateRequestFromBody(body)
   return {
-    number: pull.number as number, title: pull.title as string, url: pull.html_url as string, branch: head.ref, draft: Boolean(pull.draft),
+    number: pull.number as number, title: pull.title as string, url: pull.html_url as string, branch: head.ref, headRepo: typeof head.repo?.full_name === 'string' ? head.repo.full_name : null, draft: Boolean(pull.draft),
     state: pull.state === 'closed' ? 'closed' : 'open', merged: Boolean(pull.merged ?? pull.merged_at), createdAt: pull.created_at as string, previewUrl: previewUrl(head.ref),
     mergeable: typeof pull.mergeable === 'boolean' ? pull.mergeable : null, mergeableState: typeof pull.mergeable_state === 'string' ? pull.mergeable_state : null,
     resumeScore: resumeScoreFromBody(body), request: request ? { ...request, title: request.title || (pull.title as string) } : null,
   }
 }
-const shapeRun = (run: Record<string, unknown>): WorkflowRun => ({ id: run.id as number, number: typeof run.run_number === 'number' ? run.run_number : null, status: run.status as string, conclusion: (run.conclusion as string | null) ?? null, createdAt: run.created_at as string, url: run.html_url as string, branch: run.head_branch as string, title: (run.display_title as string) ?? (run.name as string) })
+const shapeRun = (run: Record<string, unknown>): WorkflowRun => ({ id: run.id as number, number: typeof run.run_number === 'number' ? run.run_number : null, event: typeof run.event === 'string' ? run.event : null, status: run.status as string, conclusion: (run.conclusion as string | null) ?? null, createdAt: run.created_at as string, url: run.html_url as string, branch: run.head_branch as string, title: (run.display_title as string) ?? (run.name as string) })
 
 export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetch = fetch): GitHub => {
   const api = async (path: string, init: RequestInit = {}) => {
@@ -142,16 +146,18 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
       if (failed.name !== noChangeStep) return { step: failed.name, noChange: false, reason: null }
       // A job is a check run: its annotations carry the step's ::error:: line. Checks: read is needed for them.
       let reason: string | null = null
+      let refused = false
       try {
         const annotations = await api(`/check-runs/${job.id}/annotations?per_page=50`) as unknown as { message?: string; annotation_level?: string }[]
         const line = annotations.find((item) => item.annotation_level === 'failure' && typeof item.message === 'string' && item.message.startsWith(noChangeSentence))
         if (line) reason = line.message!.slice(noChangeSentence.length).trim() || null
       } catch (error) {
         if (!(error instanceof GitHubError) || (error.status !== 403 && error.status !== 404)) throw error
+        refused = error.status === 403
       }
-      return { step: failed.name, noChange: true, reason }
+      return { step: failed.name, noChange: true, reason, refused }
     },
-    pulls: async (state = 'open') => ((await api(`/pulls?state=${state}&per_page=20&sort=created&direction=desc`)) as unknown as Record<string, unknown>[]).map(shapePull),
+    pulls: async (state = 'open', limit = 20) => ((await api(`/pulls?state=${state}&per_page=${Math.min(Math.max(limit, 1), 100)}&sort=created&direction=desc`)) as unknown as Record<string, unknown>[]).map(shapePull),
     pull: async (number) => { try { return shapePull((await api(`/pulls/${number}`)) as Record<string, unknown>) } catch (error) { if (notFound(error)) return null; throw error } },
     mergedPulls: async (branchPrefix) => {
       const closed = (await api(`/pulls?state=closed&per_page=100&sort=created&direction=desc`)) as unknown as Record<string, unknown>[]

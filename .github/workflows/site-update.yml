@@ -120,8 +120,10 @@ jobs:
           echo "spec=specs/${branch#update/}.md" >> "$GITHUB_OUTPUT"
 
       # The scripts that run after Claude (the run's summary, the no-change decision) and the feed merge,
-      # taken from the commit that defines this workflow before Claude can write to scripts/: on main the
-      # same files as the checkout, from a branch the branch's own. They use only node: built-ins.
+      # taken from the commit that defines this workflow before Claude starts: on main the same files as the
+      # checkout, from a branch the branch's own. They use only node: built-ins. A session could still
+      # overwrite this copy (Write plus Bash(node scripts/*)); the steps that run it are safe because they
+      # hold no secret and no token, so the worst a forged copy does is misreport the run.
       - name: Take the workflow's own scripts
         id: scripts
         run: |

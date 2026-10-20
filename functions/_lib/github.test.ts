@@ -27,12 +27,12 @@ const fakeFetch = (replies: Record<string, Reply | Reply[]>) => {
 }
 
 const pullJson = (overrides: Record<string, unknown> = {}) => ({
-  number: 12, title: 'Add the patents', html_url: 'https://github.com/stewils/site/pull/12', head: { ref: 'update/Add_Patents' }, draft: false,
+  number: 12, title: 'Add the patents', html_url: 'https://github.com/stewils/site/pull/12', head: { ref: 'update/Add_Patents', repo: { full_name: 'stewils/site' } }, draft: false,
   state: 'open', merged: false, merged_at: null, created_at: '2026-10-18T10:00:00Z', mergeable: true, mergeable_state: 'clean',
   body: `Done.\n<!-- resume-score before=90 after=85 -->\n${encodeUpdateRequest({ title: '', instruction: 'Add the patents', proposals: [3], supersedes: null })}`,
   ...overrides,
 })
-const runJson = (overrides: Record<string, unknown> = {}) => ({ id: 7, run_number: 27, status: 'completed', conclusion: 'success', created_at: '2026-10-18T10:00:00Z', html_url: 'https://github.com/stewils/site/actions/runs/7', head_branch: 'main', display_title: 'Site update: patents', name: 'Site update', ...overrides })
+const runJson = (overrides: Record<string, unknown> = {}) => ({ id: 7, run_number: 27, event: 'workflow_dispatch', status: 'completed', conclusion: 'success', created_at: '2026-10-18T10:00:00Z', html_url: 'https://github.com/stewils/site/actions/runs/7', head_branch: 'main', display_title: 'Site update: patents', name: 'Site update', ...overrides })
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -108,7 +108,7 @@ describe('the GitHub client', () => {
 
   it('lists a workflow\'s runs and reads one, null when it is gone', async () => {
     const { calls, client } = fakeFetch({
-      'GET /actions/workflows/site-update.yml/runs': { body: { workflow_runs: [runJson(), runJson({ id: 8, run_number: undefined, conclusion: undefined, display_title: undefined, status: 'in_progress' })] } },
+      'GET /actions/workflows/site-update.yml/runs': { body: { workflow_runs: [runJson(), runJson({ id: 8, run_number: undefined, event: undefined, conclusion: undefined, display_title: undefined, status: 'in_progress' })] } },
       'GET /actions/runs/7': { body: runJson() },
       'GET /actions/runs/404': { status: 404, body: { message: 'Not Found' } },
       'GET /actions/runs/500': { status: 500, body: { message: 'boom' } },
@@ -118,8 +118,8 @@ describe('the GitHub client', () => {
     expect(calls[0].url).toContain('?per_page=5')
     expect(calls[0].headers['Content-Type']).toBeUndefined()
     expect(runs).toEqual([
-      { id: 7, number: 27, status: 'completed', conclusion: 'success', createdAt: '2026-10-18T10:00:00Z', url: 'https://github.com/stewils/site/actions/runs/7', branch: 'main', title: 'Site update: patents' },
-      { id: 8, number: null, status: 'in_progress', conclusion: null, createdAt: '2026-10-18T10:00:00Z', url: 'https://github.com/stewils/site/actions/runs/7', branch: 'main', title: 'Site update' },
+      { id: 7, number: 27, event: 'workflow_dispatch', status: 'completed', conclusion: 'success', createdAt: '2026-10-18T10:00:00Z', url: 'https://github.com/stewils/site/actions/runs/7', branch: 'main', title: 'Site update: patents' },
+      { id: 8, number: null, event: null, status: 'in_progress', conclusion: null, createdAt: '2026-10-18T10:00:00Z', url: 'https://github.com/stewils/site/actions/runs/7', branch: 'main', title: 'Site update' },
     ])
     expect(await client.run(7)).toMatchObject({ id: 7 })
     expect(await client.run(404)).toBeNull()
@@ -138,7 +138,7 @@ describe('the GitHub client', () => {
 
   it('shapes pull requests with their preview, score and request', async () => {
     const { calls, client } = fakeFetch({
-      'GET /pulls?state=': { body: [pullJson(), pullJson({ number: 13, title: 'Old one', state: 'closed', merged: undefined, merged_at: '2026-10-18T11:00:00Z', draft: true, mergeable: null, mergeable_state: undefined, body: null })] },
+      'GET /pulls?state=': { body: [pullJson(), pullJson({ number: 13, title: 'Old one', head: { ref: 'update/old', repo: null }, state: 'closed', merged: undefined, merged_at: '2026-10-18T11:00:00Z', draft: true, mergeable: null, mergeable_state: undefined, body: null })] },
       'GET /pulls/12': { body: pullJson() },
       'GET /pulls/99': { status: 404, body: { message: 'Not Found' } },
       'GET /pulls/500': { status: 502, body: { message: 'Bad gateway' } },
@@ -146,13 +146,15 @@ describe('the GitHub client', () => {
     const pulls = await client.pulls()
     expect(calls[0].url).toContain('/pulls?state=open&per_page=20')
     expect(pulls[0]).toEqual({
-      number: 12, title: 'Add the patents', url: 'https://github.com/stewils/site/pull/12', branch: 'update/Add_Patents', draft: false, state: 'open', merged: false,
+      number: 12, title: 'Add the patents', url: 'https://github.com/stewils/site/pull/12', branch: 'update/Add_Patents', headRepo: 'stewils/site', draft: false, state: 'open', merged: false,
       createdAt: '2026-10-18T10:00:00Z', previewUrl: 'https://update-add-patents.stevenwilssens.pages.dev', mergeable: true, mergeableState: 'clean',
       resumeScore: { before: 90, after: 85, lower: true }, request: { title: 'Add the patents', instruction: 'Add the patents', proposals: [3], supersedes: null },
     })
-    expect(pulls[1]).toMatchObject({ number: 13, state: 'closed', merged: true, draft: true, mergeable: null, mergeableState: null, resumeScore: null, request: null })
-    await client.pulls('all')
-    expect(calls[1].url).toContain('state=all')
+    expect(pulls[1]).toMatchObject({ number: 13, headRepo: null, state: 'closed', merged: true, draft: true, mergeable: null, mergeableState: null, resumeScore: null, request: null })
+    await client.pulls('all', 100)
+    expect(calls[1].url).toContain('state=all&per_page=100&')
+    await client.pulls('all', 500)
+    expect(calls[2].url).toContain('per_page=100&')
     expect(await client.pull(12)).toMatchObject({ number: 12 })
     expect(await client.pull(99)).toBeNull()
     await expect(client.pull(500)).rejects.toThrow('GitHub 502 on /pulls/500: Bad gateway')
@@ -236,7 +238,7 @@ describe('where a failed run stopped (AC-5, C-4)', () => {
         { annotation_level: 'failure', message: `${noChangeSentence} I could not find the section.` },
       ] },
     })
-    expect(await client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: 'I could not find the section.' })
+    expect(await client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: 'I could not find the section.', refused: false })
     expect(calls.map((call) => call.url.split('/stewils/site')[1])).toEqual(['/actions/runs/7/jobs?per_page=100', '/check-runs/901/annotations?per_page=50'])
   })
 
@@ -248,9 +250,9 @@ describe('where a failed run stopped (AC-5, C-4)', () => {
 
   it('still names the no-change step when the token may not read annotations, or the line is not there', async () => {
     const refused = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([[noChangeStep, 'failure']])), 'GET /check-runs/901/annotations': { status: 403, body: { message: 'Resource not accessible by personal access token' } } })
-    expect(await refused.client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: null })
+    expect(await refused.client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: null, refused: true })
     const empty = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([[noChangeStep, 'failure']])), 'GET /check-runs/901/annotations': { body: [{ annotation_level: 'failure', message: noChangeSentence }] } })
-    expect(await empty.client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: null })
+    expect(await empty.client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: null, refused: false })
     const broken = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([[noChangeStep, 'failure']])), 'GET /check-runs/901/annotations': { status: 500, body: { message: 'boom' } } })
     await expect(broken.client.runFailure(7)).rejects.toMatchObject({ status: 500 })
   })

@@ -37,7 +37,7 @@ export const mergeFeed = (committed, live, { now = new Date(), project = null } 
   const base = isObject(committed) ? committed : {}
   const numbers = finiteNumbers(base.numbers, MAX_NUMBERS)
   for (const [key, value] of Object.entries(finiteNumbers(live.numbers, Infinity))) {
-    if (key in numbers || Object.keys(numbers).length < MAX_NUMBERS) numbers[key] = value
+    if (Object.hasOwn(numbers, key) || Object.keys(numbers).length < MAX_NUMBERS) numbers[key] = value
   }
   const asOf = validAsOf(live.asOf, now) ? live.asOf : typeof base.asOf === 'string' ? base.asOf : now.toISOString()
   return { project: typeof base.project === 'string' ? base.project : project, asOf, numbers }

@@ -9,12 +9,23 @@ const sources = import.meta.glob<string>('./*/*Article.tsx', { query: '?raw', im
 const feeds = import.meta.glob<{ numbers: Record<string, number> }>('./*/feed.json', { import: 'default', eager: true })
 const articles = Object.keys(sources).sort().map((path) => [path.slice(2), path.split('/')[1]] as const)
 
-// The keys an article reads from its feed.
+// The `const stats: Stat[]` array, from its opening bracket to the one that closes it, on one line or many.
+const statsOf = (source: string) => {
+  const start = source.search(/const stats: Stat\[\] = \[/)
+  if (start < 0) return ''
+  const open = source.indexOf('= [', start) + 2
+  let depth = 0
+  for (let i = open; i < source.length; i++) {
+    if (source[i] === '[') depth++
+    else if (source[i] === ']' && --depth === 0) return source.slice(open, i + 1)
+  }
+  return ''
+}
+// The keys an article reads from its feed: the first string of each stats tuple, and every feed.numbers.<key>.
 const keysOf = (source: string) => {
-  const stats = /const stats: Stat\[\] = (\[[^\n]*\])\s*\n/.exec(source)?.[1] ?? ''
-  const fromStats = [...stats.matchAll(/\[\s*'([A-Za-z][A-Za-z0-9]*)'\s*,\s*'[^']*'\s*,\s*\d+\s*,/g)].map((match) => match[1])
-  const fromText = [...source.matchAll(/\bfeed\.numbers\.([A-Za-z][A-Za-z0-9]*)/g)].map((match) => match[1])
-  return [...new Set([...fromStats, ...fromText])]
+  const stats = [...statsOf(source).matchAll(/\[\s*'([A-Za-z][A-Za-z0-9]*)'\s*,\s*'[^']*'\s*,\s*\d+\s*,/g)].map((match) => match[1])
+  const text = [...source.matchAll(/\bfeed\.numbers\.([A-Za-z][A-Za-z0-9]*)/g)].map((match) => match[1])
+  return { stats, all: [...new Set([...stats, ...text])] }
 }
 
 describe('the Building write-ups read only numbers their feed has (AC-8)', () => {
@@ -23,8 +34,9 @@ describe('the Building write-ups read only numbers their feed has (AC-8)', () =>
   })
 
   it.each(articles)('%s yields at least one key, and every one is in its feed.json', (path, name) => {
-    const keys = keysOf(sources[`./${path}`])
-    expect(keys.length, `${path}: no stats keys found; was \`const stats: Stat[]\` reworded?`).toBeGreaterThan(0)
+    const { stats, all: keys } = keysOf(sources[`./${path}`])
+    // The stats tuples on their own: a feed.numbers.<key> in a label must not carry the guard.
+    expect(stats.length, `${path}: no stats keys found; was \`const stats: Stat[]\` reworded?`).toBeGreaterThan(0)
     const feed = feeds[`./${name}/feed.json`]
     expect(feed, `${name}/feed.json`).toBeDefined()
     const missing = keys.filter((key) => !Object.hasOwn(feed.numbers, key))
@@ -33,7 +45,10 @@ describe('the Building write-ups read only numbers their feed has (AC-8)', () =>
 
   it('reads the stats tuples and the feed.numbers keys, and nothing from a reworded declaration', () => {
     const source = "const stats: Stat[] = [['levels', '', 0, 'levels'], ['cost', '$', 2, `of ${feed.numbers.budget} cap`]]\nconst x = feed.numbers.extra\n"
-    expect(keysOf(source)).toEqual(['levels', 'cost', 'budget', 'extra'])
-    expect(keysOf("const items: Stat[] = [['levels', '', 0, 'levels']]\n")).toEqual([])
+    expect(keysOf(source)).toEqual({ stats: ['levels', 'cost'], all: ['levels', 'cost', 'budget', 'extra'] })
+    expect(keysOf("const items: Stat[] = [['levels', '', 0, 'levels']]\nconst y = feed.numbers.other\n")).toEqual({ stats: [], all: ['other'] })
+    const multiLine = "const stats: Stat[] = [\n  ['levels', '', 0, 'levels'],\n  ['clicksToUndo', '', 0, `click [to] undo`],\n]\nconst after = [['nope', '', 0, 'x']]\n"
+    expect(keysOf(multiLine).stats).toEqual(['levels', 'clicksToUndo'])
+    expect(keysOf('const stats: Stat[] = [[').stats).toEqual([])
   })
 })

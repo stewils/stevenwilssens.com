@@ -67,6 +67,14 @@ describe('the merge (AC-7)', () => {
     expect(JSON.stringify(merged)).not.toContain('<img')
   })
 
+  it('the 32 cap holds for names that Object.prototype has (constructor, toString, valueOf)', () => {
+    const full = Object.fromEntries(Array.from({ length: MAX_NUMBERS }, (_, i) => [`n${i}`, i]))
+    const merged = mergeFeed({ project: 'x', asOf: '2026-10-01', numbers: full }, { numbers: { constructor: 1, toString: 2, valueOf: 3, hasOwnProperty: 4, n0: 99 } }, { now })
+    expect(Object.keys(merged.numbers)).toHaveLength(MAX_NUMBERS)
+    expect(merged.numbers.n0).toBe(99)
+    expect(Object.hasOwn(merged.numbers, 'constructor')).toBe(false)
+  })
+
   it('drops what is not a number from the committed file too, and reads a committed file without numbers', () => {
     expect(mergeFeed({ project: 'x', asOf: '2026-10-01', numbers: { good: 1, bad: 'no' } }, { numbers: {} }, { now }).numbers).toEqual({ good: 1 })
     expect(mergeFeed({ project: 'x', asOf: 7 }, { numbers: { a: 1 } }, { now })).toEqual({ project: 'x', asOf: now.toISOString(), numbers: { a: 1 } })

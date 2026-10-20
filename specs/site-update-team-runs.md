@@ -1,6 +1,6 @@
 # The changes Steven asks for through his MCP arrive as pull requests that carry the change, or he is told plainly that they did not
 
-Slug: `site-update-team-runs` · Branch: `site-update-team-runs` · Status: approved
+Slug: `site-update-team-runs` · Branch: `site-update-team-runs` · Status: built (confirmation run recorded below)
 Asked by Steven on 2026-10-19: "the pull requests my MCP submits get stuck."
 
 ## Problem
@@ -235,6 +235,10 @@ C-1 to C-10 are part of these criteria (AC-14); its tests T-1 to T-10 are in the
 - Uploading the execution file in any form (threat model).
 - Changes to the Review workflow, the reviewers or their bars; `CLAUDE.md` needs no change.
 - AI Breaker's endpoint sending all six numbers (its own repository).
+- Follow-up from the confirmation run (AC-2): its 11 denied `Bash` calls and a security
+  engineer that could not write its section cost turns. A prompt line that steers the agents
+  to the allowed commands (npm and git commands without pipes or redirects, files written
+  with Write or Edit) is the follow-up; `--allowedTools` is not widened (C-7).
 
 ## Recruiter impact (senior-recruiter)
 
@@ -680,6 +684,31 @@ so AC-2 is needed as written.
   use only `node:` built-ins, so they run alone from there.
 - Cost: foreground runs get longer, because the agents now work. `timeout-minutes: 90` and
   `--max-turns 400` stay (C-7); the summary shows the real duration.
+
+**Confirmation run (AC-2, recorded 2026-10-19).** Run 39355916378 (run 28, dispatched from
+this branch at 59c907d, a harmless README instruction):
+https://github.com/stewils/stevenwilssens.com/actions/runs/39355916378. From its step
+summary (`Summarise Claude's run`):
+
+- **Agent calls of the main conversation:** 8, every one with `run_in_background` false
+  (in the foreground), and every one returned before the session's `result` message.
+- **Turns and duration:** `success`, 14 turns, 392 s.
+- **Denials:** 11, all `Bash` (names only, by C-1). The last message also says the security
+  engineer could not write its section to the spec file. These are seen, and they cost
+  turns, but they did not end the run (follow-up under Out of scope).
+- **Outcome:** `Stop when no change was made` printed "There is a change to commit", and the
+  run opened pull request #57 (README.md plus the spec
+  `specs/test-run-site-update-team-from-a-branch-28.md`), which was then closed unmerged.
+
+What the record says about the runs before the fix: run 27 (no fix, no summary) ended
+after 6 turns and 37 seconds with 1 denial and no change. With background tasks off, the
+same team ran 8 agents to the end in 14 turns and 392 seconds and carried the change. So
+before the fix the lead's turn ended before its agents finished, and the run ended with it.
+This run confirms the fix works. It does not prove the earlier cause directly: with the
+setting on, a background call cannot happen. That is why Open question 5's second run is
+not needed. AC-2 is met: every agent call ran in the foreground and returned, and the pull
+request's diff touches a file outside `specs/`. The security engineer read the summary for
+T-10 (no token, no `sources/` text, no tool input).
 
 **(2) The summary, and telling a no-change run apart (AC-3 to AC-6).**
 - The team step gets `id: claude` (after its `name:` line, so `cutStep` still finds it).

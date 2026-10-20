@@ -22,15 +22,15 @@ const call = async (store: MemoryStore, name: string, args: Record<string, unkno
 }
 
 const pull = (number: number, extra: Partial<PullRequest> = {}, body = ''): PullRequest => ({
-  number, title: `PR ${number}`, url: `https://github.com/x/pull/${number}`, branch: `update/pr-${number}`, draft: false, state: 'open', merged: false, createdAt: '2026-10-17T00:00:00Z',
+  number, title: `PR ${number}`, url: `https://github.com/x/pull/${number}`, branch: `update/pr-${number}`, headRepo: 'stewils/stevenwilssens.com', draft: false, state: 'open', merged: false, createdAt: '2026-10-17T00:00:00Z',
   previewUrl: previewUrl(`update/pr-${number}`), mergeable: true, mergeableState: 'clean', resumeScore: resumeScoreFromBody(body), request: updateRequestFromBody(body), ...extra,
 })
 // Like GitHub: a dispatched run's branch is main, and its number ends the branch it pushes (update/<slug>-<number>).
-const run = (id: number, extra: Partial<WorkflowRun> = {}): WorkflowRun => ({ id, number: id, status: 'completed', conclusion: 'success', createdAt: new Date(now).toISOString(), url: `https://github.com/x/runs/${id}`, branch: 'main', title: `Run ${id}`, ...extra })
+const run = (id: number, extra: Partial<WorkflowRun> = {}): WorkflowRun => ({ id, number: id, event: 'workflow_dispatch', status: 'completed', conclusion: 'success', createdAt: new Date(now).toISOString(), url: `https://github.com/x/runs/${id}`, branch: 'main', title: `Run ${id}`, ...extra })
 
 type Options = { runs?: WorkflowRun[]; pulls?: PullRequest[]; failures?: Record<number, RunFailure | null>; single?: (number: number, calls: number) => PullRequest | null; merge?: () => Promise<{ merged: boolean; message: string; sha?: string }>; branchDeleted?: boolean; findsRun?: boolean }
 const fakeGitHub = (options: Options = {}) => {
-  const calls = { dispatched: [] as Record<string, string>[], merged: [] as number[], closed: [] as number[], single: 0, failures: [] as number[] }
+  const calls = { dispatched: [] as Record<string, string>[], merged: [] as number[], closed: [] as number[], single: 0, failures: [] as number[], pages: [] as number[] }
   const runs = options.runs ?? []
   const pulls = options.pulls ?? []
   const github: GitHub = {
@@ -39,7 +39,7 @@ const fakeGitHub = (options: Options = {}) => {
     runs: async (_workflow, limit) => runs.slice(0, limit),
     run: async (id) => runs.find((item) => item.id === id) ?? null,
     runFailure: async (id) => { calls.failures.push(id); return options.failures?.[id] ?? null },
-    pulls: async (state = 'open') => pulls.filter((item) => state === 'all' || item.state === state),
+    pulls: async (state = 'open', limit = 20) => { calls.pages.push(limit); return pulls.filter((item) => state === 'all' || item.state === state).slice(0, limit) },
     pull: async (number) => { calls.single++; return options.single ? options.single(number, calls.single) : pulls.find((item) => item.number === number) ?? null },
     merge: async (number) => { calls.merged.push(number); return options.merge ? options.merge() : { merged: true, message: 'merged', sha: 'abc' } },
     close: async (number) => { calls.closed.push(number); return { closed: true, branchDeleted: options.branchDeleted ?? true } },
@@ -243,8 +243,11 @@ describe('site updates', () => {
     expect((await call(store, 'wait_for_site_update', { run_id: 9 }, { github: fakeGitHub().github })).text).toBe('no run with id 9')
     const failed = fakeGitHub({ runs: [run(1, { conclusion: 'failure' })] })
     expect((await call(store, 'wait_for_site_update', {}, { github: failed.github })).json).toMatchObject({ done: true, outcome: 'failed', pullRequest: null, next: expect.stringContaining('ended with "failure"') })
-    const nothing = fakeGitHub({ runs: [run(2)] })
+    const nothing = fakeGitHub({ runs: [run(2, { event: 'repository_dispatch' })] })
     expect((await call(store, 'wait_for_site_update', { run_id: 2 }, { github: nothing.github })).json).toMatchObject({ outcome: 'no-change', next: expect.stringMatching(/^The run "Run 2" finished and there was nothing to change/) })
+    // A request that succeeded has a pull request; when it is not found, it is not "nothing to change".
+    const lost = fakeGitHub({ runs: [run(5)] })
+    expect((await call(store, 'wait_for_site_update', { run_id: 5 }, { github: lost.github })).json).toMatchObject({ outcome: 'failed', next: expect.stringMatching(/^The run "Run 5" finished, but its pull request was not found here/) })
     const running = fakeGitHub({ runs: [run(3, { status: 'in_progress', conclusion: null })] })
     expect((await call(store, 'wait_for_site_update', { seconds: 5 }, { github: running.github })).json).toMatchObject({ done: false })
   })
@@ -331,13 +334,14 @@ describe('what became of a run (AC-5, AC-6, AC-13)', () => {
     ['a pull request', { status: 'completed', conclusion: 'success' }, pull(1), null, 'pull-request'],
     ['a pull request, failed later', { status: 'completed', conclusion: 'failure' }, pull(1), elsewhere, 'pull-request'],
     ['failed at the no-change step', { status: 'completed', conclusion: 'failure' }, null, noChange, 'no-change'],
-    ['success without a pull request', { status: 'completed', conclusion: 'success' }, null, null, 'no-change'],
+    ['a refresh that succeeded without a pull request', { status: 'completed', conclusion: 'success', event: 'repository_dispatch' }, null, null, 'no-change'],
+    ['a request that succeeded without a pull request found', { status: 'completed', conclusion: 'success', event: 'workflow_dispatch' }, null, null, 'failed'],
     ['failed elsewhere', { status: 'completed', conclusion: 'failure' }, null, elsewhere, 'failed'],
     ['failed with no failed step', { status: 'completed', conclusion: 'failure' }, null, null, 'failed'],
     ['a step that only says it is the no-change step', { status: 'completed', conclusion: 'failure' }, null, { step: 'Something else', noChange: true, reason: null }, 'failed'],
     ['cancelled', { status: 'completed', conclusion: 'cancelled' }, null, null, 'failed'],
   ] as const)('%s', (_name, state, found, failure, outcome) => {
-    expect(runOutcome(state, found, failure)).toBe(outcome)
+    expect(runOutcome({ event: 'workflow_dispatch', ...state }, found, failure)).toBe(outcome)
   })
 
   it("finds a run's pull request by its run number while the run's branch is main: open, closed or merged", async () => {
@@ -345,7 +349,7 @@ describe('what became of a run (AC-5, AC-6, AC-13)', () => {
     const wait = async (id: number, pulls: PullRequest[]) => (await call(store, 'wait_for_site_update', { run_id: id }, { github: fakeGitHub({ runs: [run(id)], pulls }).github })).json!
     const found = await wait(27, [pull(1, { branch: 'update/x-270' }), pull(2, { branch: 'update/x-7' }), pull(3, { branch: 'update/x-27' })])
     expect(found).toMatchObject({ outcome: 'pull-request', pullRequest: { number: 3 }, run: { number: 27, branch: 'main' } })
-    expect(await wait(7, [pull(4, { branch: 'update/x-17' })])).toMatchObject({ outcome: 'no-change', pullRequest: null })
+    expect(await wait(7, [pull(4, { branch: 'update/x-17' })])).toMatchObject({ outcome: 'failed', pullRequest: null })
     expect(await wait(8, [pull(5, { branch: 'update/x-8', state: 'closed' })])).toMatchObject({ outcome: 'pull-request', pullRequest: { number: 5, state: 'closed' } })
     expect(await wait(9, [pull(6, { branch: 'update/x-9', state: 'closed', merged: true })])).toMatchObject({ outcome: 'pull-request', pullRequest: { number: 6, merged: true } })
   })
@@ -441,5 +445,49 @@ describe('what became of a run (AC-5, AC-6, AC-13)', () => {
     expect(status.note).toMatch(/running.*pull-request.*no-change.*failed/s)
     expect(status.note).not.toMatch(/made no changes, or failed/)
     expect((status.pullRequests as { number: number }[]).map((item) => item.number)).toEqual([61])
+  })
+})
+
+describe('a run and its pull request, beyond the first page and from forks (F-1, M-1, m-2, m-3)', () => {
+  it("never takes a fork's pull request carrying the run's branch name, and never merges one", async () => {
+    const store = new MemoryStore()
+    const fork = pull(70, { branch: 'update/about-page-60', headRepo: 'outsider/stevenwilssens.com' })
+    const { github, calls } = fakeGitHub({ runs: [run(60)], pulls: [fork] })
+    expect((await call(store, 'wait_for_site_update', { run_id: 60 }, { github })).json).toMatchObject({ pullRequest: null, outcome: 'failed' })
+    expect(((await call(store, 'site_update_status', {}, { github })).json!.runs as Record<string, unknown>[])[0]).not.toHaveProperty('pullRequest')
+    const refused = await call(store, 'merge_site_update', { number: 70, confirm: true }, { github })
+    expect(refused.text).toMatch(/^#70 comes from another repository \(outsider\/stevenwilssens\.com\)/)
+    const deleted = fakeGitHub({ pulls: [pull(71, { headRepo: null })] })
+    expect((await call(store, 'merge_site_update', { number: 71, confirm: true }, { github: deleted.github })).text).toMatch(/a deleted fork/)
+    expect(calls.merged).toEqual([])
+  })
+
+  it('lists an open pull request behind 20 newer ones, and finds a run\'s pull request on a larger page', async () => {
+    const store = new MemoryStore()
+    const newer = Array.from({ length: 25 }, (_, i) => pull(200 - i, { branch: `update/other-${300 + i}`, state: 'closed' }))
+    const older = pull(80, { branch: 'update/team-size-61' }, '<!-- resume-score before=90 after=80 -->')
+    const { github, calls } = fakeGitHub({ runs: [run(61)], pulls: [...newer, older] })
+    const status = (await call(store, 'site_update_status', {}, { github })).json!
+    expect((status.pullRequests as { number: number }[]).map((item) => item.number)).toEqual([80])
+    expect(status.warning).toMatch(/#80 lowers the resume score/)
+    expect((status.runs as Record<string, unknown>[])[0]).toMatchObject({ outcome: 'pull-request', pullRequest: 80 })
+    expect((await call(store, 'wait_for_site_update', { run_id: 61 }, { github })).json).toMatchObject({ outcome: 'pull-request', pullRequest: { number: 80 } })
+    expect(calls.pages).toContain(100)
+  })
+
+  it('a GitHub error while reading where a run stopped reads failed with the run\'s link, for both tools', async () => {
+    const store = new MemoryStore()
+    const { github } = fakeGitHub({ runs: [run(62, { conclusion: 'failure' })] })
+    github.runFailure = async () => { throw new Error('GitHub 502 on /actions/runs/62/jobs') }
+    expect((await call(store, 'wait_for_site_update', { run_id: 62 }, { github })).json).toMatchObject({ outcome: 'failed', next: expect.stringContaining('https://github.com/x/runs/62') })
+    expect(((await call(store, 'site_update_status', {}, { github })).json!.runs as Record<string, unknown>[])[0]).toMatchObject({ outcome: 'failed' })
+  })
+
+  it('says the token needs Checks: read only when GitHub refused the annotations', async () => {
+    const store = new MemoryStore()
+    const reasonOf = async (failure: RunFailure) => (await call(store, 'wait_for_site_update', { run_id: 63 }, { github: fakeGitHub({ runs: [run(63, { conclusion: 'failure' })], failures: { 63: failure } }).github })).json!.reason as string
+    expect(await reasonOf({ step: noChangeStep, noChange: true, reason: null, refused: true })).toMatch(/needs Checks: read\); open the run: https:\/\/github\.com\/x\/runs\/63$/)
+    const missing = await reasonOf({ step: noChangeStep, noChange: true, reason: null, refused: false })
+    expect(missing).toBe("The run's reason could not be read here; open the run: https://github.com/x/runs/63")
   })
 })

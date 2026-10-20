@@ -27,6 +27,8 @@ const SECRETS = [
   /\bsk-ant-[A-Za-z0-9_-]{8,}/g,
   /x-access-token:[^\s@'"]+/gi,
   /\bAUTHORIZATION:\s*(?:basic|bearer|token)\s+\S+/gi,
+  // A JSON Web Token (an OIDC or runtime token): three base64url parts, the first a JSON header.
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
   // A long run of base64 or hex with letters and digits in it: a key, a token, an encoded header.
   // (No dash in it, so a long branch or file name stays readable.)
   /(?<![A-Za-z0-9+/_])(?=[A-Za-z0-9+/_]*\d)(?=[A-Za-z0-9+/_]*[A-Za-z])[A-Za-z0-9+/_]{40,}={0,2}/g,

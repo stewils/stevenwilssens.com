@@ -7,7 +7,8 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { decide, encodeCommand, ERROR_LIMIT, errorLine, fromEnvironment, main, NO_CHANGE, parseStatus } from './site-update-outcome.mjs'
+import { readFileSync as read } from 'node:fs'
+import { decide, encodeCommand, ERROR_LIMIT, errorLine, fromEnvironment, main, NO_CHANGE, parseStatus, STATUS_ARGS } from './site-update-outcome.mjs'
 
 const z = (...entries) => entries.map((entry) => `${entry}\0`).join('')
 const dispatch = 'workflow_dispatch'
@@ -79,7 +80,13 @@ describe('the error line (C-3)', () => {
 describe('the step', () => {
   const tmp = () => mkdtempSync(join(tmpdir(), 'outcome-'))
 
-  it('exit 1 for fail, 0 for warn and commit; changed=false written for warn and fail', () => {
+  it('reads every untracked file, NUL-separated, and prints the sentence the MCP reads back', () => {
+    expect(STATUS_ARGS).toEqual(['status', '--porcelain', '-z', '--untracked-files=all'])
+    const github = read(join(import.meta.dirname, '../functions/_lib/github.ts'), 'utf8')
+    expect(/export const noChangeSentence = '([^']+)'/.exec(github)?.[1]).toBe(NO_CHANGE)
+  })
+
+  it('exit 1 for fail, 0 for warn and commit; commit=false written for warn and fail', () => {
     const dir = tmp()
     const output = join(dir, 'out')
     const logged = []
@@ -93,7 +100,7 @@ describe('the step', () => {
     expect(logged.at(-1)).toBe('::warning::Claude changed only the spec; there is nothing to open.')
     expect(main({ event: dispatch, status: z(' M src/resume.ts'), output, log })).toBe(0)
     expect(logged.at(-1)).toBe('There is a change to commit.')
-    expect(readFileSync(output, 'utf8')).toBe('commit=false\nchanged=false\n'.repeat(3) + 'commit=true\n')
+    expect(readFileSync(output, 'utf8')).toBe('commit=false\n'.repeat(3) + 'commit=true\n')
     expect(main({ event: dispatch, status: z(' M src/resume.ts'), log })).toBe(0)
     expect(main({ event: refresh, status: '', log })).toBe(0)
   })

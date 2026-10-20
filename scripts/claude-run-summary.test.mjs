@@ -14,6 +14,7 @@ const gh = ['gh', 'p_', repeat('A1', 18)].join('')
 const pat = ['github', '_pat_', repeat('B2', 20)].join('')
 const ant = ['sk', '-ant-', 'api03-', repeat('C3', 20)].join('')
 const base64 = repeat('Zm9vYmFy', 6)
+const jwt = ['eyJ', 'hbGciOiJSUzI1NiJ9', '.', 'eyJzdWIiOiJyZXBv-Onp4', '.', 'c2lnbmF0dXJl_LXBhcnQ'].join('')
 
 const assistant = (content, parent = null) => ({ type: 'assistant', parent_tool_use_id: parent, message: { content } })
 const toolResult = (id, parent = null) => ({ type: 'user', parent_tool_use_id: parent, message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'the agent said a lot here' }] } })
@@ -103,6 +104,7 @@ describe('the last message is redacted, cut and inert (T-2, T-4, C-1, C-3, C-9)'
     ['an x-access-token', `x-access-token:${repeat('z', 12)}`],
     ['an AUTHORIZATION header', `AUTHORIZATION: basic ${repeat('eA', 10)}`],
     ['a long base64 run', base64],
+    ['a JSON Web Token, dashes and all', jwt],
   ])('redacts %s', (_name, secret) => {
     const out = publicMessage(`before ${secret} after`)
     expect(out).not.toContain(secret)

@@ -21,6 +21,8 @@ import { cut, redact } from './claude-run-summary.mjs'
 // The sentence the error annotation starts with; functions/_lib/github.ts (noChangeSentence) reads it back.
 export const NO_CHANGE = 'Claude made no change to the site for this request.'
 export const ERROR_LIMIT = 500
+// Untracked files one by one, so a new folder is read by the paths in it; -z so a name with a space or a newline is one path.
+export const STATUS_ARGS = ['status', '--porcelain', '-z', '--untracked-files=all']
 
 // `git status --porcelain -z`: "XY path\0", and for a rename or copy "XY new\0old\0".
 export const parseStatus = (text) => {
@@ -62,7 +64,7 @@ export const main = ({ event, status, lastMessage = '', output, log = console.lo
     log('There is a change to commit.')
     return 0
   }
-  if (output) appendFileSync(output, 'commit=false\nchanged=false\n')
+  if (output) appendFileSync(output, 'commit=false\n')
   if (decision.action === 'warn') {
     log(`::warning::${decision.specOnly ? 'Claude changed only the spec; there is nothing to open.' : 'Claude made no changes.'}`)
     return 0
@@ -73,7 +75,7 @@ export const main = ({ event, status, lastMessage = '', output, log = console.lo
 
 // The step as the workflow runs it: git status of the working tree, the event and the last message from the environment.
 export const fromEnvironment = ({ env = process.env, cwd = process.cwd(), log = console.log } = {}) => {
-  const status = execFileSync('git', ['status', '--porcelain', '-z', '--untracked-files=all'], { cwd, encoding: 'utf8' })
+  const status = execFileSync('git', STATUS_ARGS, { cwd, encoding: 'utf8' })
   let lastMessage = ''
   try { lastMessage = env.LAST_MESSAGE ? readFileSync(env.LAST_MESSAGE, 'utf8') : '' } catch { lastMessage = '' }
   return main({ event: env.EVENT, status, lastMessage, output: env.GITHUB_OUTPUT, log })
