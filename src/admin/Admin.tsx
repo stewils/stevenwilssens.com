@@ -211,9 +211,10 @@ export default function Admin() {
         <a className="brand" href="#overview"><span className="mark" aria-hidden="true">SW</span><span>steven.wilssens.com<small>Admin</small></span></a>
         <nav className="tabs" aria-label="Admin pages">
           {pages.map((item) => (
-            <a key={item.id} href={`#${item.id}`} aria-current={item.id === page.id ? 'page' : undefined} aria-label={item.badgeNote && (badges[item.id] ?? 0) > 0 ? `${item.title}, ${badges[item.id]} ${item.badgeNote}` : undefined}>
+            <a key={item.id} href={`#${item.id}`} aria-current={item.id === page.id ? 'page' : undefined}>
               {item.icon}<span className="lbl">{item.title}</span>
-              {(badges[item.id] ?? 0) > 0 && <span className="tab-badge">{badges[item.id]! > 99 ? '99+' : badges[item.id]}</span>}
+              {/* The name is what the link shows, and the badge's meaning in words: "Costs, 1 over budget". */}
+              {(badges[item.id] ?? 0) > 0 && <><span className="visually-hidden">{`, ${badges[item.id]}${item.badgeNote ? ` ${item.badgeNote}` : ''}`}</span><span className="tab-badge" aria-hidden="true">{badges[item.id]! > 99 ? '99+' : badges[item.id]}</span></>}
             </a>
           ))}
         </nav>

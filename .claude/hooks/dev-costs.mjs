@@ -17,7 +17,7 @@
 //
 // `node .claude/hooks/dev-costs.mjs --backfill [--dir <folder>]` does the same for every past
 // session of this repository; the server's upsert makes a second run harmless.
-import { existsSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -27,9 +27,15 @@ export const QUEUE_FILE = '.dev-costs-queue.jsonl'
 export const MAX_QUEUE = 200
 export const MAX_QUEUE_BYTES = 256 * 1024
 export const MAX_ROWS = 64
+// The server takes 16 KB a body; a long branch name makes 64 rows larger than that.
+export const MAX_BODY_BYTES = 15 * 1024
 export const REQUEST_MS = 2500
 // Stop starting new requests after this, so the last one ends inside the hook's 5 seconds.
 export const SEND_FOR_MS = 2000
+// Two sessions can end at once: each change to the queue holds its lock file. A session waits
+// for it this long, then goes on without it; a lock older than STALE_LOCK_MS was left by a kill.
+export const LOCK_WAIT_MS = 1000
+export const STALE_LOCK_MS = 10_000
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const ROLE = /^[a-z][a-z0-9-]{0,40}$/
@@ -100,12 +106,13 @@ export const collect = (lines, sessionId) => {
     for (const block of blocks(line)) if (block?.type === 'tool_use' && typeof block.id === 'string') message.tools.push({ id: block.id, name: block.name, index })
     messages.set(line.message.id, message)
   })
-  // A message without a branch takes the last one before it, else the first after it (S-17):
-  // never the branch at the end, so a key does not move when the transcript grows.
-  for (const message of messages.values()) {
+  // A message without a branch takes the last one before it, else none (S-17): only earlier
+  // lines decide, so a key does not move when the transcript grows or the session is resumed.
+  let last = 0
+  for (const message of [...messages.values()].sort((a, b) => a.index - b.index)) {
+    while (last < branches.length && branches[last].index < message.index) last++
     if (message.branch) { message.branch = isBranch(message.branch) ? message.branch : NO_FEATURE; continue }
-    const before = branches.filter((item) => item.index < message.index).at(-1)
-    message.branch = before?.branch ?? branches.find((item) => item.index > message.index)?.branch ?? null
+    message.branch = last ? branches[last - 1].branch : null
   }
   return messages
 }
@@ -183,17 +190,26 @@ export const summarize = ({ sessionId, lines, agents = [], now = Date.now() }) =
   return { startedAt: Math.min(...times), endedAt: Math.max(...times), rows: [...rows.values()].sort((a, b) => a.batch - b.batch || a.batchAt - b.batchAt || (a.branch + a.role + a.model).localeCompare(b.branch + b.role + b.model)) }
 }
 
-// The bodies POST /api/costs takes, built field by field: at most 64 rows each.
+// The bodies POST /api/costs takes, built field by field: at most 64 rows and 15 KB each.
 export const payloadsOf = ({ sessionId, summary, billing }) => {
   if (!UUID.test(sessionId) || !summary || !summary.rows.length) return []
+  const bodyOf = (rows) => ({ v: 1, source: 'local', session: sessionId, startedAt: summary.startedAt, endedAt: summary.endedAt, billing, rows })
+  const empty = Buffer.byteLength(JSON.stringify(bodyOf([])))
   const bodies = []
-  for (let start = 0; start < summary.rows.length; start += MAX_ROWS) {
-    const rows = summary.rows.slice(start, start + MAX_ROWS).map((row) => ({
+  let rows = []
+  let size = empty
+  for (const row of summary.rows) {
+    const kept = {
       branch: row.branch, role: row.role, batch: row.batch, batchAt: row.batchAt, model: row.model,
       input: row.input, output: row.output, cacheRead: row.cacheRead, cacheWrite5m: row.cacheWrite5m, cacheWrite1h: row.cacheWrite1h,
-    }))
-    bodies.push({ v: 1, source: 'local', session: sessionId, startedAt: summary.startedAt, endedAt: summary.endedAt, billing, rows })
+    }
+    // A row and the comma before it.
+    const bytes = Buffer.byteLength(JSON.stringify(kept)) + 1
+    if (rows.length && (rows.length >= MAX_ROWS || size + bytes > MAX_BODY_BYTES)) { bodies.push(bodyOf(rows)); rows = []; size = empty }
+    rows.push(kept)
+    size += bytes
   }
+  bodies.push(bodyOf(rows))
   return bodies
 }
 
@@ -235,6 +251,48 @@ export const writeQueue = (root, entries) => {
   renameSync(temp, file)
   return kept
 }
+
+const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+
+// Runs `change` on the queue while holding its lock file (`<queue>.lock`, created with wx).
+export const withQueueLock = (root, change, { now = Date.now } = {}) => {
+  const lock = join(root, `${QUEUE_FILE}.lock`)
+  const until = now() + LOCK_WAIT_MS
+  let fd = null
+  while (fd === null) {
+    try {
+      fd = openSync(lock, 'wx')
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error
+      let age = 0
+      try { age = now() - statSync(lock).mtimeMs } catch { continue }
+      if (age > STALE_LOCK_MS) { rmSync(lock, { force: true }); continue }
+      if (now() >= until) break
+      pause(20)
+    }
+  }
+  try {
+    return change(readQueue(root))
+  } finally {
+    if (fd !== null) { closeSync(fd); rmSync(lock, { force: true }) }
+  }
+}
+
+// Adds payloads at the end of the queue, under the lock.
+export const appendQueue = (root, lines) => withQueueLock(root, (queued) => writeQueue(root, [...queued, ...lines]))
+
+// Takes out the entries this session sent or dropped, under the lock, keeping anything another
+// session queued meanwhile.
+export const settleQueue = (root, handled) => withQueueLock(root, (queued) => {
+  const done = new Map()
+  for (const line of handled) done.set(line, (done.get(line) ?? 0) + 1)
+  return writeQueue(root, queued.filter((line) => {
+    const left = done.get(line)
+    if (!left) return true
+    done.set(line, left - 1)
+    return false
+  }))
+})
 
 // Sends the queue in order. Accepted: removed. 429 (the day's cap), a server error, a timeout
 // or no network: kept, and nothing more is tried now. Any other refusal: dropped, one line.
@@ -285,8 +343,8 @@ export async function main({ argv = [], env = {}, stdin = '', fetch = globalThis
       const queued = readQueue(root)
       if (!token || !queued.length) return { remaining: queued, sentRows: 0, stopped: queued.length > 0 }
       const result = await sendQueue(queued, { fetch, token, url, now, stderr, deadline })
-      writeQueue(root, result.remaining)
-      return result
+      const remaining = settleQueue(root, queued.slice(0, queued.length - result.remaining.length))
+      return { ...result, remaining }
     }
 
     if (argv.includes('--backfill')) {
@@ -301,7 +359,7 @@ export async function main({ argv = [], env = {}, stdin = '', fetch = globalThis
         if (!UUID.test(sessionId)) continue
         sessions++
         const payloads = sessionPayloads({ sessionId, transcript: join(folder, name), env, now: now() })
-        writeQueue(root, [...readQueue(root), ...payloads.map((payload) => JSON.stringify(payload))])
+        appendQueue(root, payloads.map((payload) => JSON.stringify(payload)))
         const result = await flush(Infinity)
         sent += result.sentRows
         left = result.remaining
@@ -319,7 +377,7 @@ export async function main({ argv = [], env = {}, stdin = '', fetch = globalThis
     if (UUID.test(sessionId) && transcript && isInside(projects, transcript)) {
       const payloads = sessionPayloads({ sessionId, transcript, env, now: now() })
       // Queued first, so a kill at the hook's timeout loses nothing.
-      if (payloads.length) writeQueue(root, [...readQueue(root), ...payloads.map((payload) => JSON.stringify(payload))])
+      if (payloads.length) appendQueue(root, payloads.map((payload) => JSON.stringify(payload)))
     }
     await flush(SEND_FOR_MS)
   } catch {

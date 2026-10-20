@@ -11,6 +11,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { parseIngest } from '../functions/_lib/costs/ingest.ts'
 
 const root = resolve(import.meta.dirname, '..')
 const fixtures = join(root, 'functions/_lib/costs/fixtures')
@@ -68,7 +69,7 @@ describe.each(Object.entries(workflows))('the %s workflow', (workflow, meta) => 
     // Only the three numbers become job outputs (and, for Site update, its branch and pull request).
     const afterOutputs = job.slice(job.indexOf('    outputs:') + '    outputs:'.length)
     const outputs = afterOutputs.slice(0, afterOutputs.search(/\n {4}\S/))
-    expect([...outputs.matchAll(/^ {6}(\w+):/gm)].map((match) => match[1])).toEqual(workflow === 'review' ? ['cost', 'turns', 'ms'] : ['cost', 'turns', 'ms', 'branch', 'pr'])
+    expect([...outputs.matchAll(/^ {6}(\w+):/gm)].map((match) => match[1])).toEqual(workflow === 'review' ? ['micro', 'turns', 'ms'] : ['micro', 'turns', 'ms', 'branch', 'pr'])
     if (workflow === 'site-update') {
       expect(outputs).toContain('branch: ${{ steps.branch.outputs.branch }}')
       // The branch step runs before Claude: nothing Claude runs can change its output.
@@ -150,7 +151,7 @@ describe('the scripts, run', () => {
   runs('take the three numbers from the last result message, also when it is an error, and nothing else', () => {
     const result = extract('execution.json')
     expect(result.status).toBe(0)
-    expect(result.written).toBe('cost=5.6452057\nturns=16\nms=418786\n')
+    expect(result.written).toBe('micro=5645206\nturns=16\nms=418786\n')
     expect(result.out).not.toContain('SECRET-TRANSCRIPT-TEXT')
   })
 
@@ -160,10 +161,22 @@ describe('the scripts, run', () => {
       const result = extract(fixture)
       expect(result.status, String(fixture)).toBe(0)
       expect(result.written, String(fixture)).toBe('')
-      expect(result.out.match(/::warning::/g), String(fixture)).toHaveLength(fixture === 'no-result.json' ? 3 : 1)
+      expect(result.out.match(/::warning::/g), String(fixture)).toHaveLength(1)
     }
+    expect(extract('no-result.json').out).toContain('::warning::The execution file has no result')
     const empty = bash(readScript, { EXECUTION_FILE: `${temp}/empty.json`, GITHUB_OUTPUT: `${temp}/output` })
     expect(empty.stdout).toMatch(/^::warning::No execution file/)
+  })
+
+  runs('round a cost with a long float tail to whole micro-dollars, so it is still recorded', () => {
+    // Claude Code sums total_cost_usd as a float; jq keeps its 17-digit literal.
+    expect(extract('long-tail.json').written).toBe('micro=300000\nturns=2\nms=1000\n')
+    expect(extract('long-tail-2.json').written).toBe('micro=1234568\nturns=7\nms=2000\n')
+  })
+
+  runs('read the file the action leaves in RUNNER_TEMP when the step names none', () => {
+    writeFileSync(`${temp}/claude-execution-output.json`, readFileSync(join(fixtures, 'execution.json')))
+    expect(extract(null).written).toBe('micro=5645206\nturns=16\nms=418786\n')
   })
 
   runs('refuse an injected or a huge value, keeping the plain ones', () => {
@@ -177,7 +190,7 @@ describe('the scripts, run', () => {
   const post = (env, script = runScript(stepBlock(jobBlock(review, 'costs'), 'Record what the run cost'))) => {
     for (const file of ['stdin', 'args', 'header']) rmSync(`${temp}/${file}`, { force: true })
     const result = bash(script.replaceAll('/usr/bin/jq', 'jq').replaceAll('/usr/bin/curl', stub), {
-      COSTS_INGEST_TOKEN: 's'.repeat(40), HAS_API_KEY: 'true', HAS_OAUTH: 'true', COST: '5.6452057', TURNS: '16', DURATION: '418786',
+      COSTS_INGEST_TOKEN: 's'.repeat(40), HAS_API_KEY: 'true', HAS_OAUTH: 'true', MICRO: '5645206', TURNS: '16', DURATION: '418786',
       WORKFLOW: 'review', JOB: 'team', RUN_ID: '39349674556', RUN_ATTEMPT: '1', BRANCH: 'dev-costs', PR: '61', ...env,
     })
     const called = existsSync(`${temp}/stdin`)
@@ -190,6 +203,9 @@ describe('the scripts, run', () => {
     expect(Object.keys(result.body)).toEqual(['v', 'source', 'workflow', 'job', 'runId', 'runAttempt', 'branch', 'billing', 'costMicro', 'numTurns', 'durationMs', 'endedAt', 'pr'])
     expect(result.body).toMatchObject({ v: 1, source: 'github', workflow: 'review', job: 'team', runId: 39349674556, runAttempt: 1, branch: 'dev-costs', billing: 'billed', costMicro: 5_645_206, numTurns: 16, durationMs: 418786, pr: 61 })
     expect(Math.abs(result.body.endedAt - Date.now())).toBeLessThan(60_000)
+    // The contract with /api/costs: the server’s parser takes the body as the workflow builds it.
+    expect(parseIngest(JSON.stringify(result.body))).toMatchObject({ source: 'github', workflow: 'review', job: 'team', costMicro: 5_645_206, pr: 61 })
+    expect(parseIngest(JSON.stringify(post({ WORKFLOW: 'site-update', JOB: 'update', BRANCH: 'update/add-x-12', PR: '' }).body))).toMatchObject({ workflow: 'site-update', pr: null })
     expect(result.args).toContain('https://steven.wilssens.com/api/costs')
     expect(result.args).toContain('--fail\n--silent\n--show-error\n--max-time\n10\n')
     expect(result.args).not.toContain('s'.repeat(40))
@@ -222,7 +238,7 @@ describe('the scripts, run', () => {
   })
 
   runs('warn once and make no call without numbers, a run id, or the secret', () => {
-    for (const env of [{ COST: '' }, { TURNS: '1.5' }, { DURATION: '' }, { COST: '1; curl evil' }, { RUN_ID: 'x' }, { RUN_ATTEMPT: '0' }, { COSTS_INGEST_TOKEN: '' }]) {
+    for (const env of [{ MICRO: '' }, { MICRO: '5.6452057' }, { MICRO: '0123' }, { MICRO: '12345678901' }, { TURNS: '1.5' }, { DURATION: '' }, { MICRO: '1; curl evil' }, { RUN_ID: 'x' }, { RUN_ATTEMPT: '0' }, { COSTS_INGEST_TOKEN: '' }]) {
       const result = post(env)
       expect([result.status, result.called], JSON.stringify(env)).toEqual([0, false])
       expect(result.out.match(/::warning::/g)).toHaveLength(1)

@@ -5,13 +5,15 @@
 // the queue, and a fetch stub that refuses any call it was not given. Nothing touches the real
 // ~/.claude, the repository's queue or the network.
 import { execFileSync, spawnSync } from 'node:child_process'
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  billingOf, capQueue, collect, ingestUrl, isBranch, isInside, main, MAX_QUEUE, MAX_QUEUE_BYTES, MAX_ROWS, parseLines, payloadsOf, PRODUCTION_URL, QUEUE_FILE, readAgents, readQueue, sendQueue, summarize, writeQueue,
+  appendQueue, billingOf, capQueue, collect, ingestUrl, isBranch, isInside, LOCK_WAIT_MS, main, MAX_BODY_BYTES, MAX_QUEUE, MAX_QUEUE_BYTES, MAX_ROWS, parseLines, payloadsOf, PRODUCTION_URL, QUEUE_FILE,
+  readAgents, readQueue, sendQueue, sessionPayloads, STALE_LOCK_MS, summarize, withQueueLock, writeQueue,
 } from '../.claude/hooks/dev-costs.mjs'
+import { parseIngest } from '../functions/_lib/costs/ingest.ts'
 
 const repo = resolve(import.meta.dirname, '..')
 const fixtures = join(repo, 'scripts/fixtures/dev-costs/session')
@@ -91,7 +93,8 @@ describe('the hook setting', () => {
 
   it('keeps the queue and the local settings out of git, and no secret in the committed settings', () => {
     const ignored = readFileSync(join(repo, '.gitignore'), 'utf8').split(/\r?\n/).map((line) => line.trim())
-    expect(ignored).toContain('.dev-costs-queue.jsonl')
+    // The queue, its temp file and its lock.
+    expect(ignored).toContain('.dev-costs-queue.jsonl*')
     expect(ignored).toContain('.claude/settings.local.json')
     expect(JSON.stringify(settings)).not.toMatch(/env|TOKEN|apiKeyHelper|permissions/)
   })
@@ -154,10 +157,28 @@ describe('what a session is summed into', () => {
     expect(second.rows.map((row) => `${row.branch} ${row.output}`)).toEqual(['feat-a 72', 'feat-b 17'])
   })
 
-  it('gives a message before any branch the first branch after it, and No feature when the session has none', () => {
-    const lines = [{ type: 'assistant', sessionId: SESSION, gitBranch: 'HEAD', timestamp: '2026-10-18T10:00:00Z', message: { id: 'a', model: 'claude-opus-5-5', usage: { output_tokens: 2 } } }, { type: 'user', sessionId: SESSION, gitBranch: 'later' }]
-    expect([...collect(lines, SESSION).values()][0].branch).toBe('later')
-    expect([...collect(lines.slice(0, 1), SESSION).values()][0].branch).toBeNull()
+  it('keeps a message before any branch under No feature, also once the session is resumed on a branch (S-17)', () => {
+    const lines = [{ type: 'assistant', sessionId: SESSION, gitBranch: 'HEAD', timestamp: '2026-10-18T10:00:00Z', message: { id: 'a', model: 'claude-opus-5-5', usage: { output_tokens: 2 } } }]
+    const resumed = [...lines, { type: 'user', sessionId: SESSION, gitBranch: 'later' }, { type: 'assistant', sessionId: SESSION, timestamp: '2026-10-18T10:01:00Z', message: { id: 'b', model: 'claude-opus-5-5', usage: { output_tokens: 3 } } }]
+    expect([...collect(lines, SESSION).values()][0].branch).toBeNull()
+    expect([...collect(resumed, SESSION).values()].map((message) => message.branch)).toEqual([null, 'later'])
+    const first = summarize({ sessionId: SESSION, lines, now: NOW })
+    const second = summarize({ sessionId: SESSION, lines: resumed, now: NOW })
+    expect(first.rows.map((row) => `${row.branch} ${row.output}`)).toEqual(['HEAD 2'])
+    expect(second.rows.map((row) => `${row.branch} ${row.output}`)).toEqual(['HEAD 2', 'later 3'])
+  })
+
+  it('reads the role of every team agent, lower-cased, from its meta file', () => {
+    const session = join(temp, 'roles.jsonl')
+    const subagents = join(temp, 'roles', 'subagents')
+    mkdirSync(subagents, { recursive: true })
+    const types = ['product-manager', 'senior-recruiter', 'ux-designer', 'senior-developer', 'security-engineer', 'senior-tester', 'Senior-Developer', 'lead']
+    types.forEach((agentType, n) => {
+      writeFileSync(join(subagents, `agent-r${n}.jsonl`), '')
+      writeFileSync(join(subagents, `agent-r${n}.meta.json`), JSON.stringify({ agentType, toolUseId: `toolu_${n}` }))
+    })
+    // The lead is the main thread: an agent cannot claim it.
+    expect(readAgents(session).map((agent) => agent.role)).toEqual(['product-manager', 'senior-recruiter', 'ux-designer', 'senior-developer', 'security-engineer', 'senior-tester', 'senior-developer', 'unknown-agent'])
   })
 
   it('marks a session estimated, or unknown with an API key in the environment; never billed', () => {
@@ -201,6 +222,23 @@ describe('what leaves the machine', () => {
     expect(JSON.stringify(bodies)).not.toContain('CANARY')
     expect(payloadsOf({ sessionId: 'not-a-uuid', summary: { startedAt: NOW, endedAt: NOW, rows }, billing: 'estimated' })).toEqual([])
     expect(payloadsOf({ sessionId: SESSION, summary: null, billing: 'estimated' })).toEqual([])
+  })
+
+  it('splits by size as well, so a long branch name never makes a body the server refuses (16 KB)', () => {
+    const branch = `feature/${'b'.repeat(192)}`
+    expect(isBranch(branch)).toBe(true)
+    const rows = Array.from({ length: MAX_ROWS }, (_, batch) => ({ branch, role: 'senior-developer', batch, batchAt: NOW, model: 'claude-opus-5-5', input: 123_456_789, output: 9_876_543, cacheRead: 1_234_567_890, cacheWrite5m: 98_765_432, cacheWrite1h: 12_345_678 }))
+    const bodies = payloadsOf({ sessionId: SESSION, summary: { startedAt: NOW, endedAt: NOW, rows }, billing: 'estimated' })
+    expect(bodies.length).toBeGreaterThan(1)
+    for (const body of bodies) expect(Buffer.byteLength(JSON.stringify(body))).toBeLessThanOrEqual(MAX_BODY_BYTES)
+    expect(MAX_BODY_BYTES).toBeLessThan(16 * 1024)
+    expect(bodies.flatMap((body) => body.rows.map((row) => row.batch))).toEqual(rows.map((row) => row.batch))
+  })
+
+  it('sends a body every row of which the server’s parser takes (the contract with /api/costs)', () => {
+    const bodies = sessionPayloads({ sessionId: SESSION, transcript: transcript(), env: {}, now: NOW })
+    expect(bodies).toHaveLength(1)
+    for (const body of bodies) expect(parseIngest(JSON.stringify(body), NOW)).toMatchObject({ source: 'local', session: SESSION, rows: body.rows })
   })
 
   it('reads no transcript outside the projects folder, and no session id that is not a UUID', async () => {
@@ -311,6 +349,36 @@ describe('the hook never gets in the way', () => {
     expect(readdirSync(root)).toEqual([])
   })
 
+  it('keeps a payload another session queued while this one was sending', async () => {
+    const other = JSON.stringify({ v: 1, source: 'local', rows: [{ other: true }] })
+    const { calls, fetch } = fetchStub([200])
+    // The other session ends while this one's request is out.
+    const sending = async (...args) => { appendQueue(root, [other]); return fetch(...args) }
+    await run({ env: { COSTS_INGEST_TOKEN: TOKEN }, fetch: sending })
+    expect(calls).toHaveLength(1)
+    expect(readQueue(root)).toEqual([other])
+    expect(readdirSync(root)).toEqual([QUEUE_FILE])
+  })
+
+  it('waits for another session’s lock, goes on without it after a second, and clears a stale one', () => {
+    const lock = join(root, `${QUEUE_FILE}.lock`)
+    const entry = JSON.stringify({ v: 1, source: 'local', rows: [] })
+    writeFileSync(lock, '')
+    let clock = Date.now()
+    const ticks = []
+    appendQueue(root, [entry])
+    expect(readQueue(root)).toEqual([entry])
+    // Held, and fresh: the change still happens once the wait is over, and the other session's lock stays.
+    withQueueLock(root, (queued) => writeQueue(root, [...queued, entry]), { now: () => { ticks.push(clock); return (clock += LOCK_WAIT_MS / 4) } })
+    expect(readQueue(root)).toEqual([entry, entry])
+    expect(ticks.length).toBeGreaterThan(3)
+    expect(existsSync(lock)).toBe(true)
+    // Left by a killed session: removed, taken and released.
+    utimesSync(lock, new Date(Date.now() - STALE_LOCK_MS - 1000), new Date(Date.now() - STALE_LOCK_MS - 1000))
+    expect(withQueueLock(root, (queued) => queued.length)).toBe(2)
+    expect(existsSync(lock)).toBe(false)
+  })
+
   it('exits 0 with one fixed line when anything goes wrong, never the token', async () => {
     rmSync(root, { recursive: true })
     writeFileSync(root, 'a file where the repository should be')
@@ -382,7 +450,11 @@ describe('the backfill', () => {
 
 describe('a corrupt transcript', () => {
   it('skips the lines that do not parse and keeps the rest', () => {
-    appendFileSync(transcript(), '\n{"type":"assistant"\n[1,2]\nnull\n')
+    const before = summarize({ sessionId: SESSION, lines: parseLines(readFileSync(transcript(), 'utf8')), agents: readAgents(transcript()), now: NOW })
+    appendFileSync(transcript(), '\n{"type":"assistant"\n[1,2]\nnull\n"text"\n{"type":"assistant","sessionId":"' + SESSION + '","message":')
+    const after = summarize({ sessionId: SESSION, lines: parseLines(readFileSync(transcript(), 'utf8')), agents: readAgents(transcript()), now: NOW })
+    expect(after.rows).toHaveLength(11)
+    expect(after).toEqual(before)
     expect(parseLines('{"a":1}\nnope\n[1]\n"x"\n\n')).toEqual([{ a: 1 }])
   })
 })

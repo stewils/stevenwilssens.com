@@ -94,6 +94,23 @@ describe('the Costs page’s styles', () => {
     expect(css).toMatch(/\.budget-form button \{[^}]*min-height: 44px/)
   })
 
+  it('keeps a tile’s label style off the figures inside it, and gives Save the admin’s focus ring', () => {
+    // A money figure is span.cost > span inside the tile's strong: the label rule must not reach it.
+    expect(css).toMatch(/\.stats > div > span \{[^}]*font-size: 12px/)
+    expect(css).not.toMatch(/(^|\n)\.stats span \{/)
+    expect(css).toMatch(/\.primary:focus-visible \{[^}]*outline: 2px solid var\(--focus\)/)
+  })
+
+  it('puts each month label under its bar, every other one on a narrow plot', () => {
+    expect(css).toMatch(/\.chart--stacked \{[^}]*container-type: inline-size/)
+    expect(css).toMatch(/\.chart--stacked \.chart-axis \{[^}]*display: grid/)
+    expect(css).toMatch(/@container \(max-width: 480px\) \{ \.chart--stacked \.chart-axis span:nth-child\(even\) \{ visibility: hidden; \} \}/)
+  })
+
+  it('draws a note beside the Team flow quieter than a step: dashed, muted, 12px', () => {
+    expect(css).toMatch(/\.fd-note \{[^}]*border: 1px dashed var\(--line\)[^}]*font-size: 12px[^}]*color: var\(--muted\)/)
+  })
+
   it('adds one colour token, --series-soft, in all three theme blocks', () => {
     const tokens = (text) => new Set([...text.matchAll(/(--[\w-]+):/g)].map((match) => match[1]))
     expect(css.match(/--series-soft:/g)).toHaveLength(3)

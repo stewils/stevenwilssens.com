@@ -17,7 +17,8 @@ export type Column<T> = {
 }
 
 // rowName names a row for its open button ("Open details for …"); by default the first column that holds text.
-type Props<T> = { columns: Column<T>[]; rows: T[]; rowKey: (row: T, index: number) => string; empty?: string; label?: string; expand?: (row: T) => ReactNode; rowName?: (row: T) => string }
+// search={false} leaves out the search box for a table whose rows are fixed (twelve months).
+type Props<T> = { columns: Column<T>[]; rows: T[]; rowKey: (row: T, index: number) => string; empty?: string; label?: string; expand?: (row: T) => ReactNode; rowName?: (row: T) => string; search?: boolean }
 
 // A search box from this many rows on; phones stack tables this wide into cards.
 const SEARCH_FROM = 6
@@ -25,7 +26,7 @@ const STACK_FROM = 5
 
 const classes = (...names: (string | false | undefined | null)[]) => names.filter(Boolean).join(' ') || undefined
 
-export function DataTable<T>({ columns, rows, rowKey, empty = 'No data yet', label, expand, rowName = (row) => String(columns.map((column) => column.value(row)).find((value) => typeof value === 'string' && value) ?? '') }: Props<T>) {
+export function DataTable<T>({ columns, rows, rowKey, empty = 'No data yet', label, expand, search = true, rowName = (row) => String(columns.map((column) => column.value(row)).find((value) => typeof value === 'string' && value) ?? '') }: Props<T>) {
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<Sort>(null)
   const [open, setOpen] = useState<string | null>(null)
@@ -39,7 +40,7 @@ export function DataTable<T>({ columns, rows, rowKey, empty = 'No data yet', lab
   const numeric = (column: Column<T>) => column.num || rows.some((row) => typeof column.value(row) === 'number')
   return (
     <>
-      {rows.length >= SEARCH_FROM && (
+      {search && rows.length >= SEARCH_FROM && (
         <div className="tbl-tools">
           <label className="tbl-search"><span className="visually-hidden">Search this table</span><input type="search" placeholder="Search" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
           <span className="tbl-count" aria-live="polite">{countLabel(rows.length, shown.length, query)}</span>

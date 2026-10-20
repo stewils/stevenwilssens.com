@@ -44,6 +44,7 @@ button { cursor: pointer; }
 .login p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
 .login input { padding: 12px 14px; border: 1.5px solid var(--line); border-radius: 8px; font: inherit; background: var(--card); color: var(--ink); }
 .primary { border: 0; background: var(--green); color: var(--on-green); padding: 12px 16px; border-radius: 8px; font-size: 14px; font-weight: 700; }
+.primary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* The frame: menu left, page right; only the page scrolls. */
 .shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); height: 100dvh; }
@@ -156,7 +157,7 @@ button { cursor: pointer; }
 /* Stat tiles inside a card */
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .stats div { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.stats span { font-size: 12px; font-weight: 700; color: var(--muted); }
+.stats > div > span { font-size: 12px; font-weight: 700; color: var(--muted); }
 .stats strong { font-size: 26px; font-weight: 800; letter-spacing: -1px; }
 .stats small { font-size: 11px; color: var(--muted); }
 .stats .highlight { border-color: var(--series); box-shadow: inset 3px 0 0 var(--series); }
@@ -204,11 +205,16 @@ button { cursor: pointer; }
 /* Stacked months (the Costs page): billed below in --series, estimated on top in --series-soft, a
    2px gap in the card's colour between the parts and the columns, at most 24px wide, square at the
    baseline and rounded at the top of the stack only. */
+.chart--stacked { container-type: inline-size; }
+.chart--stacked .chart-axis { display: grid; gap: 2px; text-align: center; }
+.chart--stacked .chart-axis span { min-width: 0; overflow: hidden; }
+@container (max-width: 480px) { .chart--stacked .chart-axis span:nth-child(even) { visibility: hidden; } }
 .chart--stacked .chart-bar { justify-content: center; }
 .chart--stacked .chart-bar > .chart-stack { display: flex; flex-direction: column; gap: 2px; width: 100%; max-width: 24px; background: none; border-radius: 4px 4px 0 0; overflow: hidden; }
 .chart-part { display: block; min-height: 0; flex-basis: 0; }
 .chart-part.billed { background: var(--series); }
 .chart-part.est { background: var(--series-soft); }
+.cost-why { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .chart-legend { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; margin-left: 12px; font-size: 12px; font-weight: 600; color: var(--muted); }
 .chart-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 .chart-legend .billed { background: var(--series); }
@@ -449,6 +455,9 @@ a.team-link:hover { text-decoration: underline; }
 .fd figcaption { margin: 0 0 10px; font-size: 13px; color: var(--muted); line-height: 1.5; }
 .fd-frame { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
 .fd-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 22px; }
+/* A note beside the flow (the meter): quieter than any step, under the lanes, full width. */
+.fd-notes { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 8px; }
+.fd-note { border: 1px dashed var(--line); border-radius: 8px; padding: 8px 12px; font-size: 12px; line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
 .fd-node { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 13px; line-height: 1.4; overflow-wrap: break-word; hyphens: auto; }
 .fd-node.fd-you { background: color-mix(in srgb, var(--yellow) 10%, var(--card)); }
 .fd-node.fd-decision { border-style: dashed; }

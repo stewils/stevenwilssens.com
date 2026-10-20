@@ -90,8 +90,10 @@ describe('the dashboard', () => {
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
     const menu = within(screen.getByRole('navigation', { name: 'Admin pages' }))
     expect(menu.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page')
-    expect(menu.getByRole('link', { name: /Page speed/ })).toHaveTextContent('Page speed1')
-    expect(menu.getByRole('link', { name: /Crawlers/ })).toHaveTextContent('Crawlers2')
+    // The name is the visible label and the count; the badge itself is shown, not read twice.
+    expect(menu.getByRole('link', { name: 'Page speed, 1' }).querySelector('.tab-badge')).toHaveTextContent('1')
+    expect(menu.getByRole('link', { name: 'Crawlers, 2' }).querySelector('.tab-badge')).toHaveAttribute('aria-hidden', 'true')
+    for (const link of menu.getAllByRole('link')) expect(link).not.toHaveAttribute('aria-label')
     expect(screen.getByText('Updated 2 min ago')).toBeInTheDocument()
   })
 
@@ -100,6 +102,7 @@ describe('the dashboard', () => {
     render(<Admin />)
     await screen.findByText('40', { selector: 'dd' })
     expect(within(screen.getByRole('navigation', { name: 'Admin pages' })).getByText('99+')).toBeInTheDocument()
+    expect(within(screen.getByRole('navigation', { name: 'Admin pages' })).getByRole('link', { name: 'Crawlers, 150' })).toBeInTheDocument()
   })
 
   it('moves between pages with the URL hash', async () => {

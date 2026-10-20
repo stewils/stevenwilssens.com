@@ -76,6 +76,27 @@ describe('the flow diagram', () => {
     expect(screen.getByRole('figure')).not.toHaveClass('fd-long')
   })
 
+  it('draws a note beside the flow as one quiet row under the steps, not as a step, and keeps the lanes', () => {
+    const noted: Flow = { ...flow, diagram: { nodes: flow.diagram!.nodes, notes: [{ label: 'Runs metered: admin, Costs', alongside: ['Draft: drafts/slug.md', 'Editor fixes'] }, { label: 'Logged', alongside: [] }] } }
+    const { container } = show([], noted)
+    expect(nodes()).toHaveLength(flow.diagram!.nodes.length)
+    expect(screen.getByRole('figure')).not.toHaveClass('fd-long')
+    const notes = within(screen.getByRole('list', { name: 'Alongside the steps' })).getAllByRole('listitem')
+    expect(notes.map((item) => item.textContent)).toEqual(['Runs metered: admin, Costs · , alongside Draft: drafts/slug.md and Editor fixes.', 'Logged.'])
+    expect(notes[0]).toHaveClass('fd-note')
+    expect(container.querySelector('.fd-note [aria-hidden="true"]')).toHaveTextContent('·')
+    // The notes come after the steps, inside the frame.
+    expect(container.querySelector('.fd-frame > .fd-steps + .fd-notes')).not.toBeNull()
+    expect(container.querySelector('.fd-notes')!.querySelectorAll('a, button, [tabindex]')).toHaveLength(0)
+  })
+
+  it('draws no notes row when the chart has none', () => {
+    const { container } = show()
+    expect(container.querySelector('.fd-notes')).toBeNull()
+    show([], { ...flow, diagram: { nodes: flow.diagram!.nodes, notes: [] } })
+    expect(container.querySelector('.fd-notes')).toBeNull()
+  })
+
   it('lists the numbered steps in order when the chart and the steps disagree', () => {
     show(['questions'], { ...flow, diagram: null })
     expect(screen.getByText('The diagram could not be drawn from .team/flow.md; the steps are listed in order.')).toBeInTheDocument()

@@ -116,7 +116,8 @@ export function BarChart({ title, bars, axisLabels, max: fixedMax, format = form
           ))}
         </div>
       </div>
-      <div className="chart-axis">{axisLabels.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}</div>
+      {/* Stacked months: one axis column per bar, so each label sits under its bar. */}
+      <div className="chart-axis" style={stacked ? { gridTemplateColumns: `repeat(${axisLabels.length}, minmax(0, 1fr))` } : undefined}>{axisLabels.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}</div>
     </figure>
   )
 }

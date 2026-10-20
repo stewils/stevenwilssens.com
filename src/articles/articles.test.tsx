@@ -199,7 +199,9 @@ describe('the team diagram on /building-this-site', () => {
     expect(within(wide).getByText(label)).toBeInTheDocument()
     expect([...tall.querySelectorAll('text')].map((text) => text.textContent).join(' ')).toContain(label)
     for (const image of [wide, tall]) {
-      expect(image).toHaveAccessibleDescription(/are metered against the change they belong to.*a change can have a budget/)
+      // The description speaks of Steven in the third person throughout, the metered sentence included.
+      expect(image).toHaveAccessibleDescription(/The agents’ runs, on GitHub and in Steven’s own Claude Code sessions, are metered against the change they belong to, and in his sessions against the role that ran them; a change can have a budget, and the rounds that had to be redone are counted, so he can see which kind of change is worth the full team\.$/)
+      expect(image.querySelector('desc')!.textContent).not.toMatch(/\b(my|I|me)\b/)
       const height = Number(image.getAttribute('viewBox')!.split(' ')[3])
       const texts = [...image.querySelectorAll('text')].map((text) => Number(text.getAttribute('y')))
       const rects = [...image.querySelectorAll('rect')].map((rect) => Number(rect.getAttribute('y')) + Number(rect.getAttribute('height')))

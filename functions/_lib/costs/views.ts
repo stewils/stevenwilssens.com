@@ -80,7 +80,9 @@ export const reviewRounds = (rows: CostRow[]): Map<CostRow, number> => {
   const byPull = new Map<string, CostRow[]>()
   for (const row of rows.filter((item) => item.workflow === 'review')) {
     const key = `${row.branch}#${row.pr ?? ''}`
-    byPull.set(key, [...(byPull.get(key) ?? []), row])
+    const group = byPull.get(key)
+    if (group) group.push(row)
+    else byPull.set(key, [row])
   }
   for (const group of byPull.values()) {
     const runs = [...new Set(group.map((row) => `${row.runId}:${row.runAttempt}`))]
@@ -159,7 +161,9 @@ export const buildViews = ({ rows, budgets, pulls, now, repo, pricesRead }: { ro
   const byFeature = new Map<string | null, CostRow[]>()
   for (const row of rows) {
     const feature = featureOf(row.branch)
-    byFeature.set(feature, [...(byFeature.get(feature) ?? []), row])
+    const group = byFeature.get(feature)
+    if (group) group.push(row)
+    else byFeature.set(feature, [row])
   }
 
   const allTagged: (Tagged & { feature: string | null })[] = []
@@ -180,7 +184,7 @@ export const buildViews = ({ rows, budgets, pulls, now, repo, pricesRead }: { ro
       branch,
       pull,
       runs: new Set(group.map((row) => row.runKey)).size,
-      lastRunAt: Math.max(...group.map((row) => row.endedAt)),
+      lastRunAt: group.reduce((latest, row) => Math.max(latest, row.endedAt), -Infinity),
       spec: part('spec'), build: part('build'), review: part('review'), fix: part('fix'), lead: part('lead'),
       total: sum(tagged.map((item) => item.money)),
       reviewRounds: localReviews + workflowReviews,

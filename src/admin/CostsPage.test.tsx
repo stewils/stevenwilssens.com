@@ -141,6 +141,46 @@ describe('Features', () => {
     expect(within(detail as HTMLElement).getByText('Unpriced: claude-x-1 (1.2M tokens)')).toHaveClass('badge', 'warn')
   })
 
+  it('sorts by any column, searches, and keeps an open row open when its budget moves it (AC-21, D-7)', async () => {
+    const user = userEvent.setup({ advanceTimers: () => {} })
+    const info = makeCosts({ features: makeCosts().features.toSpliced(4, 0, makeFeature({ branch: 'big-one', pull: null, total: money(20), budgetMicro: 30_000_000 })) })
+    const { rerender } = show(info)
+    const part = card('Features')
+    const order = () => within(part).getAllByRole('button', { name: /^(Open|Close) details for / }).map((button) => button.getAttribute('aria-label')!.replace(/^(Open|Close) details for /, ''))
+    const opened = () => within(part).getByRole('button', { name: 'Close details for resume-mail' })
+    expect(order()).toEqual(['dev-costs', 'resume-mail', 'closed-idea', 'update/redo-1', 'big-one', 'No feature'])
+    // Total: high to low first, then low to high. No feature sorts with the rest.
+    await user.click(within(part).getByRole('button', { name: 'Total' }))
+    expect(order()).toEqual(['big-one', 'dev-costs', 'resume-mail', 'closed-idea', 'update/redo-1', 'No feature'])
+    await user.click(within(part).getByRole('button', { name: 'Total' }))
+    expect(order()).toEqual(['No feature', 'update/redo-1', 'closed-idea', 'resume-mail', 'dev-costs', 'big-one'])
+    // Search, from six rows on.
+    const search = within(part).getByRole('searchbox', { name: 'Search this table' })
+    await user.type(search, 'resume')
+    expect(order()).toEqual(['resume-mail'])
+    await user.clear(search)
+    // Budget, high to low: features without one after those with one, No feature last.
+    await user.click(within(part).getByRole('button', { name: 'Budget' }))
+    expect(order().slice(0, 2)).toEqual(['big-one', 'dev-costs'])
+    await user.click(within(part).getByRole('button', { name: 'Open details for resume-mail' }))
+    expect(opened().closest('tr')!.nextElementSibling).toHaveClass('detail')
+    // Its budget is saved: the row moves to the top and stays open.
+    rerender(<CostsPage info={{ ...info, features: info.features.map((feature) => (feature.branch === 'resume-mail' ? { ...feature, budgetMicro: 50_000_000 } : feature)) }} onBudget={saved} roleNames={names} />)
+    expect(order()[0]).toBe('resume-mail')
+    expect(document.querySelectorAll('tr.detail')).toHaveLength(1)
+    expect(opened().closest('tr')!.nextElementSibling).toHaveClass('detail')
+    expect(opened()).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('says the pull request states are unknown when GitHub did not answer for any feature', () => {
+    const unknown = { state: 'unknown' as const, number: null, mergeCommit: null, supersededBy: null }
+    show(makeCosts({ features: [makeFeature({ pull: unknown }), makeFeature({ branch: 'b', pull: unknown }), makeFeature({ branch: null, pull: null })] }))
+    expect(stat(card('This month'), 'Features')).toHaveTextContent('2pull request states unknown')
+    cleanup()
+    show(makeCosts({ features: [makeFeature({ pull: { state: 'none', number: null, mergeCommit: null, supersededBy: null } })] }))
+    expect(stat(card('This month'), 'Features')).toHaveTextContent('1none with a pull request yet')
+  })
+
   it('renders a branch carrying markup as text', () => {
     const branch = '"><img src=x onerror=alert(1)>'
     show(makeCosts({ features: [makeFeature({ branch })] }))
@@ -161,6 +201,19 @@ describe('Over time', () => {
     expect(within(table).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(['Month', 'Billed', 'Estimated', 'Total', 'Features', 'Waste'])
     expect(within(table).getAllByRole('row')).toHaveLength(13)
     expect(within(table).getAllByRole('row')[1]).toHaveTextContent('October 2026')
+    // Twelve fixed months need no search box.
+    expect(within(part).queryByRole('searchbox')).not.toBeInTheDocument()
+  })
+
+  it('reads an empty month as nothing recorded, and the axis in whole dollars', () => {
+    const months = makeCosts().months.map((month) => (month.month === '2025-11' ? { ...month, money: money(0), features: 0 } : month))
+    show(makeCosts({ months }))
+    const part = card('Over time')
+    expect(within(part).getByRole('button', { name: 'November: nothing recorded' })).toBeInTheDocument()
+    const axis = [...part.querySelectorAll('.chart-grid em')].map((label) => label.textContent)
+    for (const label of axis) expect(label).toMatch(/^\$\d[\d,]*$/)
+    // One axis column per month, so each label sits under its bar.
+    expect(part.querySelector<HTMLElement>('.chart-axis')!.style.gridTemplateColumns).toBe('repeat(12, minmax(0, 1fr))')
   })
 
   it('starts the chart with the second month', () => {
@@ -205,6 +258,12 @@ describe('Waste', () => {
     expect(within(part).getByText('1 more review')).toHaveClass('badge', 'warn')
     expect(within(part).getByText('closed, not merged')).toHaveClass('badge', 'error')
     expect(within(part).getByText('redone by #56')).toHaveClass('badge', 'info')
+    // Four short headers, so the table fits a phone; the badges wrap inside their cell.
+    expect(within(within(part).getByRole('table')).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(['Feature', 'Why', 'Waste', 'Share'])
+    expect(within(part).getByText('2 fix rounds').parentElement).toHaveClass('cost-why')
+    // Roles and Waste are full-width cards, not squeezed into a grid.
+    expect(part.parentElement!.matches('.grid')).toBe(false)
+    expect(card('Roles').parentElement!.matches('.grid')).toBe(false)
     expect(within(part).getByText(/^What went into work that did not reach main as first built: every fix round, every review round after the first in the same place \(your sessions, or the Review workflow on the pull request\), and all of a pull request that was closed or redone\. Counted to learn from, not to avoid\.$/)).toBeInTheDocument()
   })
 

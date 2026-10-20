@@ -618,6 +618,19 @@ describe('the chart parser (AC-20 a, b)', () => {
     expect(parsed.nodes.get('meter')).toMatchObject({ label: 'Runs metered: admin, Costs', shape: 'box' })
     expect(parsed.nodes.get('p').label).toBe('a/b')
     expect(parsed.edges).toEqual([{ from: 'b', to: 'meter', label: null }])
+    // A chart that ties no step to a node has no notes.
+    expect(parsed.notes).toEqual([])
+  })
+
+  it('draws a node with no step and only dotted links as a note beside the steps it names, not as a step', () => {
+    const source = 'flowchart LR\n  %% step 1: ask\n  %% step 2: build\n  %% step 3: review\n  ask([Ask]) --> build[Build] --> review{Review}\n  review -- changes --> build\n  meter[/Runs metered/]\n  build -.- meter\n  review -.- meter\n  side[Side] -.-> ask\n  %% step 4: kept\n  kept[Kept] -.- review\n'
+    const built = buildDiagram(parseChart(source), [1, 2, 3, 4])
+    expect(built.problems).toEqual([])
+    // A dotted link with an arrow, or a step line, keeps a node in the flow.
+    expect(built.diagram.nodes.map((node) => node.id)).toEqual(['ask', 'build', 'review', 'side', 'kept'])
+    expect(built.diagram.nodes.find((node) => node.id === 'build').next).toEqual([{ to: 'review', label: null }])
+    expect(built.diagram.notes).toEqual([{ label: 'Runs metered', alongside: ['Build', 'Review'] }])
+    expect(buildDiagram(parseChart('flowchart LR\n  %% step 1: a\n  %% step 2: n\n  a[A]\n  n[/Note/]\n  a -.- n\n'), [1, 2]).diagram.nodes.map((node) => node.id)).toEqual(['a', 'n'])
   })
 
   it('keeps the first label of a node and links a subgraph defined before it is referenced', () => {
@@ -641,6 +654,9 @@ describe('the chart parser (AC-20 a, b)', () => {
     expect(mapped).toEqual(team.steps.map((step) => step.n).sort((a, b) => a - b))
     expect(built.diagram.nodes.some((node) => node.lane === 'you')).toBe(true)
     expect(built.diagram.nodes.some((node) => node.gate)).toBe(true)
+    // A note (the meter) stays beside the flow: the Team page keeps its two lanes (10 nodes at most).
+    expect(built.diagram.nodes.length).toBeLessThanOrEqual(10)
+    for (const note of built.diagram.notes) expect(built.diagram.nodes.map((node) => node.label)).toEqual(expect.arrayContaining(note.alongside))
   })
 })
 

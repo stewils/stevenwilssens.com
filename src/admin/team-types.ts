@@ -18,7 +18,9 @@ export type DiagramNode = {
   next: DiagramEdge[]
   loop: DiagramEdge | null
 }
-export type Flow = { file: string; steps: FlowStep[]; diagram: { nodes: DiagramNode[] } | null }
+// A note beside the flow (a node of the chart linked only by dotted lines, with no step): drawn under the lanes.
+export type DiagramNote = { label: string; alongside: string[] }
+export type Flow = { file: string; steps: FlowStep[]; diagram: { nodes: DiagramNode[]; notes?: DiagramNote[] } | null }
 
 export type Role = { id: string; title: string; agent: string | null; owns: string; signsOff: string; description: string; headings: string[]; file: string | null }
 export type Command = { id: string; name: string; description: string; hint: string; file: string }

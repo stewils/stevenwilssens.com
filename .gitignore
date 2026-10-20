@@ -41,5 +41,5 @@ screenshots
 .review
 
 # What the dev-costs hook has not sent yet (.claude/hooks/dev-costs.mjs), and local Claude Code settings
-.dev-costs-queue.jsonl
+.dev-costs-queue.jsonl*
 .claude/settings.local.json

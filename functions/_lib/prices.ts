@@ -19,7 +19,7 @@ export const PRICES: Record<string, Price> = {
   'claude-opus-5-5:fast': { input: 8_000_000, output: 40_000_000, cacheRead: 400_000, cacheWrite5m: 10_000_000, cacheWrite1h: 16_000_000 },
   'claude-opus-5': { input: 5_000_000, output: 25_000_000, cacheRead: 500_000, cacheWrite5m: 6_250_000, cacheWrite1h: 10_000_000 },
   'claude-opus-4-8': { input: 5_000_000, output: 25_000_000, cacheRead: 500_000, cacheWrite5m: 6_250_000, cacheWrite1h: 10_000_000 },
-  'claude-sonnet-5-5': { input: 2_000_000, output: 10_000_000, cacheRead: 100_000, cacheWrite5m: 2_500_000, cacheWrite1h: 4_000_000 },
+  'claude-sonnet-5-5': { input: 2_000_000, output: 10_000_000, cacheRead: 200_000, cacheWrite5m: 2_500_000, cacheWrite1h: 4_000_000 },
 }
 
 // The price of a model id: exactly, then without a date suffix (claude-x-20260101). A fast

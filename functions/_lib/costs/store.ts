@@ -48,12 +48,13 @@ export class CostStore {
     return 'written'
   }
 
-  async rows(): Promise<CostRow[]> {
+  // The newest rows when there are more than READ_LIMIT (read newest first, then put back in order).
+  async rows(limit = READ_LIMIT): Promise<CostRow[]> {
     const { results } = await this.db.prepare(`SELECT source, run_key AS runKey, branch, pr, workflow, job, run_id AS runId, run_attempt AS runAttempt, role, batch, batch_at AS batchAt, model, billing,
       input_tokens AS input, output_tokens AS output, cache_read_tokens AS cacheRead, cache_write_5m_tokens AS cacheWrite5m, cache_write_1h_tokens AS cacheWrite1h,
       reported_micro AS reportedMicro, num_turns AS numTurns, duration_ms AS durationMs, started_at AS startedAt, ended_at AS endedAt
-      FROM dev_cost_runs ORDER BY batch_at, id LIMIT ${READ_LIMIT}`).all<CostRow>()
-    return results
+      FROM dev_cost_runs ORDER BY batch_at DESC, id DESC LIMIT ?1`).bind(limit).all<CostRow>()
+    return results.reverse()
   }
 
   async budgets(): Promise<Map<string, number>> {

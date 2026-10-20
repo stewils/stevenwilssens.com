@@ -18,6 +18,20 @@ describe('the price table', () => {
     }
   })
 
+  it('holds every model’s five prices as the pricing page lists them, in dollars per million tokens', () => {
+    // Read 2026-10-19: input, output, cache read, 5-minute write (1.25x input), 1-hour write (2x input).
+    const dollars = Object.fromEntries(Object.entries(PRICES).map(([model, price]) => [model, Object.values(price).map((micro) => micro / 1_000_000)]))
+    expect(dollars).toEqual({
+      'claude-fable-5-1': [10, 50, 0.25, 12.5, 20],
+      'claude-fable-5': [10, 50, 1, 12.5, 20],
+      'claude-opus-5-5': [4, 20, 0.2, 5, 8],
+      'claude-opus-5-5:fast': [8, 40, 0.4, 10, 16],
+      'claude-opus-5': [5, 25, 0.5, 6.25, 10],
+      'claude-opus-4-8': [5, 25, 0.5, 6.25, 10],
+      'claude-sonnet-5-5': [2, 10, 0.2, 2.5, 4],
+    })
+  })
+
   it('prices each kind of token of claude-opus-5-5 at the page’s rate, worked out by hand', () => {
     // $4 input, $20 output, $0.20 cache read, $5 5-minute write, $8 1-hour write per MTok.
     expect(costOf('claude-opus-5-5', { ...none, input: 1_000_000 })).toBe(4_000_000)

@@ -2,7 +2,7 @@ import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { BarChart } from './Charts'
 import { amountText, commitLink, costOf, isOver, lineName, markOf, monthTitle, overBudget, parseAmount, pullLink, roleName, sum, total, zero } from './costs'
 import { DataTable, type Column } from './DataTable'
-import { formatAgo, formatCost, formatNumber, formatPercent, formatUsd, niceMax, trendOf } from './format'
+import { formatAgo, formatCost, formatNumber, formatPercent, formatUsd, formatUsdWhole, niceMax, trendOf } from './format'
 import type { CostFeature, CostMoney, CostMonth, CostRole, CostsInfo } from './types'
 
 // What each change cost to build with Claude (specs/dev-costs.md): this month, every feature
@@ -172,15 +172,15 @@ const wasteColumns: Column<WasteRow>[] = [
   {
     key: 'why', label: 'Why', value: (row) => row.feature.waste.fixRounds + row.feature.waste.moreReviews,
     render: ({ feature: { waste } }) => (
-      <>
+      <span className="cost-why">
         {waste.fixRounds > 0 && <span className="badge warn">{waste.fixRounds} {waste.fixRounds === 1 ? 'fix round' : 'fix rounds'}</span>}{' '}
         {waste.moreReviews > 0 && <span className="badge warn">{waste.moreReviews} more {waste.moreReviews === 1 ? 'review' : 'reviews'}</span>}{' '}
         {waste.redoneBy !== null ? <span className="badge info">redone by #{waste.redoneBy}</span> : waste.closed && <span className="badge error">closed, not merged</span>}
-      </>
+      </span>
     ),
   },
   { key: 'waste', label: 'Waste', num: true, value: (row) => total(row.feature.waste.money), render: (row) => <Money money={row.feature.waste.money} /> },
-  { key: 'share', label: 'Of its total', num: true, value: (row) => (total(row.feature.total) ? total(row.feature.waste.money) / total(row.feature.total) : 0), render: (row) => formatPercent(total(row.feature.total) ? total(row.feature.waste.money) / total(row.feature.total) : 0, true) },
+  { key: 'share', label: 'Share', num: true, value: (row) => (total(row.feature.total) ? total(row.feature.waste.money) / total(row.feature.total) : 0), render: (row) => formatPercent(total(row.feature.total) ? total(row.feature.waste.money) / total(row.feature.total) : 0, true) },
 ]
 
 const notes = {
@@ -206,6 +206,7 @@ export function CostsPage({ info, onBudget, roleNames = new Map() }: { info: Cos
   const hadBefore = months.slice(0, Math.max(0, lastIndex)).some((month) => total(month.money) > 0)
   const trend = last && before && hadBefore ? trendOf(total(last.money), total(before.money)) : null
   const named = info.features.filter((feature) => feature.branch !== null)
+  const unknownStates = named.length > 0 && named.every((feature) => feature.pull?.state === 'unknown')
   const states = [['merged', named.filter((feature) => feature.pull?.state === 'merged').length], ['open', named.filter((feature) => feature.pull?.state === 'open').length], ['closed', named.filter((feature) => feature.pull?.state === 'closed' || feature.pull?.state === 'superseded').length]] as const
   const withBudget = named.filter((feature) => feature.budgetMicro !== null).length
   const over = overBudget(info).length
@@ -221,7 +222,7 @@ export function CostsPage({ info, onBudget, roleNames = new Map() }: { info: Cos
         <div className="stats">
           <div><span>Spent this month</span><strong><Money money={current.money} /></strong><small>{total(current.money) ? <Split money={current.money} /> : 'nothing yet'}</small></div>
           <div><span>Last month</span><strong>{last ? <Money money={last.money} /> : '—'}</strong><small>{trend && before ? `${trend.text} on ${monthTitle(before.month).split(' ')[0]}` : 'the first month'}</small></div>
-          <div><span>Features</span><strong>{formatNumber(named.length)}</strong><small>{states.filter(([, n]) => n > 0).map(([word, n]) => `${n} ${word}`).join(' · ') || 'none with a pull request yet'}</small></div>
+          <div><span>Features</span><strong>{formatNumber(named.length)}</strong><small>{states.filter(([, n]) => n > 0).map(([word, n]) => `${n} ${word}`).join(' · ') || (unknownStates ? 'pull request states unknown' : 'none with a pull request yet')}</small></div>
           <div><span>Waste</span><strong><Plain micro={current.wasteMicro} mark={markOf(current.money)} /></strong><small>{total(current.money) ? `${formatPercent(current.wasteMicro / total(current.money), true)} of this month` : 'nothing this month'}</small></div>
           <div className={over > 0 ? 'highlight' : ''}><span>Over budget</span><strong>{formatNumber(over)}</strong><small>of {formatNumber(withBudget)} with a budget</small></div>
         </div>
@@ -240,37 +241,36 @@ export function CostsPage({ info, onBudget, roleNames = new Map() }: { info: Cos
             title="The last 12 months"
             legend={<span className="chart-legend"><span><i className="billed" />billed</span><span><i className="est" />estimated</span></span>}
             readout={lastFull}
-            format={(micro) => formatUsd(micro)}
+            format={formatUsdWhole}
             max={niceMax(Math.max(...months.map((month) => total(month.money)), 1))}
             axisLabels={months.map((month) => monthTitle(month.month, 'short'))}
             bars={months.map((month) => {
               const now = month.month === info.month
               const name = `${monthTitle(month.month).split(' ')[0]}${now ? ' so far' : ''}`
-              return { key: month.month, label: name, value: month.money.billed, estimated: month.money.estimated + month.money.unknown, detail: `${formatCost(month.money.billed).words} billed, ${formatCost(month.money.estimated + month.money.unknown, 'estimated').words}, ${month.features} ${month.features === 1 ? 'feature' : 'features'}` }
+              const detail = total(month.money) === 0 && !month.money.unpriced.length ? 'nothing recorded' : `${formatCost(month.money.billed).words} billed, ${formatCost(month.money.estimated + month.money.unknown, 'estimated').words}, ${month.features} ${month.features === 1 ? 'feature' : 'features'}`
+              return { key: month.month, label: name, value: month.money.billed, estimated: month.money.estimated + month.money.unknown, detail }
             })}
           />
         )}
-        <DataTable columns={monthColumns} rows={[...months].reverse()} rowKey={(row) => row.month} label="Cost per month" />
+        <DataTable columns={monthColumns} rows={[...months].reverse()} rowKey={(row) => row.month} label="Cost per month" search={false} />
       </section>
 
-      <div className="grid">
-        <section className="card" data-part="Roles">
+      <section className="card" data-part="Roles">
           <div className="card-head"><h2>Roles</h2></div>
-          <p className="note">All time. A developer run in review mode counts under Review.</p>
-          <DataTable columns={roleColumns(roleNames)} rows={info.roles.filter((row) => row.kind !== 'other' || row.runs > 0)} rowKey={(row) => row.role} label="Cost per role" expand={(row) => <p>{(['spec', 'build', 'review', 'fix', 'lead'] as const).filter((phase) => total(row.byPhase[phase]) > 0).map((phase, index) => <span key={phase}>{index > 0 && ' · '}{phase.charAt(0).toUpperCase() + phase.slice(1)} <Money money={row.byPhase[phase]} /></span>)}</p>} />
-        </section>
+        <p className="note">All time. A developer run in review mode counts under Review.</p>
+        <DataTable columns={roleColumns(roleNames)} rows={info.roles.filter((row) => row.kind !== 'other' || row.runs > 0)} rowKey={(row) => row.role} label="Cost per role" expand={(row) => <p>{(['spec', 'build', 'review', 'fix', 'lead'] as const).filter((phase) => total(row.byPhase[phase]) > 0).map((phase, index) => <span key={phase}>{index > 0 && ' · '}{phase.charAt(0).toUpperCase() + phase.slice(1)} <Money money={row.byPhase[phase]} /></span>)}</p>} />
+      </section>
 
-        <section className="card" data-part="Waste">
-          <div className="card-head"><h2>Waste</h2></div>
-          <p className="note">{notes.waste}</p>
-          <div className="stats">
-            <div><span>Fix rounds</span><strong><Money money={info.waste.fix} /></strong><small>{share(info.waste.fix)}</small></div>
-            <div><span>Reviews after the first</span><strong><Money money={info.waste.reviews} /></strong><small>{share(info.waste.reviews)}</small></div>
-            <div><span>Closed or redone</span><strong><Money money={info.waste.closed} /></strong><small>{share(info.waste.closed)}</small></div>
-          </div>
-          <DataTable columns={wasteColumns} rows={wasted} rowKey={(row) => row.feature.branch ?? '(no feature)'} label="Waste per feature" empty="No waste yet: every pull request merged after its first review." />
-        </section>
-      </div>
+      <section className="card" data-part="Waste">
+        <div className="card-head"><h2>Waste</h2></div>
+        <p className="note">{notes.waste}</p>
+        <div className="stats">
+          <div><span>Fix rounds</span><strong><Money money={info.waste.fix} /></strong><small>{share(info.waste.fix)}</small></div>
+          <div><span>Reviews after the first</span><strong><Money money={info.waste.reviews} /></strong><small>{share(info.waste.reviews)}</small></div>
+          <div><span>Closed or redone</span><strong><Money money={info.waste.closed} /></strong><small>{share(info.waste.closed)}</small></div>
+        </div>
+        <DataTable columns={wasteColumns} rows={wasted} rowKey={(row) => row.feature.branch ?? '(no feature)'} label="Waste per feature" empty="No waste yet: every pull request merged after its first review." />
+      </section>
     </>
   )
 }

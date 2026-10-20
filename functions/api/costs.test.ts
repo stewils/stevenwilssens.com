@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Env } from '../_lib/env'
-import { DAILY_ROWS, MAX_BUDGETS } from '../_lib/costs/store'
+import { CostStore, DAILY_ROWS, MAX_BUDGETS } from '../_lib/costs/store'
 import type { CostsAnswer } from '../_lib/costs/views'
 import { context, fakeD1, type FakeD1 } from '../_lib/testing/d1'
 import * as costs from './costs'
@@ -32,7 +32,7 @@ const setBudget = (db: FakeD1, body: unknown, token = admin) => budget.onRequest
 const stored = (db: FakeD1) => db.sqlite.prepare('SELECT run_key, branch, batch, role, model, output_tokens, reported_micro, billing, ended_at FROM dev_cost_runs ORDER BY id').all()
 const answerOf = async (response: Response) => (await response.json()) as CostsAnswer
 
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('POST /api/costs refuses first and reads later', () => {
   it('answers 401 before reading the body or touching D1: no token, a wrong one, another scheme, the token in the query or a cookie, the admin token', async () => {
@@ -148,6 +148,9 @@ describe('the ingest writes upserts', () => {
   })
 
   it('refuses a body that would take the day past its cap with 429, writing none of it', async () => {
+    // One clock for the whole test, so it cannot straddle UTC midnight.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
     const db = fakeD1()
     const today = Date.now()
     const insert = db.sqlite.prepare("INSERT INTO dev_cost_runs (source, run_key, branch, role, batch, batch_at, model, billing, started_at, ended_at, received_at) VALUES ('local', ?, 'x', 'lead', 0, 1, 'm', 'estimated', 1, 1, ?)")
@@ -213,6 +216,29 @@ describe('GET /api/costs', () => {
     const fetch = vi.mocked(globalThis.fetch)
     expect(String(fetch.mock.calls[0][0])).toContain('/repos/someone/fork/')
     expect(String(fetch.mock.calls[1][0])).toContain('/repos/stewils/stevenwilssens.com/')
+  })
+
+  it('marks a closed pull request superseded when another one’s site-update marker names it, and counts it as redone', async () => {
+    const db = fakeD1()
+    await send(postRequest(github({ pr: 54 })), db)
+    const marker = `<!-- site-update-request ${btoa(JSON.stringify({ title: 'Redo', instruction: 'x', proposals: [], supersedes: 54 }))} -->`
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json([
+      { number: 54, title: 'first', html_url: 'u', head: { ref: 'dev-costs' }, state: 'closed', merged_at: null, merge_commit_sha: null, body: null, created_at: 'x' },
+      { number: 56, title: 'redo', html_url: 'u', head: { ref: 'update/redo-56' }, state: 'open', merged_at: null, merge_commit_sha: null, body: marker, created_at: 'x' },
+    ])))
+    const answer = await answerOf(await read(db, admin, { GITHUB_TOKEN: 'ghp_test' }))
+    const [feature] = answer.features
+    expect(feature.pull).toEqual({ state: 'superseded', number: 54, mergeCommit: null, supersededBy: 56 })
+    expect(feature.waste).toMatchObject({ closed: true, redoneBy: 56 })
+    expect(answer.waste.closed.billed).toBe(1_500_000)
+  })
+
+  it('reads the newest rows when there are more than it reads, in order', async () => {
+    const db = fakeD1()
+    for (const batchAt of [3, 1, 2].map((n) => NOW - n * 60_000)) await send(postRequest(local({ rows: [row({ batch: Math.round((NOW - batchAt) / 60_000), batchAt })] })), db)
+    const rows = await new CostStore(db).rows(2)
+    expect(rows.map((item) => item.batch)).toEqual([2, 1])
+    expect((await new CostStore(db).rows()).map((item) => item.batch)).toEqual([3, 2, 1])
   })
 
   it('reads a later price for an old row: local rows are priced when read', async () => {

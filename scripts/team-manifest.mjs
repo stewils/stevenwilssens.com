@@ -161,7 +161,8 @@ const mermaidSource = (body) => /```mermaid\r?\n([\s\S]*?)\r?\n\s*```/.exec(body
 // A small fixed subset of a Mermaid flowchart (AC-20): node ids and labels (id[..], id([..]),
 // id{..}), subgraph id [label] … end, edges -->, ---, -.->, -.- with an optional label
 // (-- label -->, -.label.-), chains and &, `class a,b name` and `%% step N: id` comments.
-// Anything else on a line is ignored.
+// Anything else on a line is ignored. A node with no step line whose only links are dotted
+// (-.-) is a note beside the flow (the meter), not a step: it leaves `order` and `edges`.
 const EDGE = /\s*(?:--\s+([^\n]+?)\s+-->|-\.->|-\.([^.\n]+?)\.->?|-\.-|-->|---)\s*/g
 const NODE = /^([A-Za-z_][\w-]*)\s*(?:\(\[(.*)\]\)|\[(.*)\]|\{(.*)\})?\s*;?$/
 
@@ -170,6 +171,7 @@ export const parseChart = (source) => {
   const order = []
   const members = new Set()
   const edges = []
+  const dotted = new Set()
   const classes = []
   const stepLines = []
   let group = null
@@ -203,10 +205,12 @@ export const parseChart = (source) => {
     const unmask = (text) => text.replace(/\u0000(\d+)\u0000/g, (_, index) => saved[Number(index)])
     const segments = []
     const labels = []
+    const kinds = []
     let last = 0
     for (const match of masked.matchAll(EDGE)) {
       segments.push(masked.slice(last, match.index))
       labels.push(match[1] ?? match[2] ?? null)
+      kinds.push(match[0].trim() === '-.-')
       last = match.index + match[0].length
     }
     segments.push(masked.slice(last))
@@ -226,11 +230,28 @@ export const parseChart = (source) => {
         if (group) {
           const member = nodes.get(group).members.find((item) => item.id === to)
           if (member && label && member.via === null) member.via = label
-        } else edges.push({ from, to, label })
+        } else {
+          const edge = { from, to, label }
+          edges.push(edge)
+          if (kinds[i]) dotted.add(edge)
+        }
       }
     }
   }
-  return { nodes, order, edges, classes, stepLines }
+  const stepped = new Set(stepLines.map((line) => line.id))
+  // Only in a chart that ties its steps to nodes: elsewhere every node is a step.
+  const notes = stepLines.length === 0 ? [] : order.filter((id) => {
+    const linked = edges.filter((edge) => edge.from === id || edge.to === id)
+    return nodes.get(id).shape !== 'group' && !stepped.has(id) && linked.length > 0 && linked.every((edge) => dotted.has(edge))
+  }).map((id) => ({
+    id,
+    label: nodes.get(id).label,
+    alongside: [...new Set(edges.filter((edge) => edge.from === id || edge.to === id).map((edge) => (edge.from === id ? edge.to : edge.from)))],
+  }))
+  const noted = new Set(notes.map((note) => note.id))
+  return {
+    nodes, order: order.filter((id) => !noted.has(id)), edges: edges.filter((edge) => !noted.has(edge.from) && !noted.has(edge.to)), classes, stepLines, notes,
+  }
 }
 
 // The chart as the page draws it: the nodes in order, each with its steps, lane, gate,
@@ -238,7 +259,7 @@ export const parseChart = (source) => {
 // numbered steps disagree; then the diagram is null and the page lists the steps instead.
 export const buildDiagram = (chart, stepNumbers) => {
   const problems = []
-  const { nodes, order, edges, classes, stepLines } = chart
+  const { nodes, order, edges, classes, stepLines, notes = [] } = chart
   if (!order.length) problems.push('the chart has no nodes')
   for (const n of stepNumbers) {
     const count = stepLines.filter((line) => line.n === n).length
@@ -274,7 +295,8 @@ export const buildDiagram = (chart, stepNumbers) => {
       loop,
     }
   })
-  return { diagram: problems.length ? null : { nodes: list }, problems, nodes: list }
+  const drawnNotes = notes.slice(0, 5).map((note) => ({ label: note.label, alongside: note.alongside.filter((id) => order.includes(id)).map(labelOf) }))
+  return { diagram: problems.length ? null : { nodes: list, notes: drawnNotes }, problems, nodes: list, notes: drawnNotes }
 }
 
 // The parts of .claude/team.md: the roles table, the flow (steps and chart), the finding levels.
@@ -517,9 +539,12 @@ const readSections = (files, read, orchestration) => {
 const drawn = ({ label, shape, members, next, loop }) => JSON.stringify({ label, shape, members, next, loop })
 const stepSignatures = (team) => {
   const steps = new Map()
-  const nodes = team.chart ? buildDiagram(team.chart, team.steps.map((step) => step.n)).nodes : []
+  const built = team.chart ? buildDiagram(team.chart, team.steps.map((step) => step.n)) : { nodes: [], notes: [] }
+  const nodes = built.nodes
   for (const step of team.steps) {
-    const node = nodes.find((item) => item.steps.includes(step.n))
+    const found = nodes.find((item) => item.steps.includes(step.n))
+    // A note beside a node (the meter) is part of how that node is drawn.
+    const node = found && { ...found, notes: built.notes.filter((note) => note.alongside.includes(found.label)).map((note) => note.label) }
     const { steps: _, ...shape } = node ?? {}
     steps.set(step.title, { id: step.id, text: JSON.stringify([step.text, step.who]), node: node ? JSON.stringify(shape) : null, nodeId: node ? node.id : null, drawn: node ? drawn(node) : null })
   }

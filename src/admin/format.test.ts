@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dayAxis, formatAgo, formatCost, formatDuration, formatVital, niceMax, periodBefore, projectMonth, rateVital, trendOf } from './format'
+import { dayAxis, formatAgo, formatCost, formatDuration, formatUsd, formatUsdWhole, formatVital, niceMax, periodBefore, projectMonth, rateVital, trendOf } from './format'
 
 describe('chart and comparison helpers', () => {
   it('rounds an axis up to a clean maximum', () => {
@@ -63,5 +63,14 @@ describe('a development cost', () => {
     expect(formatCost(0, 'billed', true)).toEqual({ text: '+', words: 'unpriced runs only' })
     expect(formatCost(4_000)).toEqual({ text: '<$0.01', words: 'less than $0.01' })
     expect(formatCost(9_999_990_000)).toEqual({ text: '$9,999.99', words: '$9,999.99' })
+  })
+})
+
+describe('dollars', () => {
+  it('shows cents, or whole dollars on a chart axis', () => {
+    expect(formatUsd(100_000_000)).toBe('$100.00')
+    expect(formatUsdWhole(100_000_000)).toBe('$100')
+    expect(formatUsdWhole(49_600_000)).toBe('$50')
+    expect(formatUsdWhole(1_234_000_000)).toBe('$1,234')
   })
 })

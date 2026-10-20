@@ -18,6 +18,9 @@ export type Batch = { key: string; at: number; roles: string[]; lead: boolean }
 
 export const TEAM_ROLES = ['product-manager', 'senior-recruiter', 'ux-designer', 'senior-developer', 'security-engineer', 'senior-tester']
 const DEVELOPER = 'senior-developer'
+// A batch of this many team roles is a review: /feature starts the spec as batches of three
+// (PM, recruiter, designer; then security, tester, developer) and the reviews as six. A skill
+// that starts four or more spec agents at once would read as a review here.
 const REVIEW_FROM = 4
 
 export const assignPhases = (batches: Batch[]): Map<string, Phase> => {

@@ -49,6 +49,8 @@ export function fillDays(rows: { day: string }[], days: number, now = new Date()
 }
 
 export const formatUsd = (micro: number) => `$${(micro / 1_000_000).toFixed(2)}`
+// Whole dollars, for a chart axis ($100, not $100.00).
+export const formatUsdWhole = (micro: number) => `$${Math.round(micro / 1_000_000).toLocaleString('en-US')}`
 
 export const formatBytes = (bytes: number) => (bytes >= 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`)
 

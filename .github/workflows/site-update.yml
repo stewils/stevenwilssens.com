@@ -87,7 +87,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     outputs:
-      cost: ${{ steps.cost.outputs.cost }}
+      micro: ${{ steps.cost.outputs.micro }}
       turns: ${{ steps.cost.outputs.turns }}
       ms: ${{ steps.cost.outputs.ms }}
       # Set by the branch step, before the Claude step runs: nothing after it can change it.
@@ -223,12 +223,13 @@ jobs:
         run: |
           file="${EXECUTION_FILE:-$RUNNER_TEMP/claude-execution-output.json}"
           if [ ! -s "$file" ]; then echo "::warning::No execution file from the Claude step: this run's cost is not recorded."; exit 0; fi
-          if ! result=$(/usr/bin/jq -c '[.[] | select(.type == "result")] | last | {cost: .total_cost_usd, turns: .num_turns, ms: .duration_ms}' "$file" 2>/dev/null) || [ -z "$result" ]; then
+          # The cost goes on as whole micro-dollars: Claude Code sums it as a float, which can print with 17 digits.
+          if ! result=$(/usr/bin/jq -c '[.[] | select(.type == "result")] | last // empty | {micro: (.total_cost_usd | if type == "number" then . * 1000000 | round else . end), turns: .num_turns, ms: .duration_ms}' "$file" 2>/dev/null) || [ -z "$result" ]; then
             echo "::warning::The execution file has no result: this run's cost is not recorded."; exit 0
           fi
-          for key in cost turns ms; do
+          for key in micro turns ms; do
             value=$(printf '%s' "$result" | /usr/bin/jq -r --arg key "$key" '.[$key] // empty | tostring' 2>/dev/null || true)
-            if [[ "$value" =~ ^[0-9]{1,9}(\.[0-9]{1,12})?$ ]]; then echo "$key=$value" >> "$GITHUB_OUTPUT"; else echo "::warning::The run's $key is not a plain number: it is not recorded."; fi
+            if [[ "$value" =~ ^(0|[1-9][0-9]{0,9})$ ]]; then echo "$key=$value" >> "$GITHUB_OUTPUT"; else echo "::warning::The run's $key is not a plain number: it is not recorded."; fi
           done
       # The action left github.token in the origin URL; nothing after this step reads it from .git/config.
       - name: Remove the token from the origin URL
@@ -410,7 +411,7 @@ jobs:
           # (https://code.claude.com/docs/en/authentication). Only whether each is set crosses, never its value.
           HAS_API_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
           HAS_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
-          COST: ${{ needs.update.outputs.cost }}
+          MICRO: ${{ needs.update.outputs.micro }}
           TURNS: ${{ needs.update.outputs.turns }}
           DURATION: ${{ needs.update.outputs.ms }}
           WORKFLOW: site-update
@@ -421,8 +422,7 @@ jobs:
           PR: ${{ needs.update.outputs.pr }}
         run: |
           warn() { echo "::warning::This run's cost is not recorded: $1"; exit 0; }
-          number='^[0-9]{1,9}(\.[0-9]{1,12})?$'
-          [[ "$COST" =~ $number && "$TURNS" =~ ^[0-9]{1,9}$ && "$DURATION" =~ ^[0-9]{1,9}$ ]] || warn "the Claude step reported no cost (cancelled, timed out or skipped)."
+          [[ "$MICRO" =~ ^(0|[1-9][0-9]{0,9})$ && "$TURNS" =~ ^[0-9]{1,9}$ && "$DURATION" =~ ^[0-9]{1,9}$ ]] || warn "the Claude step reported no cost (cancelled, timed out or skipped)."
           [[ "$RUN_ID" =~ ^[1-9][0-9]{0,12}$ && "$RUN_ATTEMPT" =~ ^[1-9][0-9]?$ ]] || warn "the run id is not a number."
           # The branch rule of /api/costs; a Site update branch always starts with update/.
           [[ "$BRANCH" =~ ^[A-Za-z0-9._/-]{1,200}$ && "$BRANCH" != *..* && "$BRANCH" != *//* && "$BRANCH" != [-/]* && "$BRANCH" != */ && "$BRANCH" != *.lock ]] || warn "the branch name is not one the costs page takes."
@@ -430,15 +430,15 @@ jobs:
           if [ -n "$PR" ] && ! [[ "$PR" =~ ^[1-9][0-9]{0,5}$ ]]; then warn "the pull request is not a number."; fi
           if [ "$HAS_API_KEY" = true ]; then billing=billed; elif [ "$HAS_OAUTH" = true ]; then billing=estimated; else billing=unknown; fi
           [ -n "$COSTS_INGEST_TOKEN" ] || warn "the COSTS_INGEST_TOKEN secret is not set."
-          body=$(/usr/bin/jq -cn --arg workflow "$WORKFLOW" --arg job "$JOB" --arg branch "$BRANCH" --arg billing "$billing" --arg pr "$PR" --arg cost "$COST" \
-            --argjson runId "$RUN_ID" --argjson runAttempt "$RUN_ATTEMPT" --argjson numTurns "$TURNS" --argjson durationMs "$DURATION" --argjson endedAt "$(date +%s)000" \
+          body=$(/usr/bin/jq -cn --arg workflow "$WORKFLOW" --arg job "$JOB" --arg branch "$BRANCH" --arg billing "$billing" --arg pr "$PR" \
+            --argjson costMicro "$MICRO" --argjson runId "$RUN_ID" --argjson runAttempt "$RUN_ATTEMPT" --argjson numTurns "$TURNS" --argjson durationMs "$DURATION" --argjson endedAt "$(date +%s)000" \
             '{v: 1, source: "github", workflow: $workflow, job: $job, runId: $runId, runAttempt: $runAttempt, branch: $branch, billing: $billing,
-              costMicro: ($cost | tonumber * 1000000 | round), numTurns: $numTurns, durationMs: $durationMs, endedAt: $endedAt} + (if $pr == "" then {} else {pr: ($pr | tonumber)} end)') || warn "the body could not be built."
+              costMicro: $costMicro, numTurns: $numTurns, durationMs: $durationMs, endedAt: $endedAt} + (if $pr == "" then {} else {pr: ($pr | tonumber)} end)') || warn "the body could not be built."
           # The token goes to curl in a header file, never on its command line.
           header="$RUNNER_TEMP/costs-header"
           printf 'Authorization: Bearer %s\n' "$COSTS_INGEST_TOKEN" > "$header"
           if printf '%s' "$body" | /usr/bin/curl --fail --silent --show-error --max-time 10 -X POST -H @"$header" -H 'Content-Type: application/json' --data-binary @- -o /dev/null https://steven.wilssens.com/api/costs; then
-            rm -f "$header"; echo "Recorded: $billing, $COST dollars as the Claude step reported them, $TURNS turns."
+            rm -f "$header"; echo "Recorded: $billing, $MICRO millionths of a dollar as the Claude step reported them, $TURNS turns."
           else
             rm -f "$header"; warn "the post to /api/costs failed."
           fi
