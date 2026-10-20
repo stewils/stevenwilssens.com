@@ -100,8 +100,9 @@ C-1 to C-10 are part of these criteria (AC-14); its tests T-1 to T-10 are in the
     committed or pushed, no pull request is opened, no email is sent, and the job's
     conclusion is `failure`;
   - a `repository_dispatch` refresh with no change, or with changes only under `specs/`,
-    warns (`::warning::`), sets `changed=false` and opens nothing (today's behaviour,
-    extended to a spec-only refresh);
+    warns (`::warning::`), writes `commit=false`, so `Check and commit` is skipped and
+    every later step that needs `steps.commit.outputs.changed == 'true'` is skipped too:
+    nothing opens (today's behaviour, extended to a spec-only refresh);
   - any change outside `specs/` commits, on either event: a feed-only refresh, a
     `.claude/` or `.github/` change, an untracked file, a rename into or out of `specs/`,
     the generated PDF.
@@ -121,14 +122,22 @@ C-1 to C-10 are part of these criteria (AC-14); its tests T-1 to T-10 are in the
 - AC-13: `wait_for_site_update` and `site_update_status` find a run's pull request by the
   run's number, not by `run.branch` (GitHub's `head_branch`, which is `main` for every
   dispatched run, so today they never find it): the pull request whose head branch starts
-  with `update/` and ends with `-<run_number>`, among open, closed and merged pull requests.
-  `WorkflowRun` gains `number`. The test fakes in `functions/_lib/mcp/` use the real
-  `branch: 'main'` with a run number, and a test fails if a run's pull request is found
-  only through `branch`.
+  with `update/` and ends with `-<run_number>`, from a branch of this repository (the pull
+  request's `headRepo` is the repository; a fork can carry any branch name), among open,
+  closed and merged pull requests (a page of 100). `WorkflowRun` gains `number` and `event`,
+  `PullRequest` gains `headRepo`. `merge_site_update` refuses a pull request from another
+  repository. `site_update_status` still lists the open pull requests from its own
+  `pulls('open')` call, so an older open one never drops out behind newer closed ones. The
+  test fakes in `functions/_lib/mcp/` use the real `branch: 'main'` with a run number, and
+  tests fail if a run's pull request is found only through `branch`, if a fork's pull
+  request is matched or merged, or if an older open pull request is missing from the list.
 - AC-5: A pure `runOutcome(run, pull, failure)` gives `running` (not completed),
   `pull-request` (a pull request for the run), `no-change` (failed at `Stop when no change
-  was made`, or completed successfully without a pull request), or `failed` (any other
-  failure, or cancelled). The failed step comes from the jobs API
+  was made`, or a `repository_dispatch` refresh that completed successfully without a pull
+  request), or `failed` (any other failure, a cancellation, or a `workflow_dispatch` request
+  that completed successfully but whose pull request was not found: since AC-3 a request
+  with no change fails at the no-change step, so a successful request has a pull request,
+  and calling it "nothing to change" would hide it). The failed step comes from the jobs API
   (`GitHub.runFailure(runId)`: the first step of the `update` job with conclusion
   `failure`), never from matching log or annotation text (C-4); the step's name is a
   constant in `functions/_lib/github.ts`, and a test fails when `site-update.yml` has no
@@ -138,13 +147,21 @@ C-1 to C-10 are part of these criteria (AC-14); its tests T-1 to T-10 are in the
     characters stripped, at most 500 characters), and offers to run it again with the
     instruction Claude sent in this session, asking Steven first; it never calls
     `request_site_update` itself;
-  - for a successful run without a pull request (a refresh with nothing new), `next` says
-    the run finished and there was nothing to change;
+  - for a successful refresh without a pull request (nothing new), `next` says the run
+    finished and there was nothing to change;
+  - for a successful request whose pull request was not found, `next` says the run
+    finished but its pull request was not found here, and gives the run's link;
   - any other failure keeps today's answer.
-  Without Checks: read on the token (Open question 4) the outcome is still `no-change` and
-  the reason says "open the run" with its link.
+  When GitHub refuses the annotations (403: the token lacks Checks: read, Open question 4)
+  the outcome is still `no-change` and the reason says the token needs Checks: read and
+  "open the run" with its link; when the reason is missing for another reason, it says it
+  could not be read and "open the run" with its link. A GitHub error while reading where a
+  failed run stopped makes that run `failed` with its link, never an error for the whole
+  answer.
 - AC-6: `site_update_status` puts `outcome` (and `reason` for `no-change`) on each of its
-  five runs, calls `runFailure` only for failed runs, and its `note` names the four
+  five runs by the same rules as AC-5 (the run's `event` decides whether a success without
+  a pull request is `no-change` or `failed`), calls `runFailure` only for failed runs
+  without a pull request, and its `note` names the four
   outcomes instead of "made no changes, or failed". Nothing else from the run (log text,
   other annotations, artifacts) reaches the answer (C-10).
 
@@ -670,11 +687,11 @@ so AC-2 is needed as written.
 - How AC-2 is confirmed: the summary script reads the execution file and, per Agent or
   Task call of the main conversation (`parent_tool_use_id: null`), reports
   `subagent_type`, `run_in_background` and whether its `tool_result` arrived before the
-  `result` message (C-1's AC-2 facts; no content). Two runs dispatched from this branch
-  (Open question 3): run A on a commit with the summary step only, run B with the setting
-  and the prompt. This section then records for each: the Agent calls (background or not,
-  returned before the end), the denied tool names, turns, duration. If run A shows no
-  background call, the cause is what it does show and the fix and AC-2 name that.
+  `result` message (C-1's AC-2 facts; no content). One run dispatched from this branch
+  with the fix and the summary in place (Steven approved one, Open question 3). This
+  section then records its Agent calls (background or not, returned before the end), the
+  denied tool names, turns, duration and outcome (below). If it shows another cause, the
+  fix and AC-2 name that, and a second run needs Steven's yes (Open question 5).
 - How a run from this branch runs this branch's scripts: the update job checks out `main`,
   which does not have the new scripts. A step before the team step, `Take the workflow's
   own scripts`, copies them from the commit that defines the workflow into `$RUNNER_TEMP`
@@ -690,8 +707,11 @@ this branch at 59c907d, a harmless README instruction):
 https://github.com/stewils/stevenwilssens.com/actions/runs/39355916378. From its step
 summary (`Summarise Claude's run`):
 
-- **Agent calls of the main conversation:** 8, every one with `run_in_background` false
-  (in the foreground), and every one returned before the session's `result` message.
+- **Agent calls of the main conversation:** 8, in order `product-manager`,
+  `senior-recruiter`, `ux-designer`, `security-engineer`, `senior-tester`,
+  `senior-developer`, `product-manager`, `senior-developer`; every one with
+  `run_in_background` false (in the foreground), and every one returned before the
+  session's `result` message.
 - **Turns and duration:** `success`, 14 turns, 392 s.
 - **Denials:** 11, all `Bash` (names only, by C-1). The last message also says the security
   engineer could not write its section to the spec file. These are seen, and they cost
@@ -736,7 +756,8 @@ T-10 (no token, no `sources/` text, no tool input).
   (`::error::Claude made no change to the site for this request.` plus the last message,
   exit 1: the push, score, pull request and email steps keep their
   `steps.commit.outputs.changed == 'true'` and are skipped, and the job fails); a refresh
-  with no change warns and sets `changed=false` (today); a refresh with only the feed
+  with no change warns and writes `commit=false`, so `Check and commit` and every later step
+  are skipped (today's result); a refresh with only the feed
   commits; any path outside `specs/`, a rename into or out of it, `.claude/` and `.github/`
   included, commits. `Check and commit` loses its own no-change branch. Question for the
   PM: a refresh that changed only `specs/` would open a spec-only pull request too; I
@@ -748,8 +769,11 @@ T-10 (no token, no `sources/` text, no tool input).
   which opened #55. The tests hide it: their fake runs carry `branch: 'update/x'`. The
   workflow names the branch `update/<slug>-<run number>`, so `WorkflowRun` gains `number`
   (`run_number`) and a run's pull request is the one whose branch starts with `update/`
-  and ends with `-<number>`, looked up among all states so a closed one still counts. The
-  fake runs in `tools-branches.test.ts` move to `branch: 'main'` with a number.
+  and ends with `-<number>` and whose `headRepo` is this repository (a fork's pull request
+  can carry the same name), looked up among all states on a page of 100 so a closed one
+  still counts. `merge_site_update` refuses a pull request from another repository. The
+  list of open pull requests keeps its own `pulls('open')` call. The fake runs in
+  `tools-branches.test.ts` move to `branch: 'main'` with a number.
 - How the MCP knows (C-4, structure, never text): `GitHub` gains `runFailure(runId)`:
   `GET /actions/runs/{id}/jobs` (Actions: read, which the token has), the first step of the
   `update` job with conclusion `failure`, and, only when that step is the no-change step,
@@ -759,17 +783,24 @@ T-10 (no token, no `sources/` text, no tool input).
   `site-update.yml` and fails when no step has that name (the "keep in step" rule).
 - **For Steven:** annotations need **Checks: read** on the fine-grained `GITHUB_TOKEN`
   secret, which it lacks today (Actions, Contents, Pull requests). Without it the outcome is
-  still `no-change` (the step name) and the reason says "open the run". Not a blocker; the
+  still `no-change` (the step name) and the reason says the token needs Checks: read and
+  "open the run"; only a 403 says that, any other missing reason says it could not be read
+  and "open the run". Not a blocker; the
   PM may add it to the open questions or the deploy notes.
 - Outcomes, one pure function `runOutcome(run, pull, failure)`: not completed → `running`;
   a pull request for the run → `pull-request`; failed at the no-change step → `no-change`;
-  success with no pull request → `no-change` (a refresh with nothing to do); any other
-  failure or a cancellation → `failed`. `wait_for_site_update` returns `outcome` and
+  a `repository_dispatch` refresh that succeeded with no pull request → `no-change` (nothing
+  to do); a `workflow_dispatch` request that succeeded but whose pull request was not found
+  → `failed` (a request with no change fails at the no-change step, so its pull request
+  exists and was not found; `next` says so and gives the run's link); any other failure or
+  a cancellation → `failed` (`WorkflowRun` gains `event`). A GitHub error in `runFailure`
+  leaves the run without a failed step, so it reads `failed` with its link instead of
+  failing the whole answer. `wait_for_site_update` returns `outcome` and
   `reason` (control characters stripped, at most 500 characters, C-4); for `no-change` its
   `next` is AC-5's (the title, the reason quoted as the run's text, offer the redo and ask
   Steven first; the instruction comes from what Claude sent in this session, never from the
   run). A failure elsewhere keeps today's `next`. `site_update_status` puts `outcome` on
-  each of its five runs, calls `runFailure` only for failed runs (at most five more
+  each of its five runs, calls `runFailure` only for failed runs without a pull request (at most five more
   requests per call, well inside a Worker's subrequest limit), and its `note` names the
   four outcomes.
 - Tests: `github.test.ts` for `runFailure` (failed at the step; failed elsewhere; the
@@ -847,10 +878,10 @@ fake.
 |---|---|---|
 | AC-1 | `scripts/site-update-workflow.test.mjs`, "the team step runs every agent in the foreground": the step named `Let Claude make the change` (red if renamed or gone) has `id: claude`, the `settings` input with `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` `"1"` (parsed as JSON, not matched as text), and a numbered prompt line holding each of: `run_in_background: false`, several Agent calls in one message, wait for every result, never end the turn while an agent runs, never ask a question. One `it.each` row per part, so removing any one turns one row red. If `--permission-prompts none` is added (AC-2), "… and the run cannot stop on a question" checks it in `claude_args`. | unit (reads the file) |
 | AC-2 | Named check, not a test: **one real run** from this branch with the fix and the summary. The Technical approach records its run id and link and, from its step summary, each main-conversation Agent/Task call (`subagent_type`, `run_in_background`, returned before `result`), denied tool names, turns, duration and the outcome. At the merge review the tester opens the run and checks: every agent call foreground and returned, and either a pull request whose diff touches a file outside `specs/` or a failure at `Stop when no change was made` whose reason names a cause other than the agents. A second run only on Steven's yes to Open question 5. | manual, recorded |
-| AC-3 | `scripts/site-update-outcome.test.mjs`, one `it.each` table on the pure function: dispatch with no change → fail; dispatch, only `specs/` → fail; dispatch, spec plus `src/resume.ts` → commit; refresh, no change → warn; refresh, only `specs/` → warn; refresh, only the feed → commit; dispatch, only a feed → commit; `.claude/agents/x.md` or `.github/…` plus a spec → commit; an untracked file → commit; a rename into and one out of `specs/` → commit; only the generated PDF → commit; a path with a space and one with a newline (`-z` input) parsed right. "fails with the fixed sentence and the last message": `::error::Claude made no change to the site for this request.` then the redacted message. Through the CLI: exit 1 for fail, 0 for warn and commit, `changed=false` written to `GITHUB_OUTPUT` for warn. `site-update-workflow.test.mjs`, "the no-change step runs before Check and commit and before any push or gh call", and "Check and commit has no no-change branch of its own". | unit + reads the file |
+| AC-3 | `scripts/site-update-outcome.test.mjs`, one `it.each` table on the pure function: dispatch with no change → fail; dispatch, only `specs/` → fail; dispatch, spec plus `src/resume.ts` → commit; refresh, no change → warn; refresh, only `specs/` → warn; refresh, only the feed → commit; dispatch, only a feed → commit; `.claude/agents/x.md` or `.github/…` plus a spec → commit; an untracked file → commit; a rename into and one out of `specs/` → commit; only the generated PDF → commit; a path with a space and one with a newline (`-z` input) parsed right. "fails with the fixed sentence and the last message": `::error::Claude made no change to the site for this request.` then the redacted message. Through the CLI: exit 1 for fail, 0 for warn and commit, `commit=false` written to `GITHUB_OUTPUT` for warn and fail, `commit=true` for commit. `site-update-workflow.test.mjs`, "the no-change step runs before Check and commit and before any push or gh call", and "Check and commit has no no-change branch of its own". | unit + reads the file |
 | AC-4 | `scripts/claude-run-summary.test.mjs` on sample execution files written in the test: "summarises a run without denials" (subtype, turns, duration, 0 denials, last message); "names each denied tool and never its input" (T-1); "lists each Agent or Task call of the main conversation with its subagent type, whether it ran in the background and whether it returned before the end" (calls with `parent_tool_use_id` set are not listed; one background call whose result comes after `result` shows as not returned); "cuts the last message to 2,000 characters after redaction"; "writes the same to the log and the step summary, and the last message to the file the next step reads"; "a missing, empty or non-JSON execution file is a line in the summary and exit 0". `site-update-workflow.test.mjs`: "Summarise Claude's run runs with if: always() after Remove the token from the origin URL", "Remove the token from the origin URL runs with if: always()", "the workflow uploads no execution file" (no `upload-artifact` step, no `execution_file` outside the summary step). | unit + reads the file |
 | AC-13 | `functions/_lib/mcp/tools-branches.test.ts`, "finds a run's pull request by its run number while the run's branch is main": fake runs carry `branch: 'main'` and a `number`; `update/x-27` is found for run 27, `update/x-270` and `update/x-7` are not; a closed and a merged pull request are found. "a pull request on the run's head branch is not found by that alone": a fake pull request whose branch equals `run.branch` but does not end in `-<number>` gives no `pullRequest` (mutation: restore the `run.branch` lookup, red). `review-tools.test.ts` fake runs move to `branch: 'main'` with a number; its existing wait test still finds #7. `github.test.ts`, "reads run_number into the run" with `fakeFetch`. | unit, fake GitHub |
-| AC-5 | `functions/_lib/mcp/tools-branches.test.ts`, pure `runOutcome` in one `it.each`: queued and in progress → `running`; a pull request → `pull-request`; failed at `Stop when no change was made` → `no-change`; success without a pull request → `no-change`; failed elsewhere, cancelled → `failed`. `wait_for_site_update`: "a run that failed at the no-change step says the request was not carried out and asks Steven before a redo" (`outcome`, `reason`, `next` starts with not carried out, names the title, quotes the reason as the run's text, mentions `request_site_update` and asking Steven; no dispatch call recorded by the fake); "a successful run without a pull request says there was nothing to change"; "a failure elsewhere keeps today's answer" (`/ended with "failure"/`); "without Checks: read the outcome is still no-change and the reason says open the run" (annotations 403). `functions/_lib/github.test.ts` with `fakeFetch`: `runFailure` for failed at the step, failed elsewhere (no annotations call made), annotations refused with 403, no failed step; and "a step in site-update.yml carries the no-change step's name" (reads the workflow; red when the step is renamed). | unit, fake GitHub |
+| AC-5 | `functions/_lib/mcp/tools-branches.test.ts`, pure `runOutcome` in one `it.each`: queued and in progress → `running`; a pull request → `pull-request`; failed at `Stop when no change was made` → `no-change`; a `repository_dispatch` refresh that succeeded without a pull request → `no-change`; a `workflow_dispatch` request that succeeded without a pull request found → `failed`; failed elsewhere, cancelled → `failed`. `wait_for_site_update`: "a run that failed at the no-change step says the request was not carried out and asks Steven before a redo" (`outcome`, `reason`, `next` starts with not carried out, names the title, quotes the reason as the run's text, mentions `request_site_update` and asking Steven; no dispatch call recorded by the fake); "waits: refuses an unknown run, reports a failed run, a run without a pull request, and one still running" (a refresh with nothing new says there was nothing to change; a request whose pull request is not found reads `failed` and its `next` starts with `The run "<title>" finished, but its pull request was not found here`); "a failure elsewhere keeps today's answer" (`/ended with "failure"/`); "without Checks: read the outcome is still no-change and the reason says open the run" (annotations 403); "says the token needs Checks: read only when GitHub refused the annotations"; "a GitHub error while reading where a run stopped reads failed with the run's link, for both tools"; for AC-13, "never takes a fork's pull request carrying the run's branch name, and never merges one" and "lists an open pull request behind 20 newer ones, and finds a run's pull request on a larger page". `functions/_lib/github.test.ts` with `fakeFetch`: `runFailure` for failed at the step, failed elsewhere (no annotations call made), annotations refused with 403, no failed step; and "a step in site-update.yml carries the no-change step's name" (reads the workflow; red when the step is renamed). | unit, fake GitHub |
 | AC-6 | `tools-branches.test.ts`, "site_update_status puts an outcome on each of its five runs and calls runFailure only for failed ones" (the fake counts its calls), `reason` only on `no-change`, and `note` names the four outcomes and no longer matches `/made no changes, or failed/`. C-10 in the same test: the shaped run has only the known keys plus `outcome` and `reason`. | unit, fake GitHub |
 | AC-7 | `scripts/building-feed.test.mjs`: "keeps the five numbers AI Breaker does not send" (the real `src/articles/aibreaker/feed.json`, live `{ "visitorCountries30d": 12 }`: five unchanged, 12); "a number the live feed sends replaces the committed one"; "asOf comes from the live feed when it is an ISO date not in the future" and "keeps the committed asOf for a future or malformed date" (fixed `now` passed in, no real clock); "a live answer without a numbers object gives null, and the CLI writes nothing and exits 1" (file byte-identical); T-8. `site-update-workflow.test.mjs`, "the refresh step runs building-feed.mjs from the copy and no longer writes numbers: f.numbers". | unit + reads the file |
 | AC-8 | `src/articles/feeds.test.ts`, `it.each` over `src/articles/*/*Article.tsx`: "every stats key and every feed.numbers key the article reads is in its feed.json", and "an article yields at least one key" (the no-keys guard). Mutations: remove `levels` from the AI Breaker feed, red; remove `settingsDocumented`, red; rename `const stats: Stat[]` in one article, red through the guard. | unit |
@@ -903,9 +934,13 @@ Earlier notes 1 to 3 are settled by the reconcile below.
   the guard that an article yielding no keys fails and with `feed.numbers.<key>` covered;
   exporting `stats` from the components would break the react-refresh lint rule. The
   render-and-look-for-0 test is not needed on top.
-- Notes 2 and 3 (AC-5, AC-6): a successful run without a pull request is `no-change` with
-  its own `next`; the reason comes from the failed step (jobs API) and the check run's
-  annotations, with "open the run" when the annotations are refused (403).
+- Notes 2 and 3 (AC-5, AC-6): a successful `repository_dispatch` refresh without a pull
+  request is `no-change` with its own `next`; a successful `workflow_dispatch` request whose
+  pull request is not found is `failed`, and its `next` says the pull request was not found
+  and gives the run's link. The reason comes from the failed step (jobs API) and the check
+  run's annotations; "needs Checks: read" and "open the run" when the annotations are refused
+  (403), "could not be read" and "open the run" when the reason is missing otherwise. A
+  GitHub error in `runFailure` makes the run `failed` with its link.
 - New rows: AC-13 (the pull request is found by run number, fakes on `branch: 'main'`, in
   `tools-branches.test.ts` and `review-tools.test.ts`) and AC-14 (T-1 to T-10).
 
