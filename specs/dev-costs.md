@@ -1,6 +1,6 @@
 # The admin shows what each change cost to build with Claude
 
-Slug: `dev-costs` · Branch: `dev-costs` · Status: approved (round 3, 2026-10-19): Steven's answers, the recruiter's W-1, M-1 and M-2 and the security engineer's S-15 to S-17 are folded into the ACs; signed off by the PM, the recruiter, the designer and the security engineer
+Slug: `dev-costs` · Branch: `dev-costs` · Status: built (2026-10-20): every role signed off the merge (see Sign-offs); the recruiter's M-2 runs on production right after the deploy, as Steven chose
 Asked by Steven on 2026-10-19: "Development cost tracking on /admin. Record what each feature costs to build with Claude", with five views: per feature, per agent, over time, waste and a budget per feature. Confirmed by Steven: admin only, never on the home page or in the public write-up's numbers; all five views.
 
 ## Problem
@@ -837,9 +837,9 @@ Draft AC numbers used in the Recruiter, Design, Threat model and Technical appro
 
 | Role | Spec | Merge | Notes |
 |---|---|---|---|
-| Product manager | APPROVE (round 3, 2026-10-19) | | Steven's answers folded in; W-1, M-1, M-2, S-15 to S-17 in the ACs |
-| Senior recruiter | APPROVE (round 2), with W-1 | | W-1 in AC-36; M-1 and M-2 are merge conditions (AC-36, AC-29) |
-| Senior designer | APPROVE (round 2) | | Label and phone break updated to W-1 by the PM |
-| Senior developer | (feasibility) | | F-1 to F-5 folded in (round 2) |
-| Security engineer | APPROVE (round 2), with S-15 to S-17 | | Folded into AC-4, AC-7, AC-12, AC-14 |
-| Senior tester | (test plan) | | |
+| Product manager | APPROVE (round 3, 2026-10-19) | APPROVE (round 2) | AC-1 to AC-37 met; AC-35's New marks seen in the preview's admin bundle, not on the page (admin token is local only) |
+| Senior recruiter | APPROVE (round 2), with W-1 | APPROVE with M-2 after deploy (round 2) | check:recruiter 80 = main, ATS 100 = live, main-*.js +279 B gzip (+0.28%, accepted); M-1 met; M-2: Steven chose to ask production the five questions right after the deploy and revert on a cost figure (2026-10-20) |
+| Senior designer | APPROVE (round 2) | APPROVE (round 3) | No findings; preview article diagram identical to the branch's |
+| Senior developer | (feasibility) | APPROVE (round 2, review mode) | Round-2 minors fixed in b2c32c0 |
+| Security engineer | APPROVE (round 2), with S-15 to S-17 | APPROVE (round 2) | S-1 to S-17 built and tested; follow-up: `disableAllHooks` through the action's `settings:` input |
+| Senior tester | (test plan) | APPROVE (round 3) | 1185 tests, 99.52 / 97.4 / 99.19 / 99.89, every changed file at 90% or more; two nits deferred |
