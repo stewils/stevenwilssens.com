@@ -104,11 +104,14 @@ describe('the last message is redacted, cut and inert (T-2, T-4, C-1, C-3, C-9)'
     ['an x-access-token', `x-access-token:${repeat('z', 12)}`],
     ['an AUTHORIZATION header', `AUTHORIZATION: basic ${repeat('eA', 10)}`],
     ['a long base64 run', base64],
-    ['a JSON Web Token, dashes and all', jwt],
   ])('redacts %s', (_name, secret) => {
     const out = publicMessage(`before ${secret} after`)
     expect(out).not.toContain(secret)
     expect(out).toMatch(/^before .*\[redacted\].* after$/)
+  })
+
+  it('redacts a JSON Web Token whole, signature included', () => {
+    expect(publicMessage(`before ${jwt} after`)).toBe('before [redacted] after')
   })
 
   it('redacts the credentials of a URL and keeps its host', () => {

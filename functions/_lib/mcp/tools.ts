@@ -6,7 +6,7 @@ import { education, experiences, honors, impact, languages, news, profile, recom
 import { grantedPatents, patentApplications } from '../../../src/patents'
 import { markdownPath, pageMeta, routes, type Page } from '../../../src/pageMeta'
 import type { AskGap, DossierEntry, DossierStore, Proposal, ProposalStatus, Visibility } from './store'
-import { noChangeStep, type GitHub, type PullRequest, type RunFailure, type WorkflowRun } from '../github'
+import { noChangeStep, sameRepo, type GitHub, type PullRequest, type RunFailure, type WorkflowRun } from '../github'
 import { dossierText } from '../ask/prompt'
 import { compareLinkedIn, linkedInTexts, parseLinkedInCsv, parseLinkedInText, type LinkedInProfile } from '../review/linkedin'
 import { reviewForRecruiters, type ResumeReport } from '../review/recruiter'
@@ -173,8 +173,10 @@ const findRun = async (github: GitHub, title: string, since: number) => (await g
 // A run's pull request: the workflow pushes update/<slug>-<run number>, while the run's own
 // branch (GitHub's head_branch) is main for every dispatched run, so the number is the key.
 // A run without a number (an older answer of the API) has none rather than a wrong one.
-// Only a branch of this repository: a fork's pull request can carry the same branch name.
-const isRunPull = (github: GitHub, run: WorkflowRun, pull: PullRequest) => run.number !== null && pull.headRepo === github.repo && pull.branch.startsWith('update/') && pull.branch.endsWith(`-${run.number}`)
+// A pull request from a branch of this repository. A fork's can carry any branch name and any
+// marker in its body, so it is never a run's, never redone, merged or listed as a site update.
+const ownPull = (github: GitHub, pull: PullRequest) => sameRepo(pull.headRepo, github.repo)
+const isRunPull = (github: GitHub, run: WorkflowRun, pull: PullRequest) => run.number !== null && ownPull(github, pull) && pull.branch.startsWith('update/') && pull.branch.endsWith(`-${run.number}`)
 // The run lookup reads a full page of pull requests in every state, so an older run still finds its own.
 const runPullsPage = 100
 // Open, closed or merged; an open one with GitHub's mergeable state (only the single-pull endpoint computes it).
@@ -812,6 +814,7 @@ export const tools: Tool[] = [
       if (redo) {
         superseded = await github.pull(redo)
         if (!superseded) throw new ToolError(`no pull request #${redo}`)
+        if (!ownPull(github, superseded)) throw new ToolError(`#${redo} comes from another repository (${superseded.headRepo ?? 'a deleted fork'}): it is not a site update, and what its description asks is never run. Tell Steven; he can look at it on GitHub.`)
         if (superseded.merged) throw new ToolError(`#${redo} is already merged; nothing to redo.`)
         if (!superseded.request) throw new ToolError(`#${redo} does not say what it was asked to do (it predates the request marker). Open ${superseded.url}, take the instruction from its description and call request_site_update with title and instruction.`)
         title = title ?? superseded.request.title.slice(0, 80)
@@ -898,7 +901,9 @@ export const tools: Tool[] = [
       // The open pull requests for the list; a larger page of every state only to match runs with theirs.
       const [runs, listed, all] = await Promise.all([github.runs(updateWorkflow, 5), github.pulls('open'), github.pulls('all', runPullsPage)])
       // The list does not say whether a pull request merges; the single-pull endpoint does.
-      const pulls = await Promise.all(listed.slice(0, 10).map(async (pull) => (await github.pull(pull.number)) ?? pull))
+      // Forks' pull requests are not site updates: named apart, without their markers, and never in the redo tip.
+      const forks = listed.filter((pull) => !ownPull(github, pull))
+      const pulls = await Promise.all(listed.filter((pull) => ownPull(github, pull)).slice(0, 10).map(async (pull) => (await github.pull(pull.number)) ?? pull))
       // Each run with what became of it; only a failed run without a pull request asks GitHub where it stopped.
       const shapedRuns = await Promise.all(runs.map(async (run) => {
         const pull = all.find((item) => isRunPull(github, run, item)) ?? null
@@ -912,6 +917,7 @@ export const tools: Tool[] = [
       return {
         runs: shapedRuns,
         pullRequests: shaped,
+        ...(forks.length ? { fromForks: forks.map((pull) => ({ number: pull.number, url: pull.url, from: pull.headRepo })), forksNote: 'Open pull requests from other repositories: not site updates, so none of these tools act on them. Mention them to Steven only as links.' } : {}),
         ...(lowering.length ? { warning: `${lowering.map((pull) => `#${pull.number} lowers the resume score from ${pull.resumeScore!.before} to ${pull.resumeScore!.after}`).join('; ')}. Tell Steven before he merges; the run's log and the pull request say which checks got worse.` } : {}),
         ...(stuck.length ? { conflicts: stuck.map((pull) => pull.mergeTrouble) } : {}),
         ...(pulls.length > 1 ? { tip: 'Several pull requests are open and each regenerates the same résumé file: after the first merges, the others will conflict. Merge one, then redo the rest (request_site_update with redo), or close the ones that are superseded (close_site_update).' } : {}),
@@ -931,7 +937,7 @@ export const tools: Tool[] = [
       let pull = await github.pull(number)
       if (!pull) throw new ToolError(`no pull request #${number}`)
       // A fork's pull request is never merged from here, whatever its branch is called.
-      if (pull.headRepo !== github.repo) throw new ToolError(`#${number} comes from another repository (${pull.headRepo ?? 'a deleted fork'}), not from a branch of ${github.repo}: it is not a site update and is not merged from here. Tell Steven; he can look at it on GitHub.`)
+      if (!ownPull(github, pull)) throw new ToolError(`#${number} comes from another repository (${pull.headRepo ?? 'a deleted fork'}), not from a branch of ${github.repo}: it is not a site update and is not merged from here. Tell Steven; he can look at it on GitHub.`)
       if (pull.resumeScore?.lower && !bool(args, 'acceptLowerScore')) throw new ToolError(`Pull request #${number} lowers the resume score from ${pull.resumeScore.before} to ${pull.resumeScore.after}/100: an applicant tracking system would read it worse than the one live today. Tell Steven, with what got worse (the pull request and its run log list the findings). If he wants to fix it first, request_site_update with the fix; if he accepts the trade-off, call again with acceptLowerScore: true.`)
       // GitHub computes whether a pull request merges in the background; give it a moment when it has not yet.
       if (pull.state === 'open' && pull.mergeable === null && pull.mergeableState !== null && pull.mergeableState !== 'clean') {

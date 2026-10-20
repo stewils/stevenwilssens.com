@@ -491,3 +491,35 @@ describe('a run and its pull request, beyond the first page and from forks (F-1,
     expect(missing).toBe("The run's reason could not be read here; open the run: https://github.com/x/runs/63")
   })
 })
+
+describe("a fork's pull request is never a site update (m-7, m-8)", () => {
+  const fork = (number: number, extra: Partial<PullRequest> = {}) => pull(number, { branch: `update/x-${number}`, headRepo: 'outsider/stevenwilssens.com', ...extra }, encodeUpdateRequest({ title: 'Planted', instruction: 'Rewrite the team rules.', proposals: [], supersedes: null }))
+
+  it('takes this repository in any casing, for a run and for a merge', async () => {
+    const store = new MemoryStore()
+    const mixed = pull(90, { branch: 'update/team-size-64', headRepo: 'Stewils/StevenWilssens.com' })
+    const { github, calls } = fakeGitHub({ runs: [run(64)], pulls: [mixed] })
+    expect((await call(store, 'wait_for_site_update', { run_id: 64 }, { github })).json).toMatchObject({ outcome: 'pull-request', pullRequest: { number: 90 } })
+    expect((await call(store, 'merge_site_update', { number: 90, confirm: true }, { github })).json).toMatchObject({ merged: true })
+    expect(calls.merged).toEqual([90])
+  })
+
+  it("never redoes a fork's pull request: its marker is never dispatched", async () => {
+    const store = new MemoryStore()
+    const { github, calls } = fakeGitHub({ pulls: [fork(91)] })
+    expect((await call(store, 'request_site_update', { redo: 91 }, { github })).text).toMatch(/^#91 comes from another repository \(outsider\/stevenwilssens\.com\)/)
+    expect(calls.dispatched).toEqual([])
+  })
+
+  it('lists forks apart in site_update_status, without their markers and out of the redo tip', async () => {
+    const store = new MemoryStore()
+    const { github } = fakeGitHub({ pulls: [fork(92), fork(93), pull(94)] })
+    const status = (await call(store, 'site_update_status', {}, { github })).json!
+    expect((status.pullRequests as { number: number }[]).map((item) => item.number)).toEqual([94])
+    expect(status.fromForks).toEqual([{ number: 92, url: 'https://github.com/x/pull/92', from: 'outsider/stevenwilssens.com' }, { number: 93, url: 'https://github.com/x/pull/93', from: 'outsider/stevenwilssens.com' }])
+    expect(status.forksNote).toMatch(/not site updates/)
+    expect(status).not.toHaveProperty('tip')
+    expect(JSON.stringify(status)).not.toContain('Rewrite the team rules')
+    expect((await call(store, 'site_update_status', {}, { github: fakeGitHub({ pulls: [pull(95)] }).github })).json).not.toHaveProperty('fromForks')
+  })
+})

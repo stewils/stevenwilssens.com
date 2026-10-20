@@ -60,6 +60,9 @@ export type GitHub = {
 
 // Cloudflare Pages names a branch preview after the branch: lower-case, anything
 // but letters, digits and dashes becomes a dash, cut to 28 characters.
+// Whether two owner/name strings are the same repository: GitHub reads both parts case-insensitively.
+export const sameRepo = (a: string | null | undefined, b: string | null | undefined) => Boolean(a && b) && a!.toLowerCase() === b!.toLowerCase()
+
 export const previewUrl = (branch: string, project = 'stevenwilssens') => `https://${branch.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 28)}.${project}.pages.dev`
 
 // The workflow writes its own markers at the very end of the body, after the instruction and
@@ -169,11 +172,13 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
     },
     close: async (number, comment) => {
       const pull = (await api(`/pulls/${number}`)) as Record<string, unknown>
-      const branch = (pull.head as { ref: string }).ref
+      const head = pull.head as { ref: string; repo?: { full_name?: string } | null }
+      const branch = head.ref
       await api(`/issues/${number}/comments`, { method: 'POST', body: JSON.stringify({ body: comment }) })
       await api(`/pulls/${number}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed' }) })
       let branchDeleted = false
-      if (branch !== 'main') {
+      // Only a branch of this repository: a fork's pull request names a branch of the fork, and this repository may have one of the same name.
+      if (branch !== 'main' && sameRepo(head.repo?.full_name, repo)) {
         try { await api(`/git/refs/heads/${branch}`, { method: 'DELETE' }); branchDeleted = true } catch (error) { console.error('branch delete', String(error)) }
       }
       return { closed: true, branchDeleted }

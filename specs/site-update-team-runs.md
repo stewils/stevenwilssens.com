@@ -126,7 +126,10 @@ C-1 to C-10 are part of these criteria (AC-14); its tests T-1 to T-10 are in the
   request's `headRepo` is the repository; a fork can carry any branch name), among open,
   closed and merged pull requests (a page of 100). `WorkflowRun` gains `number` and `event`,
   `PullRequest` gains `headRepo`. `merge_site_update` refuses a pull request from another
-  repository. `site_update_status` still lists the open pull requests from its own
+  repository. The same guard, comparing owner and name case-insensitively, keeps a fork's
+  pull request out of every other path: `request_site_update` never redoes one (its body's
+  marker is never run), `site_update_status` lists it apart under `fromForks` without its
+  markers and out of the redo tip, and `close_site_update` never deletes a branch for one. `site_update_status` still lists the open pull requests from its own
   `pulls('open')` call, so an older open one never drops out behind newer closed ones. The
   test fakes in `functions/_lib/mcp/` use the real `branch: 'main'` with a run number, and
   tests fail if a run's pull request is found only through `branch`, if a fork's pull

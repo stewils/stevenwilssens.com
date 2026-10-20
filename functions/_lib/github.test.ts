@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { encodeUpdateRequest, GitHubError, gitHubClient, noChangeSentence, noChangeStep, previewUrl, resumeScoreFromBody, updateJob, updateRequestFromBody } from './github'
+import { encodeUpdateRequest, GitHubError, gitHubClient, noChangeSentence, noChangeStep, previewUrl, sameRepo, resumeScoreFromBody, updateJob, updateRequestFromBody } from './github'
 
 type Call = { url: string; method: string; body: unknown; headers: Record<string, string> }
 type Reply = { status?: number; body?: unknown; text?: string }
@@ -253,6 +253,8 @@ describe('where a failed run stopped (AC-5, C-4)', () => {
     expect(await refused.client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: null, refused: true })
     const empty = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([[noChangeStep, 'failure']])), 'GET /check-runs/901/annotations': { body: [{ annotation_level: 'failure', message: noChangeSentence }] } })
     expect(await empty.client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: null, refused: false })
+    const gone = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([[noChangeStep, 'failure']])), 'GET /check-runs/901/annotations': { status: 404, body: { message: 'Not Found' } } })
+    expect(await gone.client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: null, refused: false })
     const broken = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([[noChangeStep, 'failure']])), 'GET /check-runs/901/annotations': { status: 500, body: { message: 'boom' } } })
     await expect(broken.client.runFailure(7)).rejects.toMatchObject({ status: 500 })
   })
@@ -270,5 +272,24 @@ describe('where a failed run stopped (AC-5, C-4)', () => {
     expect(workflow).toMatch(new RegExp(`\\n {6}- name: ${noChangeStep}\\n`))
     const outcome = readFileSync(fileURLToPath(new URL('../../scripts/site-update-outcome.mjs', import.meta.url).href), 'utf8')
     expect(outcome).toContain(noChangeSentence)
+  })
+})
+
+describe('this repository and forks (m-7, m-8)', () => {
+  it('compares owner and name case-insensitively, and never matches nothing', () => {
+    expect(sameRepo('Stewils/StevenWilssens.com', 'stewils/stevenwilssens.com')).toBe(true)
+    expect(sameRepo('outsider/stevenwilssens.com', 'stewils/stevenwilssens.com')).toBe(false)
+    expect(sameRepo(null, 'stewils/site')).toBe(false)
+    expect(sameRepo(undefined, undefined)).toBe(false)
+  })
+
+  it("closes a fork's pull request without deleting this repository's branch of the same name", async () => {
+    const { calls, client } = fakeFetch({
+      'GET /pulls/12': { body: pullJson({ head: { ref: 'update/x-12', repo: { full_name: 'outsider/site' } } }) },
+      'POST /issues/12/comments': { status: 201, body: {} },
+      'PATCH /pulls/12': { body: {} },
+    })
+    expect(await client.close(12, 'Not ours.')).toEqual({ closed: true, branchDeleted: false })
+    expect(calls.map((call) => call.method)).toEqual(['GET', 'POST', 'PATCH'])
   })
 })

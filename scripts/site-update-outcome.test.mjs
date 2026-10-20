@@ -7,7 +7,6 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { readFileSync as read } from 'node:fs'
 import { decide, encodeCommand, ERROR_LIMIT, errorLine, fromEnvironment, main, NO_CHANGE, parseStatus, STATUS_ARGS } from './site-update-outcome.mjs'
 
 const z = (...entries) => entries.map((entry) => `${entry}\0`).join('')
@@ -82,7 +81,7 @@ describe('the step', () => {
 
   it('reads every untracked file, NUL-separated, and prints the sentence the MCP reads back', () => {
     expect(STATUS_ARGS).toEqual(['status', '--porcelain', '-z', '--untracked-files=all'])
-    const github = read(join(import.meta.dirname, '../functions/_lib/github.ts'), 'utf8')
+    const github = readFileSync(join(import.meta.dirname, '../functions/_lib/github.ts'), 'utf8')
     expect(/export const noChangeSentence = '([^']+)'/.exec(github)?.[1]).toBe(NO_CHANGE)
   })
 
