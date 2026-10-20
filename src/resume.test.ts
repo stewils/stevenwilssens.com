@@ -2,8 +2,9 @@
 // The resume PDF is generated from src/resume.ts (npm run resume:build). This test
 // fails when the two drift, so a content change never ships without a new resume.
 import { describe, expect, it } from 'vitest'
+import appSource from './App.tsx?raw'
 import { analyzeResume, atsScore, compareScores, dataQuestions, extractPdf, formatComparison, lenses, readBaseline, resumePath } from '../scripts/resume-check.mjs'
-import { experiences } from './resume'
+import { about, experiences } from './resume'
 
 const pointsOf = (key: string) => experiences.find((item) => item.key === key)!.points
 // The PDF's text the way resume-check reads it: one line, straight quotes and hyphens, lower case.
@@ -98,5 +99,23 @@ describe('the Windows Data roles', () => {
       'Partnered with engineering, data science, and research leadership across telemetry from more than 1.6 billion Windows devices.',
     ])
     expect(points[0]).toContain('Microsoft’s')
+  })
+})
+
+// The guards and the designer's limits run on this copy in functions/_lib/mcp/about.test.ts.
+describe('the About copy', () => {
+  it('exports the About copy as data: one sentence under the title and 2 to 4 paragraphs, none empty', () => {
+    expect(about.intro.trim()).not.toBe('')
+    expect(about.intro.match(/[.!?](?=\s|$)/g)).toHaveLength(1)
+    expect(about.paragraphs.length).toBeGreaterThanOrEqual(2)
+    expect(about.paragraphs.length).toBeLessThanOrEqual(4)
+    expect(about.paragraphs.every((paragraph) => paragraph.trim().length > 0)).toBe(true)
+  })
+
+  it('keeps the About copy out of the component', () => {
+    const plain = (text: string) => text.replace(/&amp;/g, '&').replace(/\s+/g, ' ')
+    const component = plain(appSource)
+    for (const text of [about.intro, ...about.paragraphs]) expect(component).not.toContain(plain(text))
+    expect(component).not.toContain('dangerouslySetInnerHTML')
   })
 })

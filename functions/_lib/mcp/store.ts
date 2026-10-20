@@ -20,7 +20,7 @@ export type EntryInput = Omit<DossierEntry, 'id' | 'createdAt' | 'updatedAt'>
 export type EntryFilter = { role?: string; topic?: string; visibility?: Visibility }
 
 export type ProposalStatus = 'proposed' | 'approved' | 'rejected' | 'applied'
-// field: for a role, which part changes (title | company | dates | location | summary | point); null for the headline, summary, skills and education sections.
+// field: for a role, which part changes (title | company | dates | location | summary | point | role); for the About page (role "about"), intro or paragraph; null for the headline, summary, skills, education and key achievements sections.
 export type Proposal = { id: number; createdAt: number; updatedAt: number; role: string; field: string | null; kind: 'replace' | 'add' | 'remove'; currentText: string | null; proposedText: string | null; rationale: string; basedOn: string | null; status: ProposalStatus; decisionNote: string | null }
 export type ProposalInput = Omit<Proposal, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'decisionNote'>
 

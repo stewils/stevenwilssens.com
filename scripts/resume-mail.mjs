@@ -143,6 +143,10 @@ export function diffResume(before, after) {
   return changes
 }
 
+const PDF_PATH = 'public/steven-wilssens-resume-2026.pdf'
+/** Whether a change is worth an email: one diffResume sees, or a new PDF. A change only to data the email does not describe (the About copy) sends nothing. */
+export const shouldMail = (touched, changes) => changes.length > 0 || touched.split(/\s+/).includes(PDF_PATH)
+
 // ---------------------------------------------------------------------------------
 // The summary: Claude when there is a key, the records themselves when there is not
 // ---------------------------------------------------------------------------------
@@ -404,11 +408,12 @@ async function main() {
 
   const after = values.after
   const before = isCommit(values.before) ? values.before : `${after}^`
-  const touched = git('diff', '--name-only', before, after, '--', 'src/resume.ts', 'public/steven-wilssens-resume-2026.pdf').trim()
+  const touched = git('diff', '--name-only', before, after, '--', 'src/resume.ts', PDF_PATH).trim()
   if (!touched) { console.log('The resume did not change between these commits; no email.'); return }
 
   const [was, now] = await Promise.all([loadResumeAt(before), loadResumeAt(after)])
   const changes = diffResume(was, now)
+  if (!shouldMail(touched, changes)) { console.log('Only resume data the email does not describe changed (the About page), and the PDF did not; no email.'); return }
   const report = values.report && existsSync(values.report) ? JSON.parse(readFileSync(values.report, 'utf8')) : null
   const newFindings = values['new-findings'] && existsSync(values['new-findings']) ? readFileSync(values['new-findings'], 'utf8').split('\n').map((line) => line.trim()).filter(Boolean) : []
   const title = firstLine(values.title)

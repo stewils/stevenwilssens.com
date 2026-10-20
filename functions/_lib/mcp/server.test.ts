@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Env } from '../env'
 import { escapeHtml, handleMcp, resolveMode } from './server'
 import { MemoryStore } from './store'
-import { publicToolNames, recruiterLens, searchTerms, sitePages } from './tools'
+import { publicInstructions, publicToolNames, recruiterLens, roleKeys, searchTerms, sitePages } from './tools'
 
 const env = { MCP_OWNER_KEY: 'owner-key-123' } as unknown as Env
 const url = 'https://steven.wilssens.com/mcp/owner-key-123'
@@ -264,6 +264,38 @@ describe('the résumé', () => {
     expect(JSON.parse(replacedProposal.currentText).dates).toBe('Jan 2006 - Sep 2006')
     expect(JSON.parse(replacedProposal.proposedText).dates).toBe('Jan 2005 - Jun 2007')
     expect(parse((await call(store, 'list_resume_proposals')).text).count).toBe(3)
+  })
+})
+
+describe('the About page as a proposal target', () => {
+  type Tool = { name: string; description: string; inputSchema: { properties: Record<string, { enum?: string[] }> } }
+  const toolsOf = async (response: Response) => ((await response.json()) as { result: { tools: Tool[] } }).result.tools
+
+  it('names the About page in the owner tools and instructions, never as a role (AC-6, T-2)', async () => {
+    const store = new MemoryStore()
+    const tools = await toolsOf(await send(rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' }), store))
+    const propose = tools.find((tool) => tool.name === 'propose_resume_change')!
+    expect(propose.description).toContain('The About page can change too (role "about")')
+    expect(propose.description).toContain('get_resume has the current About text')
+    expect(propose.inputSchema.properties.role.enum).toContain('about')
+    expect(propose.inputSchema.properties.field.enum).toEqual(expect.arrayContaining(['intro', 'paragraph']))
+    // The dossier's roles stay roles: no tool but the proposal names "about".
+    expect(roleKeys).not.toContain('about')
+    // read_site_page names the about page itself, as before.
+    for (const tool of tools.filter((item) => !['propose_resume_change', 'read_site_page'].includes(item.name))) expect(JSON.stringify(tool.inputSchema), tool.name).not.toContain('"about"')
+    for (const name of ['get_role', 'save_entry', 'list_entries', 'search_dossier']) expect(tools.find((tool) => tool.name === name)!.inputSchema.properties.role.enum).toEqual(roleKeys)
+    const init = await send(rpc({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-03-26' } }), store)
+    expect(((await init.json()) as { result: { instructions: string } }).result.instructions).toContain('or the About page (role "about"')
+  })
+
+  it('leaves the public server as it was: the same eight tools, nothing about the About target (AC-7, T-1)', async () => {
+    expect(publicToolNames).toEqual(['about_steven', 'get_resume', 'get_role', 'read_site_page', 'get_recommendations', 'get_patents_and_press', 'search_dossier', 'check_fit'])
+    const request = new Request('https://steven.wilssens.com/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) })
+    const tools = await toolsOf(await handleMcp({ request, store: new MemoryStore(), fetchPage: async () => null, mode: 'public', now: 1 }))
+    expect(tools.map((tool) => tool.name).sort()).toEqual([...publicToolNames].sort())
+    for (const tool of tools.filter((item) => item.name !== 'read_site_page')) expect(JSON.stringify(tool.inputSchema), tool.name).not.toContain('"about"')
+    expect(JSON.stringify(tools)).not.toMatch(/role \\"about\\"|About page can change|"intro"/)
+    expect(publicInstructions).not.toContain('propose')
   })
 })
 

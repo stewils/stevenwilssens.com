@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { about, experiences } from './resume'
 
 const setPath = (path: string) => {
   window.history.pushState({}, '', path)
@@ -54,6 +55,24 @@ describe('resume site', () => {
     expect(screen.getByText('US permanent resident (green card)')).toBeInTheDocument()
     expect(screen.getByText('Seattle, Washington')).toBeInTheDocument()
     expect(within(screen.getByRole('list', { name: 'Honors and awards' })).getAllByRole('listitem')).toHaveLength(4)
+  })
+
+  it('renders the About copy from src/resume.ts, the first paragraph as the green opening', () => {
+    setPath('/about')
+    const { container } = render(<App />)
+
+    expect(container.querySelector('.page-heading p')).toHaveTextContent(about.intro)
+    const paragraphs = [...container.querySelectorAll('.reading-main p')]
+    expect(paragraphs.map((paragraph) => paragraph.textContent)).toEqual(about.paragraphs)
+    expect(paragraphs.map((paragraph) => paragraph.className)).toEqual(about.paragraphs.map((_, index) => (index === 0 ? 'intro-paragraph' : '')))
+  })
+
+  it('names the latest Microsoft role in the About side note, not the first entry', () => {
+    setPath('/about')
+    render(<App />)
+
+    expect(screen.getByText('Principal Group Product Manager, Microsoft')).toBeInTheDocument()
+    expect(experiences[0].key).not.toBe('windows-devices-data')
   })
 
   it('features the wilssens.com write-up on the home page', () => {

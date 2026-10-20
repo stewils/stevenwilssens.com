@@ -1,8 +1,10 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
+import { about } from '../resume'
 import { makeMcp, makeResume } from '../test/admin-fixtures'
 import { ResumePage } from './ResumePage'
-import type { ResumeReport } from './types'
+import type { Proposal, ResumeReport } from './types'
+import { whereOf } from './where'
 
 afterEach(cleanup)
 
@@ -133,5 +135,45 @@ describe('Résumé page', () => {
     render(<ResumePage resume={makeResume({ history: makeResume().history.slice(0, 1) })} proposals={[]} />)
     expect(screen.queryByText(/^Now /)).not.toBeInTheDocument()
     expect(screen.getAllByRole('row')).toHaveLength(4 + 2)
+  })
+})
+
+describe('About proposals on the Résumé page', () => {
+  const row = (id: number, extra: Partial<Proposal>): Proposal => ({ id, updatedAt: id, role: 'about', field: 'paragraph', kind: 'replace', currentText: null, proposedText: 'New text.', rationale: 'r', status: 'proposed', decisionNote: null, ...extra })
+  const rows = [
+    row(10, { field: 'intro', currentText: about.intro, proposedText: 'A sharper intro.' }),
+    row(11, { currentText: about.paragraphs[1], proposedText: 'A sharper second paragraph.' }),
+    row(12, { kind: 'add', currentText: about.paragraphs[0], proposedText: 'A paragraph to add.' }),
+    row(13, { currentText: 'A paragraph that is no longer on the page.', proposedText: '<b>x</b>' }),
+    ...makeMcp().proposals,
+  ]
+
+  it('names the About page in the Where column from fixed words, and shows the texts as text (AC-15, T-9)', () => {
+    const { container } = render(<ResumePage resume={makeResume()} proposals={rows} />)
+    const table = within(screen.getByRole('table', { name: 'Résumé proposals' }))
+    const whereOfRow = (text: string) => within(table.getByText(text).closest('tr')!).getAllByRole('cell')[1].textContent
+    expect(whereOfRow('A sharper intro.')).toBe('About pageline under the title · replace')
+    expect(whereOfRow('A sharper second paragraph.')).toBe('About pageparagraph 2 · replace')
+    expect(whereOfRow('A paragraph to add.')).toBe('About pagenew paragraph · add')
+    expect(whereOfRow('<b>x</b>')).toBe('About pageparagraph · replace')
+    expect(container.querySelector('td b')).toBeNull()
+    // Résumé rows keep their key.
+    expect(whereOfRow('Led 12 product managers')).toBe('csx-datareplace')
+    // Searching "about" finds the About rows only.
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'about page' } })
+    expect(table.getAllByRole('row').slice(1)).toHaveLength(4)
+  })
+
+  it('reads a place from a proposal, with the paragraph counted from the page as deployed', () => {
+    expect(whereOf({ role: 'about', field: 'paragraph', kind: 'remove', currentText: ' Second’s  “one”. ' }, ['First.', "Second's \"one\"."])).toEqual({ place: 'About page', part: 'paragraph 2', kind: 'remove' })
+    expect(whereOf({ role: 'about', field: 'paragraph', kind: 'replace', currentText: null }, ['First.'])).toEqual({ place: 'About page', part: 'paragraph', kind: 'replace' })
+    expect(whereOf({ role: 'about', field: 'title', kind: 'replace', currentText: 'x' })).toEqual({ place: 'About page', part: null, kind: 'replace' })
+    expect(whereOf({ role: 'csx-data', field: 'point', kind: 'add', currentText: null })).toEqual({ place: 'csx-data', part: null, kind: 'add' })
+    expect(whereOf({ role: 'csx-data', field: 'title', kind: 'replace', currentText: null })).toEqual({ place: 'csx-data', part: 'title', kind: 'replace' })
+  })
+
+  it('says the empty table covers the résumé and the About page', () => {
+    render(<ResumePage resume={makeResume()} proposals={[]} />)
+    expect(screen.getByText('None yet. When you wrap up a session, Claude proposes edits to the résumé and the About page; they show up here.')).toBeInTheDocument()
   })
 })

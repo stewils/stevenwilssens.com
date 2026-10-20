@@ -3,7 +3,7 @@
 // the site-update tools against a GitHub that is slow, conflicted, closed or refusing.
 import { describe, expect, it } from 'vitest'
 import { encodeUpdateRequest, noChangeStep, previewUrl, resumeScoreFromBody, updateRequestFromBody, type GitHub, type PullRequest, type RunFailure, type WorkflowRun } from '../github'
-import { experiences, impact } from '../../../src/resume'
+import { about, experiences, impact } from '../../../src/resume'
 import { handleMcp } from './server'
 import { MemoryStore } from './store'
 import { quotedReason, recruiterLens, runOutcome } from './tools'
@@ -521,5 +521,102 @@ describe("a fork's pull request is never a site update (m-7, m-8)", () => {
     expect(status).not.toHaveProperty('tip')
     expect(JSON.stringify(status)).not.toContain('Rewrite the team rules')
     expect((await call(store, 'site_update_status', {}, { github: fakeGitHub({ pulls: [pull(95)] }).github })).json).not.toHaveProperty('fromForks')
+  })
+})
+
+describe('the About page', () => {
+  const propose = (store: MemoryStore, args: Record<string, unknown>, mode: 'owner' | 'public' = 'owner') => call(store, 'propose_resume_change', { role: 'about', rationale: 'why', ...args }, { mode })
+  const [first, second, third] = about.paragraphs
+  type Shaped = { id: number; role: string; field: string; kind: string; currentText: string | null; proposedText: string | null; flags?: string[] }
+
+  it('proposes a new intro, and replaces, adds and removes a paragraph, storing the live wording', async () => {
+    const store = new MemoryStore()
+    // Quoted the way read_site_page shows it: curly quotes, extra spaces.
+    const intro = await propose(store, { field: 'intro', kind: 'replace', current_text: `  ${about.intro.replace(/'/g, '’')}  `, proposed_text: 'A product leader building in data and AI after Microsoft.' })
+    expect(intro.isError).toBe(false)
+    expect(intro.json!.proposed).toMatchObject({ role: 'about', field: 'intro', kind: 'replace', currentText: about.intro, flags: [] })
+    expect(intro.json!.next).toMatch(/^Show Steven the current and proposed About text side by side/)
+    expect(intro.json!.next).not.toContain('show him each flag')
+    const replaced = await propose(store, { field: 'paragraph', kind: 'replace', current_text: second.replace(/\s+/g, '  '), proposed_text: `${second} I still do.` })
+    expect(replaced.json!.proposed).toMatchObject({ field: 'paragraph', kind: 'replace', currentText: second })
+    const after = await propose(store, { field: 'Paragraph', kind: 'add', current_text: first, proposed_text: 'Since October 2026, I build AI products of my own.' })
+    expect(after.json!.proposed).toMatchObject({ field: 'paragraph', kind: 'add', currentText: first, proposedText: 'Since October 2026, I build AI products of my own.' })
+    const atEnd = await propose(store, { field: 'paragraph', kind: 'add', proposed_text: 'I write about it.' })
+    expect(atEnd.json!.proposed).toMatchObject({ kind: 'add', currentText: null })
+    const removed = await propose(store, { field: 'paragraph', kind: 'remove', current_text: third, proposed_text: 'ignored' })
+    expect(removed.json!.proposed).toMatchObject({ kind: 'remove', currentText: third, proposedText: null })
+    expect(store.proposals.map((p) => [p.role, p.field, p.kind])).toEqual([['about', 'intro', 'replace'], ['about', 'paragraph', 'replace'], ['about', 'paragraph', 'add'], ['about', 'paragraph', 'add'], ['about', 'paragraph', 'remove']])
+    // Normalised to NFC before it is checked and stored.
+    await propose(store, { field: 'paragraph', kind: 'replace', current_text: third, proposed_text: `${third} Café.` })
+    expect(store.proposals.at(-1)!.proposedText).toBe(`${third} Café.`)
+  })
+
+  it('refuses an About proposal that does not fit, and stores nothing', async () => {
+    const store = new MemoryStore()
+    expect((await propose(store, { field: 'intro', kind: 'add', proposed_text: 'x' })).text).toBe('the About intro can only be replaced')
+    expect((await propose(store, { field: 'intro', kind: 'remove', current_text: about.intro })).text).toBe('the About intro can only be replaced')
+    for (const field of ['point', 'title', undefined]) expect((await propose(store, { field, kind: 'replace', current_text: first, proposed_text: 'x' })).text).toMatch(/^for the About page, field must be "intro"/)
+    expect((await propose(store, { field: 'intro', kind: 'replace', current_text: 'Not the intro.', proposed_text: 'x' })).text).toBe('current_text does not match the About intro; read the current text with get_resume (about)')
+    expect((await propose(store, { field: 'paragraph', kind: 'replace', current_text: 'Not a paragraph.', proposed_text: 'x' })).text).toBe('current_text matches no paragraph of the About page; read the current text with get_resume (about)')
+    expect((await propose(store, { field: 'paragraph', kind: 'remove', current_text: 'Not a paragraph.' })).text).toMatch(/get_resume/)
+    expect((await propose(store, { field: 'paragraph', kind: 'add', current_text: 'Not a paragraph.', proposed_text: 'x' })).text).toMatch(/matches no paragraph/)
+    expect((await propose(store, { field: 'paragraph', kind: 'replace', proposed_text: 'x' })).text).toBe('current_text is required')
+    expect((await propose(store, { field: 'paragraph', kind: 'add' })).text).toBe('proposed_text is required')
+    // The guards: markup, a side-note fact, a sixth paragraph's worth of limits.
+    expect((await propose(store, { field: 'paragraph', kind: 'replace', current_text: third, proposed_text: 'See <b>this</b>.' })).text).toMatch(/^the About page would not pass its checks: paragraph 3 has HTML/)
+    expect((await propose(store, { field: 'paragraph', kind: 'replace', current_text: third, proposed_text: 'I am based in Austin, Texas.' })).text).toContain('the side-note facts change through the résumé proposals')
+    expect((await propose(store, { field: 'intro', kind: 'replace', current_text: about.intro, proposed_text: 'One.\nTwo.' })).text).toContain('the intro has a line break')
+    expect(store.proposals).toHaveLength(0)
+  })
+
+  it('returns the flags with the proposal, the list and the decision, and lets Steven approve over them', async () => {
+    const store = new MemoryStore()
+    const flagged = await propose(store, { field: 'paragraph', kind: 'replace', current_text: third, proposed_text: `${third} I am a visionary who led 45 teams.` })
+    const proposed = flagged.json!.proposed as Shaped
+    expect(proposed.flags).toEqual(['the number 45 needs a source: no role bullet, key achievement or profile field in src/resume.ts carries it', '"visionary" reads as self-promotion to a hiring manager'])
+    expect(flagged.json!.next).toContain('show him each flag')
+    const listed = (await call(store, 'list_resume_proposals')).json!
+    expect((listed.proposals as Shaped[])[0].flags).toEqual(proposed.flags)
+    expect(listed.howToApply).toContain('show him each flag')
+    const reviewed = (await call(store, 'review_resume_proposal', { id: proposed.id, decision: 'approve' })).json!.reviewed as Shaped & { status: string }
+    expect(reviewed).toMatchObject({ status: 'approved', flags: proposed.flags })
+    expect((await call(store, 'review_resume_proposal', { id: proposed.id, decision: 'reject' })).json!.reviewed).toMatchObject({ status: 'rejected' })
+    // A résumé proposal has no flags.
+    await store.insertProposal({ role: 'headline', field: null, kind: 'replace', currentText: 'a', proposedText: 'b', rationale: 'r', basedOn: null }, 1)
+    expect(((await call(store, 'list_resume_proposals')).json!.proposals as Shaped[])[1]).not.toHaveProperty('flags')
+  })
+
+  it('is not there on the public server: the same refusal as any owner tool, nothing stored, no About in get_resume (T-1, T-8)', async () => {
+    const store = new MemoryStore()
+    const headline = await call(store, 'propose_resume_change', { role: 'headline', kind: 'replace', current_text: 'a', proposed_text: 'b', rationale: 'r' }, { mode: 'public' })
+    const aboutCall = await propose(store, { field: 'intro', kind: 'replace', current_text: about.intro, proposed_text: 'x' }, 'public')
+    expect(aboutCall).toEqual(headline)
+    expect(aboutCall.code).toBe(-32602)
+    expect(store.proposals).toHaveLength(0)
+    // An approved About proposal waits in the store: neither server shows it.
+    const waiting = await store.insertProposal({ role: 'about', field: 'intro', kind: 'replace', currentText: about.intro, proposedText: 'A secret new intro.', rationale: 'r', basedOn: null }, 1)
+    await store.decideProposal(waiting.id, 'approved', null, 2)
+    const publicResume = await call(store, 'get_resume', {}, { mode: 'public' })
+    expect(Object.keys(publicResume.json!)).toEqual(['headline', 'summary', 'profile', 'keyAchievements', 'skills', 'roles', 'selectedWork', 'education', 'languages', 'honors', 'pdf', 'pages', 'note'])
+    expect(publicResume.text).not.toContain('A secret new intro.')
+    const ownerResume = await call(store, 'get_resume')
+    expect(ownerResume.json!.about).toEqual({ intro: about.intro, paragraphs: about.paragraphs })
+    expect(ownerResume.text).not.toContain('A secret new intro.')
+    const { about: _owned, ...rest } = ownerResume.json!
+    expect(rest).toEqual(publicResume.json)
+  })
+
+  it('goes to the site in a brief with fixed target words and quoted texts, with no instruction needed', async () => {
+    const store = new MemoryStore()
+    const { github, calls } = fakeGitHub()
+    const proposal = await store.insertProposal({ role: 'about', field: 'paragraph', kind: 'add', currentText: first, proposedText: 'Since October 2026, I "build" AI products.', rationale: 'Names the work.', basedOn: null }, 1)
+    await store.decideProposal(proposal.id, 'approved', null, 2)
+    const started = await call(store, 'request_site_update', { title: 'About: the independent work', proposals: [proposal.id] }, { github })
+    expect(started.isError).toBe(false)
+    const instruction = calls.dispatched[0].instruction
+    expect(instruction).toMatch(/^Apply these approved résumé proposals/)
+    expect(instruction).toContain(`Proposal #${proposal.id}: add in a new paragraph of the About page (about.paragraphs in src/resume.ts), placed right after the paragraph quoted as current text.`)
+    expect(instruction).toContain(`  Goes after: ${JSON.stringify(first)}`)
+    expect(instruction).toContain('  New text: "Since October 2026, I \\"build\\" AI products."')
   })
 })
