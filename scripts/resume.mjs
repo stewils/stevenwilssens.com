@@ -67,6 +67,8 @@ header h1 { margin: 0 0 3px; font-size: 25pt; font-weight: 800; letter-spacing: 
 header .headline { font-size: 11.6pt; font-weight: 700; color: var(--green); letter-spacing: -0.2pt; }
 header .contact { text-align: right; font-size: 8.6pt; line-height: 1.55; color: var(--muted); }
 header .contact strong { color: var(--ink); font-weight: 600; }
+/* The work arrangement wraps inside the width the other contact lines set, rather than widening the column and squeezing the headline. */
+header .contact .arrangement { display: block; width: 0; min-width: 100%; }
 .facts { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 16px; padding: 9px 0 4px; font-size: 9.2pt; line-height: 1.35; }
 .facts .mono { display: block; margin-bottom: 2px; }
 section { margin-top: 8px; break-inside: auto; }
@@ -119,6 +121,7 @@ body.compact .foot { font-size: 8.7pt; }
   </div>
   <div class="contact">
     <strong>${esc(profile.location)}</strong> · ${esc(profile.workAuthorization)}<br>
+    <span class="arrangement">${esc(profile.workArrangement)}</span>
     <a href="mailto:${esc(profile.email)}">${esc(profile.email)}</a> · ${esc(profile.phone)}<br>
     <a href="${esc(profile.linkedin)}">${esc(profile.linkedin.replace(/^https:\/\/www\.|\/$/g, ''))}</a> · <a href="${esc(profile.site)}">${esc(profile.site.replace(/^https:\/\//, ''))}</a><br>
     For AI assistants: <a href="${esc(profile.mcp)}">${esc(profile.mcp.replace(/^https:\/\//, ''))}</a> (read-only MCP)

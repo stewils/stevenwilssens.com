@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { profile } from '../../../src/resume'
 import type { Env } from '../env'
 import { escapeHtml, handleMcp, resolveMode } from './server'
 import { MemoryStore } from './store'
@@ -99,6 +100,7 @@ describe('what is already there', () => {
     expect((about.roles as { key: string }[]).map((role) => role.key)).toContain('windows-devices-data')
     expect((about.contact as { email: string }).email).toBe('steven@wilssens.com')
     expect(about.sitePages).toEqual(sitePages)
+    expect(about.workArrangement).toBe(profile.workArrangement)
     const role = parse((await call(store, 'get_role', { role: 'spatial-audio-lead' })).text)
     expect(role.role).toContain('Principal Product Manager Lead')
     expect(role.entries).toEqual([])
@@ -199,6 +201,7 @@ describe('the résumé', () => {
   it('proposes changes for Steven to approve or reject', async () => {
     const store = new MemoryStore()
     const resume = parse((await call(store, 'get_resume')).text)
+    expect((resume.profile as { workArrangement: string }).workArrangement).toBe(profile.workArrangement)
     const roles = resume.roles as { key: string; points: string[] }[]
     const current = roles.find((role) => role.key === 'spatial-audio-lead')!.points[1]
     expect(current).toContain('250%')
@@ -343,6 +346,7 @@ describe('the public server', () => {
     expect(search.results).toEqual([])
     const about = parse((await publicCall(store, 'about_steven')).text)
     expect(about.dossier).toEqual({ publicNotes: 1 })
+    expect(about.workArrangement).toBe(profile.workArrangement)
     expect(about.waitingFromTheSite).toBeUndefined()
     expect(about.howToUse).toContain('check_fit')
     const write = await publicCall(store, 'save_entry', { role: 'csx-data', topic: 'scope', title: 't', body: 'b' })

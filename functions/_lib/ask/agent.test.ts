@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { profile } from '../../../src/resume'
 import type { Env } from '../env'
 import { MemoryStore } from '../mcp/store'
 import { answerIsOurs, ask, askStatus, CHECK_AFTER_ALL_HITS, CHECK_AFTER_IP_HITS, costMicro, feedback, HEADER, humanCheck, ipHash, MAX_JD, missingRequirements, parseBody, redact, signAnswer, words, type StreamFactory } from './agent'
@@ -42,6 +43,8 @@ describe('the prompt', () => {
     expect(text).toContain('[site:patents]')
     expect(text).toContain('Steve Rowe')
     expect(text).toContain('[[out]]')
+    // "Will he relocate?" gets the line Steven approved, from src/resume.ts.
+    expect(text).toContain(`Work arrangement: ${profile.workArrangement}`)
     // Stable between calls, so the API can cache it.
     expect(systemPrompt(await dossier.list({ visibility: 'public' }))).toBe(text)
     expect(dossierText([])).not.toContain("Steven's own notes")

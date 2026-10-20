@@ -73,6 +73,7 @@ export const siteTools: ModelContextTool[] = [
       availability: profile.availability,
       location: profile.location,
       workAuthorization: profile.workAuthorization,
+      workArrangement: profile.workArrangement,
       teamSize: `Led teams of ${profile.teamSize}`,
       contact: { email: profile.email, linkedin: profile.linkedin, site: profile.site, resumePdf: `${siteUrl}${profile.resumePdf}` },
       keyNumbers: impact.map(({ value, label, backing }) => ({ value, label, backedByRole: backing ?? null })),

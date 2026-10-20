@@ -2,7 +2,8 @@
 // The resume PDF is generated from src/resume.ts (npm run resume:build). This test
 // fails when the two drift, so a content change never ships without a new resume.
 import { describe, expect, it } from 'vitest'
-import { analyzeResume, atsScore, compareScores, dataQuestions, formatComparison, lenses, readBaseline } from '../scripts/resume-check.mjs'
+import { analyzeResume, atsScore, compareScores, dataQuestions, extractPdf, formatComparison, lenses, readBaseline, resumePath } from '../scripts/resume-check.mjs'
+import { experiences, profile } from './resume'
 
 describe('the resume PDF', () => {
   it('matches src/resume.ts and passes the resume checks', async () => {
@@ -23,6 +24,21 @@ describe('the resume PDF', () => {
     expect(atsScore([{ severity: 'error', lens: 'ats' }, { severity: 'warn', lens: 'ats' }, { severity: 'warn', lens: 'ats' }])).toBe(65)
     expect(atsScore(Array.from({ length: 6 }, () => ({ severity: 'error', lens: 'ats' })))).toBe(0)
   })
+
+  // resume-check does not look for the work arrangement or the tail of an older role's
+  // summary, so the drift test above would pass without them.
+  it('prints the work arrangement beside the location in the PDF header', async () => {
+    const pdf = await extractPdf(resumePath)
+    expect(pdf.pages.length).toBeLessThanOrEqual(2)
+    const flat = (text: string) => text.replace(/\s+/g, ' ')
+    const first = flat(pdf.pages[0])
+    const location = first.indexOf(profile.location)
+    expect(location).toBeGreaterThanOrEqual(0)
+    expect(first.indexOf(profile.workArrangement)).toBeGreaterThan(location)
+    expect(first).not.toContain(`${profile.location}${profile.workArrangement}`)
+    const cosmos = experiences.find((item) => item.key === 'cosmos')!
+    expect(flat(pdf.text)).toContain(cosmos.summary)
+  }, 30_000)
 
   it('raises the questions the dates and numbers leave open', () => {
     const questions = dataQuestions(new Date('2026-10-17'))

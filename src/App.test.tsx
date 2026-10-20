@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { profile } from './resume'
 
 const setPath = (path: string) => {
   window.history.pushState({}, '', path)
@@ -45,6 +46,56 @@ describe('resume site', () => {
     expect(screen.getByRole('heading', { name: 'An OKR tool, rebuilt with AI when the old one retired' })).toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: 'Amit Gupte' }).length).toBeGreaterThan(0)
     expect(screen.getByRole('link', { name: /Read the write-up/ })).toHaveAttribute('href', '/building-wilssens')
+
+    const outcomeOf = (name: string | RegExp) => {
+      const card = screen.getByRole('article', { name })
+      return { card, outcome: within(card).getByText('Outcome').nextElementSibling!.textContent! }
+    }
+    const quality = outcomeOf('Windows quality, measured from preview channels to retail')
+    expect(quality.outcome).toBe('Adopted by every Windows team, and behind the roughly 30% drop in issue days across Perfect Day scenarios.')
+    expect(within(quality.card).getByRole('link', { name: 'Amit Gupte' })).toBeInTheDocument()
+    const okr = outcomeOf('An OKR tool, rebuilt with AI when the old one retired')
+    expect(okr.outcome).toMatch(/^Built in six months to replace Viva Goals/)
+    expect(okr.outcome).toContain('The gap was closed with a functional replacement, and the project became the team’s working example of a modern AI development lifecycle.')
+    expect(within(okr.card).getByRole('link', { name: 'Amit Gupte' })).toBeInTheDocument()
+    const platform = outcomeOf(/^wilssens\.com:/)
+    expect(platform.outcome).toContain('about eight family mailboxes')
+    expect(platform.outcome).not.toMatch(/the family['’]s mailboxes/)
+  })
+
+  it('tells a recruiter how Steven works next to where he lives', () => {
+    const arrangement = 'Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.'
+    expect(profile.workArrangement).toBe(arrangement)
+    render(<App />)
+
+    const fact = screen.getByText(arrangement)
+    expect(fact.tagName).toBe('SPAN')
+    expect(fact.parentElement).toHaveClass('hero-facts')
+    expect(fact.previousElementSibling).toHaveTextContent(/^Seattle, Washington · US permanent resident \(green card\)$/)
+    cleanup()
+
+    setPath('/about')
+    render(<App />)
+    const value = screen.getByText(arrangement)
+    expect(value.tagName).toBe('STRONG')
+    expect(value.previousElementSibling).toHaveTextContent(/^Work arrangement$/)
+    expect(value.previousElementSibling!.previousElementSibling).toHaveTextContent(/^Seattle, Washington$/)
+  })
+
+  it('explains the Cosmos years on the experience page', () => {
+    setPath('/experience')
+    render(<App />)
+
+    expect(screen.getByText(/Joined as a consultant from Info Support, then hired full-time\./)).toBeInTheDocument()
+    expect(screen.getAllByText('Jan 2004 - Dec 2005').length).toBeGreaterThan(0)
+  })
+
+  it('gives experimentation its scale on the latest role', () => {
+    setPath('/experience')
+    render(<App />)
+
+    expect(screen.getByText(/hundreds of concurrent experiments/)).toBeInTheDocument()
+    expect(screen.queryByText(/Scaled experimentation adoption/)).toBeNull()
   })
 
   it('moves the honors into the About sidebar with the hiring logistics', () => {
