@@ -165,6 +165,30 @@ describe('the team diagram on /building-this-site', () => {
     }
   })
 
+  it('the flow diagram shows the stop when nothing changed, across and stacked', () => {
+    render(<TeamFlowDiagram />)
+    for (const image of screen.getAllByRole('img', { name: /a team of AI agents, and Steven deciding/ })) {
+      expect(image).toHaveAccessibleDescription(/A developer builds it with its tests\. A build that changes nothing stops there: the run fails and Steven is told, so no empty pull request is opened\. Six reviews/)
+      for (const label of ['Nothing changed', 'the run fails', 'and I am told', 'Fix and review again,', 'at most three rounds']) expect(within(image).getByText(label)).toBeInTheDocument()
+      // The stop is drawn in the stop colour, never the accent that marks where Steven decides.
+      const box = within(image).getByText('Nothing changed').parentElement!.querySelector('rect')!
+      expect(box).toHaveAttribute('stroke', 'var(--d-bad)')
+      // Placed right after Build, so the scroll-in stagger shows it after Build.
+      const parts = [...image.querySelectorAll('g[data-part]')].map((part) => part.querySelector('text')?.textContent)
+      expect(parts.indexOf('Nothing changed')).toBe(parts.indexOf('Build') + 1)
+    }
+  })
+
+  it('the pull request item says a run that changes nothing fails and tells Steven, and the paragraph after it is unchanged', () => {
+    render(<SiteArticle />)
+    const loop = document.getElementById('loop')!.closest('section')!
+    const item = within(loop).getByText('Change the site, through a pull request.').closest('li')!
+    expect(item.textContent).toContain('Questions only I can answer go into the spec and the pull request. A run that changes nothing fails and tells me so, instead of opening a pull request with nothing in it.')
+    expect(item.textContent).not.toMatch(/\d/)
+    const paragraph = within(loop).getByText(/^The agent never pushes to production\./)
+    expect(paragraph.textContent).toBe('The agent never pushes to production. It has a short list of allowed tools, a turn limit, and the instructions I follow myself: never invent a number, leave a question in a comment when a fact is missing. Of the first six runs, two failed and made nothing and four opened pull requests; the header counts how many are merged by now. The failures cost minutes and showed me where the instructions were vague. The team reviewed its own setup first and found real problems: a pull request could rewrite the rules of its own review, the screenshots showed the dark theme for “light”, and the review would have refused the bot that opens the site’s pull requests. All three were fixed in the same pull request.')
+  })
+
   it('sits in the loop section, with the step it explains', () => {
     render(<SiteArticle />)
     const loop = document.getElementById('loop')!.closest('section')!

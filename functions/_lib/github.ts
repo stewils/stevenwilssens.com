@@ -3,9 +3,23 @@
 // resume on a branch and opens a pull request, and it reads runs and pull requests
 // back, merges them, closes them and waits for them. Needs a GitHub token (GITHUB_TOKEN
 // secret) with Actions: write, Contents: write (to delete a closed pull request's branch;
-// read is enough for everything else) and Pull requests: write on the repository.
+// read is enough for everything else), Pull requests: write and Checks: read (the reason a
+// run made no change, from its annotations; without it the MCP points to the run instead).
 
-export type WorkflowRun = { id: number; status: string; conclusion: string | null; createdAt: string; url: string; branch: string; title: string }
+// branch is GitHub's head_branch: the branch the workflow ran from, `main` for every run the
+// MCP dispatches. number is the run number, which the workflow puts at the end of the branch
+// it pushes (update/<slug>-<number>); that is how a run's pull request is found.
+export type WorkflowRun = { id: number; number: number | null; status: string; conclusion: string | null; createdAt: string; url: string; branch: string; title: string }
+// Where a failed run stopped, from the jobs API (never from log text): the first failed step
+// of the update job, whether it is the no-change step, and that step's reason (its error
+// annotation without the fixed sentence; null when the token may not read annotations).
+export type RunFailure = { step: string; noChange: boolean; reason: string | null }
+// The Site update workflow's step that fails a run Claude made no change in
+// (scripts/site-update-outcome.mjs), and the sentence its error annotation starts with.
+// Keep both in step with .github/workflows/site-update.yml (github.test.ts reads it).
+export const noChangeStep = 'Stop when no change was made'
+export const noChangeSentence = 'Claude made no change to the site for this request.'
+export const updateJob = 'update'
 // The Site update workflow writes the resume score before and after its change into the
 // pull request body (a hidden `<!-- resume-score before=90 after=85 -->` marker), so the
 // MCP server can warn Steven before he merges something that lowers it.
@@ -29,6 +43,8 @@ export type GitHub = {
   dispatch(workflow: string, ref: string, inputs: Record<string, string>): Promise<void>
   runs(workflow: string, limit: number): Promise<WorkflowRun[]>
   run(id: number): Promise<WorkflowRun | null>
+  // Where a failed run stopped; null when no step of the update job failed (a cancellation, a failed setup).
+  runFailure(runId: number): Promise<RunFailure | null>
   pulls(state?: 'open' | 'closed' | 'all'): Promise<PullRequest[]>
   pull(number: number): Promise<PullRequest | null>
   // How many closed pull requests from branches with this prefix were merged (the site's own Building feed).
@@ -91,7 +107,7 @@ const shapePull = (pull: Record<string, unknown>): PullRequest => {
     resumeScore: resumeScoreFromBody(body), request: request ? { ...request, title: request.title || (pull.title as string) } : null,
   }
 }
-const shapeRun = (run: Record<string, unknown>): WorkflowRun => ({ id: run.id as number, status: run.status as string, conclusion: (run.conclusion as string | null) ?? null, createdAt: run.created_at as string, url: run.html_url as string, branch: run.head_branch as string, title: (run.display_title as string) ?? (run.name as string) })
+const shapeRun = (run: Record<string, unknown>): WorkflowRun => ({ id: run.id as number, number: typeof run.run_number === 'number' ? run.run_number : null, status: run.status as string, conclusion: (run.conclusion as string | null) ?? null, createdAt: run.created_at as string, url: run.html_url as string, branch: run.head_branch as string, title: (run.display_title as string) ?? (run.name as string) })
 
 export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetch = fetch): GitHub => {
   const api = async (path: string, init: RequestInit = {}) => {
@@ -118,6 +134,23 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
       return body.workflow_runs.map(shapeRun)
     },
     run: async (id) => { try { return shapeRun((await api(`/actions/runs/${id}`)) as Record<string, unknown>) } catch (error) { if (notFound(error)) return null; throw error } },
+    runFailure: async (runId) => {
+      const body = await api(`/actions/runs/${runId}/jobs?per_page=100`) as { jobs?: { id: number; name: string; steps?: { name: string; conclusion: string | null }[] }[] }
+      const job = (body.jobs ?? []).find((item) => item.name === updateJob)
+      const failed = job?.steps?.find((step) => step.conclusion === 'failure')
+      if (!job || !failed) return null
+      if (failed.name !== noChangeStep) return { step: failed.name, noChange: false, reason: null }
+      // A job is a check run: its annotations carry the step's ::error:: line. Checks: read is needed for them.
+      let reason: string | null = null
+      try {
+        const annotations = await api(`/check-runs/${job.id}/annotations?per_page=50`) as unknown as { message?: string; annotation_level?: string }[]
+        const line = annotations.find((item) => item.annotation_level === 'failure' && typeof item.message === 'string' && item.message.startsWith(noChangeSentence))
+        if (line) reason = line.message!.slice(noChangeSentence.length).trim() || null
+      } catch (error) {
+        if (!(error instanceof GitHubError) || (error.status !== 403 && error.status !== 404)) throw error
+      }
+      return { step: failed.name, noChange: true, reason }
+    },
     pulls: async (state = 'open') => ((await api(`/pulls?state=${state}&per_page=20&sort=created&direction=desc`)) as unknown as Record<string, unknown>[]).map(shapePull),
     pull: async (number) => { try { return shapePull((await api(`/pulls/${number}`)) as Record<string, unknown>) } catch (error) { if (notFound(error)) return null; throw error } },
     mergedPulls: async (branchPrefix) => {

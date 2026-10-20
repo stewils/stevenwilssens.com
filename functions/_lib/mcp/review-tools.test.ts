@@ -25,17 +25,19 @@ const pullEleven = pull(11, 'Two bullets', 'update/two-bullets-3', `**Instructio
 type Fake = { github: GitHub; calls: { dispatched: Record<string, unknown>[]; merged: number[]; closed: { number: number; comment: string }[] }; runs: WorkflowRun[]; pulls: PullRequest[] }
 const fakeGitHub = (options: { mergeError?: string } = {}): Fake => {
   const calls: Fake['calls'] = { dispatched: [], merged: [], closed: [] }
-  const runs: WorkflowRun[] = [{ id: 1, status: 'completed', conclusion: 'success', createdAt: '2026-10-17T00:00:00Z', url: 'https://github.com/x/runs/1', branch: 'update/team-size-1', title: 'Team size' }]
+  // Like GitHub, every dispatched run's branch is main; its pull request is found by the run number (update/team-size-1).
+  const runs: WorkflowRun[] = [{ id: 1, number: 1, status: 'completed', conclusion: 'success', createdAt: '2026-10-17T00:00:00Z', url: 'https://github.com/x/runs/1', branch: 'main', title: 'Team size' }]
   const pulls: PullRequest[] = [pullSeven, pullNine, pullEleven]
   const github: GitHub = {
     repo: 'stewils/stevenwilssens.com',
     dispatch: async (workflow, ref, inputs) => {
       calls.dispatched.push({ workflow, ref, inputs })
       // The workflow names its run after the title, so the MCP server can find it.
-      runs.unshift({ id: runs.length + 1, status: 'queued', conclusion: null, createdAt: new Date(now).toISOString(), url: `https://github.com/x/runs/${runs.length + 1}`, branch: 'main', title: inputs.title })
+      runs.unshift({ id: runs.length + 1, number: runs.length + 1, status: 'queued', conclusion: null, createdAt: new Date(now).toISOString(), url: `https://github.com/x/runs/${runs.length + 1}`, branch: 'main', title: inputs.title })
     },
     runs: async (_workflow, limit) => runs.slice(0, limit),
     run: async (id) => runs.find((run) => run.id === id) ?? null,
+    runFailure: async () => null,
     pulls: async (state = 'open') => pulls.filter((item) => state === 'all' || item.state === state),
     pull: async (number) => pulls.find((item) => item.number === number) ?? null,
     merge: async (number) => { if (options.mergeError) throw new Error(options.mergeError); calls.merged.push(number); return { merged: true, message: 'Pull Request successfully merged', sha: 'abc' } },
@@ -259,14 +261,14 @@ describe('site updates', () => {
     expect((done.json!.pullRequest as { number: number }).number).toBe(7)
     expect(done.json!.next).toMatch(/Pull request https:\/\/github.com\/x\/pull\/7 is ready/)
 
-    runs.unshift({ id: 5, status: 'in_progress', conclusion: null, createdAt: '2026-10-17T02:00:00Z', url: 'https://github.com/x/runs/5', branch: 'main', title: 'Slow one' })
+    runs.unshift({ id: 5, number: 5, status: 'in_progress', conclusion: null, createdAt: '2026-10-17T02:00:00Z', url: 'https://github.com/x/runs/5', branch: 'main', title: 'Slow one' })
     const waiting = await call(store, 'wait_for_site_update', { seconds: 5 }, github)
     expect(waiting.json!.done).toBe(false)
     expect((waiting.json!.run as { id: number }).id).toBe(5)
     expect(waiting.json!.next).toMatch(/Call wait_for_site_update again/)
     expect((await call(store, 'wait_for_site_update', { run_id: 404 }, github)).text).toMatch(/no run with id 404/)
 
-    runs.unshift({ id: 6, status: 'completed', conclusion: 'failure', createdAt: '2026-10-17T03:00:00Z', url: 'https://github.com/x/runs/6', branch: 'update/broken-6', title: 'Broken' })
+    runs.unshift({ id: 6, number: 6, status: 'completed', conclusion: 'failure', createdAt: '2026-10-17T03:00:00Z', url: 'https://github.com/x/runs/6', branch: 'main', title: 'Broken' })
     const failed = await call(store, 'wait_for_site_update', { run_id: 6 }, github)
     expect(failed.json!.done).toBe(true)
     expect(failed.json!.pullRequest).toBeNull()

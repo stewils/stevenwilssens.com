@@ -1,8 +1,10 @@
 // @vitest-environment node
 // The MCP server's GitHub client, against a stubbed fetch: the requests it sends, the
 // shapes it returns, and how it treats GitHub's refusals.
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { encodeUpdateRequest, GitHubError, gitHubClient, previewUrl, resumeScoreFromBody, updateRequestFromBody } from './github'
+import { encodeUpdateRequest, GitHubError, gitHubClient, noChangeSentence, noChangeStep, previewUrl, resumeScoreFromBody, updateJob, updateRequestFromBody } from './github'
 
 type Call = { url: string; method: string; body: unknown; headers: Record<string, string> }
 type Reply = { status?: number; body?: unknown; text?: string }
@@ -30,7 +32,7 @@ const pullJson = (overrides: Record<string, unknown> = {}) => ({
   body: `Done.\n<!-- resume-score before=90 after=85 -->\n${encodeUpdateRequest({ title: '', instruction: 'Add the patents', proposals: [3], supersedes: null })}`,
   ...overrides,
 })
-const runJson = (overrides: Record<string, unknown> = {}) => ({ id: 7, status: 'completed', conclusion: 'success', created_at: '2026-10-18T10:00:00Z', html_url: 'https://github.com/stewils/site/actions/runs/7', head_branch: 'main', display_title: 'Site update: patents', name: 'Site update', ...overrides })
+const runJson = (overrides: Record<string, unknown> = {}) => ({ id: 7, run_number: 27, status: 'completed', conclusion: 'success', created_at: '2026-10-18T10:00:00Z', html_url: 'https://github.com/stewils/site/actions/runs/7', head_branch: 'main', display_title: 'Site update: patents', name: 'Site update', ...overrides })
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -106,7 +108,7 @@ describe('the GitHub client', () => {
 
   it('lists a workflow\'s runs and reads one, null when it is gone', async () => {
     const { calls, client } = fakeFetch({
-      'GET /actions/workflows/site-update.yml/runs': { body: { workflow_runs: [runJson(), runJson({ id: 8, conclusion: undefined, display_title: undefined, status: 'in_progress' })] } },
+      'GET /actions/workflows/site-update.yml/runs': { body: { workflow_runs: [runJson(), runJson({ id: 8, run_number: undefined, conclusion: undefined, display_title: undefined, status: 'in_progress' })] } },
       'GET /actions/runs/7': { body: runJson() },
       'GET /actions/runs/404': { status: 404, body: { message: 'Not Found' } },
       'GET /actions/runs/500': { status: 500, body: { message: 'boom' } },
@@ -116,8 +118,8 @@ describe('the GitHub client', () => {
     expect(calls[0].url).toContain('?per_page=5')
     expect(calls[0].headers['Content-Type']).toBeUndefined()
     expect(runs).toEqual([
-      { id: 7, status: 'completed', conclusion: 'success', createdAt: '2026-10-18T10:00:00Z', url: 'https://github.com/stewils/site/actions/runs/7', branch: 'main', title: 'Site update: patents' },
-      { id: 8, status: 'in_progress', conclusion: null, createdAt: '2026-10-18T10:00:00Z', url: 'https://github.com/stewils/site/actions/runs/7', branch: 'main', title: 'Site update' },
+      { id: 7, number: 27, status: 'completed', conclusion: 'success', createdAt: '2026-10-18T10:00:00Z', url: 'https://github.com/stewils/site/actions/runs/7', branch: 'main', title: 'Site update: patents' },
+      { id: 8, number: null, status: 'in_progress', conclusion: null, createdAt: '2026-10-18T10:00:00Z', url: 'https://github.com/stewils/site/actions/runs/7', branch: 'main', title: 'Site update' },
     ])
     expect(await client.run(7)).toMatchObject({ id: 7 })
     expect(await client.run(404)).toBeNull()
@@ -218,5 +220,53 @@ describe('the GitHub client', () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }))
     await gitHubClient('t', 'o/r').dispatch('w.yml', 'main', {})
     expect(spy).toHaveBeenCalledWith('https://api.github.com/repos/o/r/actions/workflows/w.yml/dispatches', expect.objectContaining({ method: 'POST' }))
+  })
+})
+
+describe('where a failed run stopped (AC-5, C-4)', () => {
+  const job = (steps: [string, string | null][], name = updateJob) => ({ id: 901, name, steps: steps.map(([step, conclusion]) => ({ name: step, conclusion })) })
+  const jobs = (...items: ReturnType<typeof job>[]) => ({ body: { jobs: items } })
+
+  it('reads the failed step of the update job and, at the no-change step, the reason from its annotation', async () => {
+    const { calls, client } = fakeFetch({
+      'GET /actions/runs/7/jobs': jobs(job([['brief', 'success']], 'brief'), job([['Let Claude make the change', 'success'], [noChangeStep, 'failure'], ['Check and commit', 'skipped']])),
+      'GET /check-runs/901/annotations': { body: [
+        { annotation_level: 'failure', message: 'Process completed with exit code 1.' },
+        { annotation_level: 'warning', message: `${noChangeSentence} a warning is not the step's line` },
+        { annotation_level: 'failure', message: `${noChangeSentence} I could not find the section.` },
+      ] },
+    })
+    expect(await client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: 'I could not find the section.' })
+    expect(calls.map((call) => call.url.split('/stewils/site')[1])).toEqual(['/actions/runs/7/jobs?per_page=100', '/check-runs/901/annotations?per_page=50'])
+  })
+
+  it('reads no annotation when the run failed at another step', async () => {
+    const { calls, client } = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([['Check and commit', 'failure']])) })
+    expect(await client.runFailure(7)).toEqual({ step: 'Check and commit', noChange: false, reason: null })
+    expect(calls).toHaveLength(1)
+  })
+
+  it('still names the no-change step when the token may not read annotations, or the line is not there', async () => {
+    const refused = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([[noChangeStep, 'failure']])), 'GET /check-runs/901/annotations': { status: 403, body: { message: 'Resource not accessible by personal access token' } } })
+    expect(await refused.client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: null })
+    const empty = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([[noChangeStep, 'failure']])), 'GET /check-runs/901/annotations': { body: [{ annotation_level: 'failure', message: noChangeSentence }] } })
+    expect(await empty.client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: null })
+    const broken = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([[noChangeStep, 'failure']])), 'GET /check-runs/901/annotations': { status: 500, body: { message: 'boom' } } })
+    await expect(broken.client.runFailure(7)).rejects.toMatchObject({ status: 500 })
+  })
+
+  it('gives null when no step of the update job failed, or there is no update job', async () => {
+    expect(await fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([['Check and commit', 'success']])) }).client.runFailure(7)).toBeNull()
+    expect(await fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([['x', 'failure']], 'brief')) }).client.runFailure(7)).toBeNull()
+    expect(await fakeFetch({ 'GET /actions/runs/7/jobs': { body: {} } }).client.runFailure(7)).toBeNull()
+    expect(await fakeFetch({ 'GET /actions/runs/7/jobs': { body: { jobs: [{ id: 1, name: updateJob }] } } }).client.runFailure(7)).toBeNull()
+  })
+
+  it('a step in site-update.yml carries the no-change step\'s name, in the update job, and prints the sentence the MCP reads', () => {
+    const workflow = readFileSync(fileURLToPath(new URL('../../.github/workflows/site-update.yml', import.meta.url).href), 'utf8').replace(/\r\n/g, '\n')
+    expect(workflow).toContain(`\n  ${updateJob}:\n`)
+    expect(workflow).toMatch(new RegExp(`\\n {6}- name: ${noChangeStep}\\n`))
+    const outcome = readFileSync(fileURLToPath(new URL('../../scripts/site-update-outcome.mjs', import.meta.url).href), 'utf8')
+    expect(outcome).toContain(noChangeSentence)
   })
 })
