@@ -594,6 +594,10 @@ describe('the About page', () => {
     const listedStale = ((await call(store, 'list_resume_proposals', { status: 'approved' })).json!.proposals as (Shaped & { stale?: string })[])[0]
     expect(listedStale).toMatchObject({ id: stale.id, flags: ['"visionary" reads as self-promotion to a hiring manager'] })
     expect(listedStale.stale).toMatch(/^The About page no longer has this proposal's current text/)
+    // Still waiting for Steven's decision: the note matters most here.
+    const waiting = await store.insertProposal({ role: 'about', field: 'intro', kind: 'replace', currentText: 'An intro that went away.', proposedText: 'A new intro.', rationale: 'r', basedOn: null }, 1)
+    const listedWaiting = ((await call(store, 'list_resume_proposals', { status: 'proposed' })).json!.proposals as (Shaped & { stale?: string })[]).find((p) => p.id === waiting.id)!
+    expect(listedWaiting.stale).toMatch(/^The About page no longer has this proposal's current text/)
     await store.decideProposal(stale.id, 'rejected', null, 3)
     expect(((await call(store, 'list_resume_proposals', { status: 'rejected' })).json!.proposals as Shaped[]).find((p) => p.id === stale.id)).not.toHaveProperty('stale')
   })

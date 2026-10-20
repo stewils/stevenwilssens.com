@@ -1,6 +1,6 @@
 # Steven can change his About page from his private MCP, through the same proposals as the résumé
 
-Slug: `mcp-about-proposals` · Branch: `mcp-about-proposals` · Status: approved
+Slug: `mcp-about-proposals` · Branch: `mcp-about-proposals` · Status: built
 Asked by Steven on 2026-10-19: "make sure that my MCP can also update my About me section on the website. Make sure that it is only added to the MCP that is available on the Admin page. Goes through the same process."
 
 ## Problem
@@ -1179,9 +1179,9 @@ No questions are open.
 
 | Role | Spec | Merge | Notes |
 |---|---|---|---|
-| Product manager | APPROVE (r3) | | Steven's answers recorded (2026-10-19): the About page only; the assistant blurb built from `about` in this PR (AC-21 to AC-23); the hero lede proposable in the follow-up. Recruiter, security, tester and developer re-confirm for AC-21 to AC-23 |
-| Senior recruiter | APPROVE (r2) | | Guards are AC-8 to AC-14 (guard 5 deferred, accepted); the assistant is AC-21 to AC-23, the location wording follows `profile.location` on purpose. At merge: the AC-2 empty diff, then AC-23 plus my four questions on the preview against production, or `NEEDS_STEVEN`. Minor: add `workAuthorization`, `availability` and `teamSize` to the AC-21 profile line |
-| Senior designer | APPROVE (r1) | | Public pages identical to main; admin changes are copy only (Where label, Needs you wording); AC-10 and AC-14 notes in the Design section |
-| Senior developer | APPROVE (r3) | | Buildable as written: no migration, no workflow change; AC-4 needs no `resume:build` run; AC-19 is one line in `scripts/resume-mail.mjs` plus a test; AC-21 to AC-23 rebuild `[site:about]` in `prompt.ts` from `profile` + `about` (local `about` renamed), tested in `agent.test.ts` |
-| Security engineer | APPROVE (r3) | | C-1 to C-8 and C-10 in the ACs (C-10, the About text as quoted data in the assistant prompt, with AC-21); T-1 to T-11 into the test plan (T-11 with AC-21/AC-22); C-9 deferred. Line breaks are refused (AC-10), not collapsed. The validator must also refuse `[[` and `]]` |
-| Senior tester | APPROVE (r3) | | AC-1 to AC-23 and T-1 to T-10 mapped to tests or named checks; AC-21/22 row reworded (section slice; a pure `aboutSection` function instead of a hoisted `vi.mock`). At merge: the AC-2 empty `dist/` diff and the AC-23 answers are attached, and `about.ts` and `prompt.ts` are at 90% or more |
+| Product manager | APPROVE (r3) | APPROVE (r1): AC-1 to AC-22 met; AC-23 pending on the preview | Steven's answers recorded (2026-10-19): the About page only; the assistant blurb built from `about` in this PR (AC-21 to AC-23); the hero lede proposable in the follow-up. Recruiter, security, tester and developer re-confirm for AC-21 to AC-23 |
+| Senior recruiter | APPROVE (r2) | APPROVE (r1): `check:recruiter` 80 = main, ATS 100 = live; AC-23 pending on the preview | Guards are AC-8 to AC-14 (guard 5 deferred, accepted); the assistant is AC-21 to AC-23, the location wording follows `profile.location` on purpose. At merge: the AC-2 empty diff, then AC-23 plus my four questions on the preview against production, or `NEEDS_STEVEN`. Minor: add `workAuthorization`, `availability` and `teamSize` to the AC-21 profile line |
+| Senior designer | APPROVE (r1) | APPROVE (r1): public pages identical to main; admin Where labels and Needs you wording as designed | Public pages identical to main; admin changes are copy only (Where label, Needs you wording); AC-10 and AC-14 notes in the Design section |
+| Senior developer | APPROVE (r3) | APPROVE (r1, code review): 0 blockers, 0 majors, 6 minors fixed | Buildable as written: no migration, no workflow change; AC-4 needs no `resume:build` run; AC-19 is one line in `scripts/resume-mail.mjs` plus a test; AC-21 to AC-23 rebuild `[site:about]` in `prompt.ts` from `profile` + `about` (local `about` renamed), tested in `agent.test.ts` |
+| Security engineer | APPROVE (r3) | APPROVE (r2): the r1 major (invisible Unicode) fixed with the allowlist | C-1 to C-8 and C-10 in the ACs (C-10, the About text as quoted data in the assistant prompt, with AC-21); T-1 to T-11 into the test plan (T-11 with AC-21/AC-22); C-9 deferred. Line breaks are refused (AC-10), not collapsed. The validator must also refuse `[[` and `]]` |
+| Senior tester | APPROVE (r3) | APPROVE (r2): 919 tests, 99.54 / 97.66 / 99.26 / 99.92; M-1 and N-1 fixed | AC-1 to AC-23 and T-1 to T-10 mapped to tests or named checks; AC-21/22 row reworded (section slice; a pure `aboutSection` function instead of a hoisted `vi.mock`). At merge: the AC-2 empty `dist/` diff and the AC-23 answers are attached, and `about.ts` and `prompt.ts` are at 90% or more |
