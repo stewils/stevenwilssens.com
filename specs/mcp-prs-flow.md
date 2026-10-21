@@ -1,4 +1,4 @@
-# Your MCP's pull requests can merge: their checks start on the pull request, the assistant is tested in CI, and the MCP says what holds one
+APPROVE (r2) |APPROVE (r2) |APPROVE (r2) |APPROVE (r1) |APPROVE (r2), on condition that #56 merges first |APPROVE (r2) |# Your MCP's pull requests can merge: their checks start on the pull request, the assistant is tested in CI, and the MCP says what holds one
 
 Slug: `mcp-prs-flow` · Branch: `mcp-prs-flow` · Status: approved (reconciled 2026-10-20; split, the rest is `specs/mcp-prs-automation.md`)
 Asked by Steven on 2026-10-20: "make sure that the pipeline is set up so that those changes from the MCP aren't blocked and go through quickly"
