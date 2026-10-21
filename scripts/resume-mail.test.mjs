@@ -2,7 +2,7 @@
 // The resume email: the diff of src/resume.ts between two versions, the plain-language
 // summary (Claude, or the changes themselves without a key) and the rendered email.
 import { describe, expect, it, vi } from 'vitest'
-import { diffResume, fallbackSummary, pairEdits, renderEmail, scoreOf, summarize } from './resume-mail.mjs'
+import { diffResume, fallbackSummary, mailPlan, pairEdits, renderEmail, scoreOf, shouldMail, summarize } from './resume-mail.mjs'
 
 const role = (overrides = {}) => ({ key: 'windows-devices-data', role: 'Principal Group Product Manager - Windows & Devices Data', company: 'Microsoft', dates: 'Dec 2024 - Sep 2026', location: 'Redmond, Washington', summary: 'Led product management for Windows & Devices Data.', points: ['Led a team of 10 to 20 product managers.', 'Set the direction for experimentation across Windows.'], ...overrides })
 const resume = (overrides = {}) => ({
@@ -72,6 +72,38 @@ describe('diffResume', () => {
 
   it('treats a missing version as empty', () => {
     expect(diffResume(null, resume()).some((change) => change.kind === 'added')).toBe(true)
+  })
+})
+
+describe('shouldMail', () => {
+  it('sends nothing when only the About copy changed, and still sends for a change it sees or a new PDF', () => {
+    const before = resume({ about: { intro: 'A leader.', paragraphs: ['One.', 'Two.'] } })
+    const aboutOnly = resume({ about: { intro: 'A sharper leader.', paragraphs: ['One.', 'Two.', 'Three.'] } })
+    expect(diffResume(before, aboutOnly)).toEqual([])
+    expect(shouldMail('src/resume.ts', diffResume(before, aboutOnly))).toBe(false)
+    expect(shouldMail('src/resume.ts\npublic/steven-wilssens-resume-2026.pdf',diffResume(before, aboutOnly))).toBe(true)
+    expect(shouldMail('public/steven-wilssens-resume-2026.pdf', [])).toBe(true)
+    const reworded = resume({ ...aboutOnly, languages: 'Dutch, English and French' })
+    expect(shouldMail('src/resume.ts', diffResume(before, reworded))).toBe(true)
+  })
+})
+
+describe('mailPlan', () => {
+  const before = resume({ about: { intro: 'A leader.', paragraphs: ['One.', 'Two.'] } })
+  const versions = (after) => async (ref) => (ref === 'a' ? before : after)
+  it('skips the email when nothing changed, or only the About copy changed and the PDF did not', async () => {
+    const aboutOnly = resume({ about: { intro: 'A sharper leader.', paragraphs: ['One.', 'Two.', 'Three.'] } })
+    const load = vi.fn(versions(aboutOnly))
+    expect(await mailPlan({ before: 'a', after: 'b', touched: '\n', load })).toEqual({ skip: 'The resume did not change between these commits; no email.' })
+    expect(load).not.toHaveBeenCalled()
+    expect(await mailPlan({ before: 'a', after: 'b', touched: 'src/resume.ts\n', load })).toEqual({ skip: 'Only resume data the email does not describe changed (such as the About page), and the PDF did not; no email.' })
+    expect(load.mock.calls.map(([ref]) => ref)).toEqual(['a', 'b'])
+  })
+
+  it('plans the email for a change it describes, or a new PDF', async () => {
+    const reworded = resume({ languages: 'Dutch, English and French' })
+    expect((await mailPlan({ before: 'a', after: 'b', touched: 'src/resume.ts', load: versions(reworded) })).changes).toEqual(diffResume(before, reworded))
+    expect(await mailPlan({ before: 'a', after: 'b', touched: 'public/steven-wilssens-resume-2026.pdf\n', load: versions(before) })).toEqual({ changes: [] })
   })
 })
 

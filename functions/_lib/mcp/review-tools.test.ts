@@ -188,9 +188,9 @@ describe('site updates', () => {
     expect(inputs.proposals).toBe('1,2')
     expect(inputs.instruction).toMatch(/^Also fix the typo on \/about\.\n\nApply these approved résumé proposals/)
     expect(inputs.instruction).toContain(`Proposal #1: replace in the role "${experiences[1].role}" at ${experiences[1].company} (key ${experiences[1].key}), a bullet point.`)
-    expect(inputs.instruction).toContain(`Current text: ${bullet}`)
-    expect(inputs.instruction).toContain('New text: Led a PM organization of 12.')
-    expect(inputs.instruction).toContain('Steven\'s note when approving: Keep "organization".')
+    expect(inputs.instruction).toContain(`Current text: ${JSON.stringify(bullet)}`)
+    expect(inputs.instruction).toContain('New text: "Led a PM organization of 12."')
+    expect(inputs.instruction).toContain('Steven\'s note when approving: "Keep \\"organization\\"."')
     expect(inputs.instruction).toContain('Proposal #2: replace in the headline section.')
 
     // The workflow put the request into the pull request; merging it applies the proposals.

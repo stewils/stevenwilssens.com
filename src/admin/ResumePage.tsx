@@ -3,6 +3,7 @@ import { TrendChart } from './Charts'
 import { DataTable, type Column } from './DataTable'
 import { formatBytes, formatDay, formatNumber, formatTime } from './format'
 import type { Finding, Proposal, ResumeInfo, ScoreRow } from './types'
+import { whereOf } from './where'
 
 export const resumePdf = '/steven-wilssens-resume-2026.pdf'
 
@@ -17,7 +18,7 @@ const findingColumns: Column<Finding>[] = [
 
 const proposalColumns: Column<Proposal>[] = [
   { key: 'status', label: 'Status', value: (row) => row.status, render: (row) => <span className={`badge ${row.status}`}>{row.status}</span> },
-  { key: 'role', label: 'Where', value: (row) => `${row.role} ${row.field && row.field !== 'point' ? row.field : ''} ${row.kind}`, strong: true, render: (row) => <>{row.role}<small className="muted"><br />{row.field && row.field !== 'point' ? `${row.field} · ` : ''}{row.kind}</small></> },
+  { key: 'role', label: 'Where', value: (row) => { const where = whereOf(row); return `${where.place} ${where.part ?? ''} ${where.kind}` }, strong: true, render: (row) => { const where = whereOf(row); return <>{where.place}<small className="muted"><br />{where.part ? `${where.part} · ` : ''}{where.kind}</small></> } },
   { key: 'change', label: 'Change', value: (row) => `${row.currentText ?? ''} ${row.proposedText ?? ''}`, render: (row) => <>{row.currentText && <s className="muted">{row.currentText}</s>}{row.currentText && row.proposedText && <br />}{row.proposedText}{row.decisionNote && <small className="muted"><br />Note: {row.decisionNote}</small>}</> },
   { key: 'rationale', label: 'Why', value: (row) => row.rationale },
   { key: 'updatedAt', label: 'Updated', value: (row) => row.updatedAt, render: (row) => formatTime(row.updatedAt) },
@@ -132,8 +133,8 @@ export function ResumePage({ resume, proposals }: { resume: ResumeInfo; proposal
 
       <section className="card" data-part="Proposals">
         <div className="card-head"><h2>Proposals from Claude</h2></div>
-        <p className="note">At the end of an MCP session Claude compares the dossier with the résumé and proposes edits; you approve or reject them in that conversation. Approved ones reach the site through a site update (request_site_update, several at once) and are marked applied when its pull request merges, or as soon as the résumé is seen to carry them.</p>
-        {proposals === null ? <p className="empty">Loading…</p> : <DataTable columns={proposalColumns} rows={proposals} rowKey={(row) => String(row.id)} empty="None yet. When you wrap up a session, Claude proposes résumé edits; they show up here." label="Résumé proposals" />}
+        <p className="note">At the end of an MCP session Claude compares the dossier with the résumé and the About page and proposes edits; you approve or reject them in that conversation. Approved ones reach the site through a site update (request_site_update, several at once) and are marked applied when its pull request merges, or as soon as the site is seen to carry them.</p>
+        {proposals === null ? <p className="empty">Loading…</p> : <DataTable columns={proposalColumns} rows={proposals} rowKey={(row) => String(row.id)} empty="None yet. When you wrap up a session, Claude proposes edits to the résumé and the About page; they show up here." label="Résumé proposals" />}
       </section>
 
       <section className="card" data-part="History">

@@ -92,6 +92,20 @@ export const recommendationLinks: Record<string, string> = {
   'Jayant Arora': 'https://www.linkedin.com/in/arorajayant/',
 }
 
+// The About page in Steven's own words: the line under the title and the paragraphs, in
+// reading order (the first one is the green opening). Plain text only: the page renders it
+// as text, the site assistant quotes it, and it changes through the MCP's proposals, whose
+// guards (functions/_lib/mcp/about.ts) its tests also run on this copy.
+export type About = { intro: string; paragraphs: string[] }
+export const about: About = {
+  intro: 'A product and technology leader beginning a new chapter after Microsoft.',
+  paragraphs: [
+    'After nearly 20 years at Microsoft, I am now bringing a career in data, AI, product strategy, software, and people leadership into its next chapter.',
+    'Most recently, I led the Windows & Devices Data PM team, advancing the Windows ecosystem through data-driven strategies. I care about the space where customer signals, experimentation, machine learning, and strong product judgment meet.',
+    'Before leading Windows data teams, I built products and platforms across Azure DevOps, spatial audio, game streaming, and operating systems. Earlier still, I was a developer and team lead in Belgium, where I learned to pair technical depth with practical delivery and the growth of the people around me.',
+  ],
+}
+
 // Who Steven is, in the words the site, the resume PDF and the MCP server share.
 // scripts/resume.mjs builds the PDF from this file and src/resume.test.ts fails when
 // the PDF no longer matches it, so a change here always comes with a new resume.

@@ -25,6 +25,20 @@ describe('what needs Steven', () => {
     expect(needs.find((need) => need.key === 'resume-findings')?.text).toBe('résumé findings to fix in the data')
   })
 
+  it('words the proposals for the résumé and the About page alike, one and several, on the Résumé page', () => {
+    const lines = (proposals: McpInfo['proposals']) => computeNeeds({ ...data, mcp: { ...mcp, proposals } }, midMonth).filter((need) => need.key.startsWith('proposals-')).map((need) => [need.key, need.page, need.n, need.text])
+    const one = mcp.proposals[0]
+    expect(lines([{ ...one, status: 'proposed' }, { ...one, id: 2, role: 'about', field: 'intro', status: 'approved' }])).toEqual([
+      ['proposals-waiting', 'resume', 1, 'proposal from Claude waiting for your decision'],
+      ['proposals-approved', 'resume', 1, 'approved edit not yet on the site'],
+    ])
+    expect(lines([{ ...one, status: 'proposed' }, { ...one, id: 2, role: 'about', status: 'proposed' }, { ...one, id: 3, status: 'approved' }, { ...one, id: 4, role: 'about', status: 'approved' }])).toEqual([
+      ['proposals-waiting', 'resume', 2, 'proposals from Claude waiting for your decision'],
+      ['proposals-approved', 'resume', 2, 'approved edits not yet on the site'],
+    ])
+    expect(badgeCounts(computeNeeds({ ...data, mcp: { ...mcp, proposals: [{ ...one, status: 'proposed' }, { ...one, id: 2, role: 'about', status: 'approved' }] } }, midMonth)).resume).toBe(badgeCounts(computeNeeds(data, midMonth)).resume)
+  })
+
   it('flags the missing MCP key, the assistant gaps, a failing device type and crawl errors', () => {
     const needs = computeNeeds(data, midMonth)
     expect(needs.map((need) => need.key)).toEqual(expect.arrayContaining(['mcp-key', 'ask-gaps', 'vitals', 'crawl-errors']))
@@ -76,8 +90,8 @@ describe('what needs Steven', () => {
       'the résumé PDF does not match src/resume.ts: run npm run resume:build',
       'résumé finding to fix in the data',
       'questions the résumé data raises for you',
-      'résumé proposal waiting for your decision in Claude',
-      'approved résumé edits not yet on the site',
+      'proposal from Claude waiting for your decision',
+      'approved edits not yet on the site',
       'questions from the site wait for your answers; your career MCP will offer them when a session starts',
       'the assistant is not live: set the ANTHROPIC_API_KEY secret and redeploy',
     ]))

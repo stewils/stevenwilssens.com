@@ -27,8 +27,8 @@ export const computeNeeds = ({ stats, mcp, ask, resume, team }: AdminData, now =
   if (mcp) {
     const proposed = mcp.proposals.filter((proposal) => proposal.status === 'proposed').length
     const approved = mcp.proposals.filter((proposal) => proposal.status === 'approved').length
-    add('proposals-waiting', 'resume', proposed, plural(proposed, 'résumé proposal waiting for your decision in Claude', 'résumé proposals waiting for your decision in Claude'))
-    add('proposals-approved', 'resume', approved, plural(approved, 'approved résumé edit not yet on the site', 'approved résumé edits not yet on the site'))
+    add('proposals-waiting', 'resume', proposed, plural(proposed, 'proposal from Claude waiting for your decision', 'proposals from Claude waiting for your decision'))
+    add('proposals-approved', 'resume', approved, plural(approved, 'approved edit not yet on the site', 'approved edits not yet on the site'))
     if (!mcp.ownerUrl) add('mcp-key', 'mcp', 1, 'the career MCP has no owner key: set the MCP_OWNER_KEY secret and redeploy')
   }
   if (ask) {
