@@ -250,7 +250,7 @@ describe('the bot token never shares a job with code Claude or the branch wrote 
   it("re-validates the branch name before the fetch and before the push and the pull request, and checks the bundle against the update job's base (main may have moved on)", () => {
     for (const job of [publish, jobOf('resume-data'), email]) {
       const take = cutStep(job, 'Take the change from the update job')
-      expect(runOf(take)).toBe('node scripts/site-update-bundle.mjs "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "$BASE" origin/main')
+      expect(runOf(take)).toBe('node scripts/site-update-bundle.mjs "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "$BASE" origin/main "$GITHUB_SHA"')
       expect(envOf(take)).toContain('BASE: ${{ needs.update.outputs.base }}')
     }
     for (const name of ['Push the branch', 'Open the pull request']) expect(runOf(publishStep(name)), name).toContain('[[ "$BRANCH" =~ ^update/[a-z0-9-]+-[0-9]+$ ]] ||')
@@ -286,20 +286,25 @@ describe('the bot token never shares a job with code Claude or the branch wrote 
   it("the email runs in its own job from main's scripts/resume-mail.mjs, reads the résumé as JSON only, and MAIL_APP_PASSWORD is in no other job", () => {
     expect(email).toMatch(/ref: main\n/)
     const send = runOf(cutStep(email, 'Email Steven that the resume is ready to review'))
-    expect(send).toMatch(/^node scripts\/resume-mail\.mjs review --before "\$BASE" --after "refs\/heads\/\$BRANCH" --resume-json "\$BASE=\$RUNNER_TEMP\/resume-data\/before\.json" --resume-json "refs\/heads\/\$BRANCH=\$RUNNER_TEMP\/resume-data\/after\.json" --no-import /)
+    expect(send).toMatch(/^node scripts\/resume-mail\.mjs review --before "\$BASE" --after "refs\/heads\/\$BRANCH" --resume-json "\$BASE=\$RUNNER_TEMP\/resume-base\/before\.json" --resume-json "refs\/heads\/\$BRANCH=\$RUNNER_TEMP\/resume-data\/after\.json" --no-import /)
     expect(email).toMatch(/^ {4}needs: \[brief, update, publish, resume-data\]$/m)
     expect(workflow.match(/MAIL_APP_PASSWORD: /g)).toHaveLength(1)
     expect(email).toContain('MAIL_APP_PASSWORD: ${{ secrets.MAIL_APP_PASSWORD }}')
     expect(email).not.toMatch(/steps\.app\.outputs\.token|SITE_BOT_PRIVATE_KEY/)
   })
 
-  it('the résumé becomes data in a job with no secret, from main\'s scripts/resume-data.mjs', () => {
+  it("the branch's résumé becomes data in a job with no secret and nothing else, from main's scripts/resume-data.mjs; the base's is made in the email job", () => {
     const data = jobOf('resume-data')
     expect(data).not.toMatch(/secrets\.|\bnpm\b|\bnpx\b/)
     expect(data).toMatch(/^ {4}permissions:\n {6}contents: read$/m)
+    expect(data).toMatch(/^ {4}continue-on-error: true$/m)
     expect(data).toMatch(/ref: main\n/)
-    expect(runOf(cutStep(data, 'The résumé as data'))).toContain('node scripts/resume-data.mjs "$BASE" "$RUNNER_TEMP/resume-data/before.json"')
-    expect(runOf(cutStep(data, 'The résumé as data'))).toContain('node scripts/resume-data.mjs "refs/heads/$BRANCH" "$RUNNER_TEMP/resume-data/after.json"')
+    const branchData = runOf(cutStep(data, 'The résumé as data'))
+    expect(branchData).toContain('node scripts/resume-data.mjs "refs/heads/$BRANCH" "$RUNNER_TEMP/resume-data/after.json"')
+    expect(branchData).not.toContain('$BASE')
+    const base = cutStep(email, 'The résumé at the base, as data')
+    expect(runOf(base)).toBe('mkdir -p "$RUNNER_TEMP/resume-base" && node scripts/resume-data.mjs "$BASE" "$RUNNER_TEMP/resume-base/before.json"')
+    expect(base).not.toMatch(/secrets\.|BRANCH/)
   })
 
   it('no step that holds a secret runs a script that imports a file from the branch', () => {

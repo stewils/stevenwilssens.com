@@ -133,7 +133,9 @@ describe('what the reviewers are told (AC-10, AC-8)', () => {
     const said = prompt.replace(/\s+/g, ' ')
     expect(said).toContain('"Result: failed" (an answer that does not match profile) is CHANGES_REQUESTED.')
     expect(said).toContain('"Result: did not run" is never a pass, and never a question for Steven: the recruiter\'s verdict is then CHANGES_REQUESTED (re-run the job).')
-    expect(said).toContain('"Result: not set up on main yet" is only the pull request that adds the check: for the recruiter the assistant part is then NOT_APPLICABLE')
+    expect(said).toContain('"Result: not set up on main yet" is only the pull request that adds the check: for the recruiter the assistant part is then not applicable (say so in the report; the verdict still covers the rest of the merge check).')
+    // The part, never the verdict token, which the recruiter never uses.
+    expect(said).not.toMatch(/assistant part is then NOT_APPLICABLE/)
   })
 
   it('the sign-off comment carries the team-verdicts marker of the reviewed commit', () => {

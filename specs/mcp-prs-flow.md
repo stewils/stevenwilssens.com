@@ -285,6 +285,8 @@ The bars, unchanged:
   Steven's call, not needed for this change.
 - Running `compare_linkedin` after a résumé merge (the recruiter's point): Steven's
   habit, not the pipeline.
+- The assistant's profile facts in its prompt (work authorization, availability, team
+  size): #56 (`mcp-about-proposals`), which merges first (As built, merge order).
 - Changing branch protection (the required contexts stay, the App is never a bypass
   actor), the approval setting for outside contributors, Dependabot's pull requests, and
   secrets on the Pages preview.
@@ -1189,6 +1191,37 @@ Where the build differs from the text above, and why:
   authorization and availability answers to every word of the profile fact (round 1).
 - **`recheck: true` needs no `confirm`** (it merges nothing); `merge_site_update` still
   needs `confirm: true` to merge.
+- **Round 2.** Job B asks with the model main's own code names (`MODEL` read as text
+  from `functions/_lib/ask/agent.ts` in its checkout of main), never a field of either
+  input, and caps both system prompts at an absolute 300,000 characters. The bundle check
+  also requires the commit the run started from (`github.sha`) to be an ancestor of the
+  base. The branch's résumé becomes JSON alone in `resume-data` (now `continue-on-error`,
+  like the email); the base's résumé, a commit of main's history, is made in the `email`
+  job in a step with no secret. The all-words checks of work authorization and
+  availability stay strict: #56 puts both `profile` lines in the prompt word for word
+  ("Work authorization: …", "Availability: …") and tells the assistant to state them
+  exactly as given, so an honest answer carries every word (the developer's m3: no
+  change).
+- **Merge order: #56 (`mcp-about-proposals`) merges before this pull request** (PM, round
+  2). The new check holds the assistant's answers on location, work authorization and
+  availability to `profile` in `src/resume.ts`. On main today the assistant's prompt
+  (`functions/_lib/ask/prompt.ts`) does not carry `profile.workAuthorization` or
+  `profile.availability` and tells the assistant never to speak about work authorization;
+  #56 puts the profile line in the prompt. Merged without #56, every later Site update
+  pull request in the check's scope would fail the mechanical checks on a fact the site
+  has right. After #56 merges, this branch merges main (both change
+  `functions/_lib/mcp/tools.ts`, its branch tests and `scripts/resume-mail.mjs`, so expect
+  conflicts there) and its checks run again.
+- **This pull request's own `team` check: Steven may need to reply once** (PM, round 2).
+  The Review workflow runs the reviewers by main's `.claude/`, and main's
+  `senior-recruiter.md` does not know the "not set up on main yet" line: it asks for
+  `NEEDS_STEVEN` when the assistant check cannot run on a change to the assistant. So on
+  this pull request only, the recruiter may wait for him even though the branch's prompt
+  says the assistant part is not applicable. His one reply on the pull request (for
+  example: "The assistant check is not set up on main yet; this pull request adds it.
+  The assistant part does not apply here.") answers it, and a re-run passes it to the
+  reviewers. The lead says so in the pull request body. From the next pull request on,
+  main's rules carry the line and no reply is needed.
 
 ## Test plan (senior-tester)
 

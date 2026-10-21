@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { checksOfWorkflow, encodeTeamVerdicts, encodeUpdateRequest, GitHubError, gitHubClient, noChangeSentence, noChangeStep, previewUrl, requiredChecks, reviewBots, sameRepo, resumeScoreFromBody, teamVerdictsFrom, updateJob, updateRequestFromBody, updateRequestKeys } from './github'
+import { apiUrl, checksOfWorkflow, encodeTeamVerdicts, encodeUpdateRequest, GitHubError, gitHubClient, noChangeSentence, noChangeStep, previewUrl, requiredChecks, reviewBots, sameRepo, resumeScoreFromBody, teamVerdictsFrom, updateJob, updateRequestFromBody, updateRequestKeys } from './github'
 
 type Call = { url: string; method: string; body: unknown; headers: Record<string, string> }
 type Reply = { status?: number; body?: unknown; text?: string }
@@ -367,6 +367,12 @@ describe("a pull request's status", () => {
     // Every required check has a run on the head commit: nothing can wait for approval, so no runs are asked for.
     expect(status.waiting).toEqual([])
     expect(calls.map((call) => call.url.split('/stewils/site')[1] ?? call.url)).toEqual(['https://api.github.com/graphql', '/actions/jobs/1'])
+  })
+
+  it('builds every address on api.github.com, and refuses any other host before a request is made', () => {
+    expect(apiUrl('stewils/site', '/pulls/1')).toBe('https://api.github.com/repos/stewils/site/pulls/1')
+    expect(apiUrl('stewils/site', 'https://api.github.com/graphql')).toBe('https://api.github.com/graphql')
+    for (const path of ['https://evil.example/x', 'https://api.github.com.evil.example/x', 'http://api.github.com/x', 'pulls/1']) expect(() => apiUrl('stewils/site', path)).toThrow(GitHubError)
   })
 
   it('never sends the token outside api.github.com', async () => {

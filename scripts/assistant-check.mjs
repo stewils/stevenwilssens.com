@@ -3,8 +3,10 @@
 // built from the pull request's code and from main's (functions/_lib/assistant-input.ts). The
 // input is data: its size, model name and texts are checked before anything is sent, and it
 // never runs. Both sides are asked the way the live assistant asks (thinking, effort, the
-// answer budget, the cached system block), with main's model and main's request settings, so
-// a branch cannot choose a costlier model or call. The answers are shown the way the site
+// answer budget, the cached system block). The model is the one main's own code names
+// (functions/_lib/ask/agent.ts in this job's checkout of main, never a field of either input), and
+// both system prompts are capped at an absolute size, so neither input can choose a costlier
+// model or call; the request settings come from main's input within the harness's own bounds. The answers are shown the way the site
 // shows them (the sources its hidden first line names; the fixed text for an out-of-scope
 // answer). Five fixed questions on each input, at most 10 model calls, the whole run under a
 // time limit. The first three answers on the branch are held to the branch's own `profile`
@@ -21,9 +23,10 @@ import { parseArgs } from 'node:util'
 
 export const SCHEMA = 'assistant-input/1'
 export const MAX_INPUT_BYTES = 2_000_000
-export const MAX_SYSTEM = 1_000_000
-// The branch's system prompt may grow, but not past this: four times main's, at least 200,000 characters.
-export const systemCap = (mainLength) => Math.max(4 * mainLength, 200_000)
+// The largest system prompt either side may send (the live one is about 140,000 characters).
+export const MAX_SYSTEM = 300_000
+// Where main's code names the model the live assistant uses, in this job's checkout of main.
+export const AGENT = 'functions/_lib/ask/agent.ts'
 export const MAX_CALLS = 10
 export const MAX_TOKENS = 4000
 export const TIME_LIMIT_MS = 6 * 60_000
@@ -78,8 +81,8 @@ export const readInput = (path, label) => {
 }
 
 // The request settings both sides are asked with: main's, within the harness's own bounds.
-export const requestOf = (main) => ({
-  model: main.model,
+export const requestOf = (main, model) => ({
+  model,
   maxTokens: main.request.maxTokens,
   thinking: main.request.thinking?.type === 'adaptive' ? { type: 'adaptive' } : undefined,
   effort: EFFORTS.includes(main.request.output_config?.effort) ? main.request.output_config.effort : undefined,
@@ -196,7 +199,16 @@ export const report = ({ result, reason = '', rows = [], notes = [] }) => {
 
 // ---- the run ------------------------------------------------------------------------------
 
-export const run = async ({ branchPath, mainPath, key, fetchImpl = fetch, timeLimitMs = TIME_LIMIT_MS }) => {
+/** The model main's own code names (`export const MODEL = 'claude-…'`), read as text from main's checkout. */
+export const liveModel = (path = AGENT) => {
+  let source = ''
+  try { source = readFileSync(path, 'utf8') } catch { throw new DidNotRun(`main's ${path} cannot be read here.`) }
+  const match = /export const MODEL = '([^']+)'/.exec(source)
+  if (!match || !MODEL.test(match[1])) throw new DidNotRun(`main's ${path} names no Claude model.`)
+  return match[1]
+}
+
+export const run = async ({ branchPath, mainPath, key, fetchImpl = fetch, timeLimitMs = TIME_LIMIT_MS, agentPath = AGENT }) => {
   if (!key) return { code: 1, text: report({ result: 'did not run', reason: 'no ANTHROPIC_API_KEY in this job' }) }
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeLimitMs)
@@ -205,10 +217,9 @@ export const run = async ({ branchPath, mainPath, key, fetchImpl = fetch, timeLi
   let calls = 0
   try {
     const inputs = { branch: readInput(branchPath, 'branch'), main: readInput(mainPath, 'main') }
-    const cap = systemCap(inputs.main.system.length)
-    if (inputs.branch.system.length > cap) throw new DidNotRun(`the branch's system prompt is ${inputs.branch.system.length} characters, over the ${cap} the check allows next to main's`)
-    const request = requestOf(inputs.main)
-    if (inputs.branch.model !== inputs.main.model) notes.push(`the branch names the model ${inputs.branch.model}; both sides were asked with main's, ${inputs.main.model}.`)
+    const model = liveModel(agentPath)
+    const request = requestOf(inputs.main, model)
+    for (const side of ['branch', 'main']) if (inputs[side].model !== model) notes.push(`${side === 'branch' ? "the branch's" : "main's"} input names the model ${inputs[side].model}; both sides were asked with the one main's code names, ${model}.`)
     for (const row of rows) {
       for (const side of ['branch', 'main']) {
         if (calls >= MAX_CALLS) throw new DidNotRun(`more than ${MAX_CALLS} model calls`)

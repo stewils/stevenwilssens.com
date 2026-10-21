@@ -207,12 +207,17 @@ const shapePull = (pull: Record<string, unknown>): PullRequest => {
 }
 const shapeRun = (run: Record<string, unknown>): WorkflowRun => ({ id: run.id as number, number: typeof run.run_number === 'number' ? run.run_number : null, event: typeof run.event === 'string' ? run.event : null, status: run.status as string, conclusion: (run.conclusion as string | null) ?? null, createdAt: run.created_at as string, url: run.html_url as string, branch: run.head_branch as string, title: (run.display_title as string) ?? (run.name as string) })
 
+// Where a request goes: a path under this repository (/pulls/1), or an absolute address on GitHub's API
+// (another repository, GraphQL). The token goes to api.github.com and nowhere else: anything else is refused.
+export const apiUrl = (repo: string, path: string) => {
+  if (path.startsWith('/')) return `https://api.github.com/repos/${repo}${path}`
+  if (path.startsWith('https://api.github.com/')) return path
+  throw new GitHubError(`refused to send the token to ${path.slice(0, 80)}`, 400)
+}
+
 export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetch = fetch): GitHub => {
-  // A path under this repository (/pulls/1), or an absolute address on GitHub's API (another repository, GraphQL):
-  // the token goes to api.github.com and nowhere else.
   const api = async (path: string, init: RequestInit = {}) => {
-    if (!path.startsWith('/') && !path.startsWith('https://api.github.com/')) throw new GitHubError(`refused to send the token to ${path.slice(0, 80)}`, 400)
-    const response = await fetchImpl(path.startsWith('https://') ? path : `https://api.github.com/repos/${repo}${path}`, {
+    const response = await fetchImpl(apiUrl(repo, path), {
       ...init,
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'steven-wilssens-mcp', ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...(init.headers ?? {}) },
     })

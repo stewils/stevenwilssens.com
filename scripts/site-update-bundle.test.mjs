@@ -168,9 +168,25 @@ describe('the bundle', () => {
     commitAll(made.dir, 'merge side')
     // The per-commit log names no .github/ path for the merge: the reason for the merge and whole-diff checks.
     expect(git(made.dir, 'log', '--format=', '--name-only', '--no-renames', `${made.base}..${branch}`)).not.toContain('.github')
-    const bundle = join(root, 'evil.bundle')
+    const bundle = join(made.dir, '..', `evil-${count}.bundle`)
     git(made.dir, 'bundle', 'create', '-q', bundle, branch, '^main')
-    expect(takeBundle({ bundle, branch, base: made.base, cwd: publishRepo(made.dir) })).toMatchObject({ ok: false, code: 5, message: expect.stringMatching(/merge commit/) })
+    const result = takeBundle({ bundle, branch, base: made.base, cwd: publishRepo(made.dir) })
+    // On a failure, the history and the bundle say why.
+    const why = `${JSON.stringify(result)}\n${git(made.dir, 'log', '--graph', '--format=%h %p %s', '--all')}\n${git(made.dir, 'bundle', 'list-heads', bundle)}`
+    expect(result, why).toMatchObject({ ok: false, code: 5, message: expect.stringMatching(/merge commit/) })
+  }, SLOW)
+
+  it('refuses a base older than the commit the run started from, and takes one at or after it', () => {
+    const branch = 'update/start-41'
+    const made = updateRepo(branch, (cwd) => write(cwd, 'a.txt', 'a\n'))
+    git(made.dir, 'checkout', '-q', 'main')
+    write(made.dir, 'later.txt', 'later\n')
+    commitAll(made.dir, 'main moved on before the run started')
+    const later = git(made.dir, 'rev-parse', 'main').trim()
+    const publish = publishRepo(made.dir)
+    expect(take(made, branch, publish, { start: later })).toMatchObject({ ok: false, code: 5, message: expect.stringMatching(/older than the commit the run started from/) })
+    expect(take(made, branch, publish, { start: made.base })).toMatchObject({ ok: true })
+    expect(take(made, branch, publish, { start: 'not-a-sha' })).toMatchObject({ ok: false, code: 2 })
   }, SLOW)
 })
 

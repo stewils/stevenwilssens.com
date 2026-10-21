@@ -414,7 +414,7 @@ jobs:
         env:
           BRANCH: ${{ needs.update.outputs.branch }}
           BASE: ${{ needs.update.outputs.base }}
-        run: node scripts/site-update-bundle.mjs "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "$BASE" origin/main
+        run: node scripts/site-update-bundle.mjs "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "$BASE" origin/main "$GITHUB_SHA"
 
       # The bot's token: this repository only, Contents and Pull requests, revoked when the job ends.
       - name: The site bot's token
@@ -535,14 +535,15 @@ jobs:
           echo "preview=https://$alias.stevenwilssens.pages.dev" >> "$GITHUB_OUTPUT"
           if git diff --name-only "origin/main...refs/heads/$BRANCH" | grep -qE '^(public/steven-wilssens-resume-2026\.pdf|src/resume\.ts)$'; then echo "resume_changed=true" >> "$GITHUB_OUTPUT"; else echo "resume_changed=false" >> "$GITHUB_OUTPUT"; fi
 
-  # The résumé before and after the change, as data, in a job with no secret: main's scripts/resume-data.mjs
-  # imports src/resume.ts at the base and on the branch (the branch's file is executed when imported, so it never
-  # runs beside a secret) and writes JSON for the email.
+  # The branch's résumé as data, in a job with no secret and nothing else in it: main's scripts/resume-data.mjs
+  # imports the branch's src/resume.ts (a file is executed when imported, so it never runs beside a secret, and
+  # never in the job that writes the base's data) and writes JSON for the email.
   resume-data:
     needs: [update, publish]
     if: needs.publish.outputs.resume_changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    continue-on-error: true
     permissions:
       contents: read
     steps:
@@ -562,15 +563,13 @@ jobs:
         env:
           BRANCH: ${{ needs.update.outputs.branch }}
           BASE: ${{ needs.update.outputs.base }}
-        run: node scripts/site-update-bundle.mjs "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "$BASE" origin/main
+        run: node scripts/site-update-bundle.mjs "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "$BASE" origin/main "$GITHUB_SHA"
       - name: The résumé as data
         env:
           BRANCH: ${{ needs.update.outputs.branch }}
-          BASE: ${{ needs.update.outputs.base }}
         run: |
           set -e
           mkdir -p "$RUNNER_TEMP/resume-data"
-          node scripts/resume-data.mjs "$BASE" "$RUNNER_TEMP/resume-data/before.json"
           node scripts/resume-data.mjs "refs/heads/$BRANCH" "$RUNNER_TEMP/resume-data/after.json"
       - uses: actions/upload-artifact@v4
         with:
@@ -580,8 +579,8 @@ jobs:
           if-no-files-found: error
 
   # Steven asked to be told when the resume has been updated: here, when a pull request with a new resume is ready to review.
-  # main's scripts/resume-mail.mjs takes the résumé before and after as JSON from the resume-data job (--no-import: it
-  # never imports a file from the branch), has Claude say in plain words what is different (without the key it lists the
+  # main's scripts/resume-mail.mjs takes the résumé before (main's history, made here) and after (from the resume-data
+  # job) as JSON (--no-import: it never imports a file from the branch), has Claude say in plain words what is different (without the key it lists the
   # changes itself), adds the score against main and the new findings, and sends the HTML email. No bot token here.
   email:
     needs: [brief, update, publish, resume-data]
@@ -616,7 +615,12 @@ jobs:
         env:
           BRANCH: ${{ needs.update.outputs.branch }}
           BASE: ${{ needs.update.outputs.base }}
-        run: node scripts/site-update-bundle.mjs "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "$BASE" origin/main
+        run: node scripts/site-update-bundle.mjs "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "$BASE" origin/main "$GITHUB_SHA"
+      # The résumé at the base: a commit of main's history, so main's own data; no secret in this step.
+      - name: The résumé at the base, as data
+        env:
+          BASE: ${{ needs.update.outputs.base }}
+        run: mkdir -p "$RUNNER_TEMP/resume-base" && node scripts/resume-data.mjs "$BASE" "$RUNNER_TEMP/resume-base/before.json"
       - name: Email Steven that the resume is ready to review
         env:
           MAIL_APP_PASSWORD: ${{ secrets.MAIL_APP_PASSWORD }}
@@ -629,4 +633,4 @@ jobs:
           INSTRUCTION: ${{ needs.brief.outputs.instruction }}
           BRANCH: ${{ needs.update.outputs.branch }}
           BASE: ${{ needs.update.outputs.base }}
-        run: node scripts/resume-mail.mjs review --before "$BASE" --after "refs/heads/$BRANCH" --resume-json "$BASE=$RUNNER_TEMP/resume-data/before.json" --resume-json "refs/heads/$BRANCH=$RUNNER_TEMP/resume-data/after.json" --no-import --report "$RUNNER_TEMP/change/resume-after.json" --new-findings "$RUNNER_TEMP/change/resume-new-findings.txt" --title "$TITLE" --instruction "$INSTRUCTION" --pr "$PR_URL" --preview "$PREVIEW" --run-url "https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+        run: node scripts/resume-mail.mjs review --before "$BASE" --after "refs/heads/$BRANCH" --resume-json "$BASE=$RUNNER_TEMP/resume-base/before.json" --resume-json "refs/heads/$BRANCH=$RUNNER_TEMP/resume-data/after.json" --no-import --report "$RUNNER_TEMP/change/resume-after.json" --new-findings "$RUNNER_TEMP/change/resume-new-findings.txt" --title "$TITLE" --instruction "$INSTRUCTION" --pr "$PR_URL" --preview "$PREVIEW" --run-url "https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

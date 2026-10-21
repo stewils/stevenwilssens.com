@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
-import { carries, checkAnswer, fenced, MAX_CALLS, MAX_INPUT_BYTES, main, peopleCounts, QUESTIONS, readInput, rendered, report, requestOf, run, SCHEMA, systemCap, TIME_LIMIT_MS } from './assistant-check.mjs'
+import { carries, checkAnswer, fenced, liveModel, MAX_CALLS, MAX_INPUT_BYTES, MAX_SYSTEM, main, peopleCounts, QUESTIONS, readInput, rendered, report, requestOf, run, SCHEMA, TIME_LIMIT_MS } from './assistant-check.mjs'
 
 const dir = mkdtempSync(join(tmpdir(), 'assistant-check-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
@@ -62,7 +62,7 @@ describe('the input is data, checked before anything is sent', () => {
     ['not JSON', () => file('{'), /not JSON/],
     ['another schema', () => file(input({ schema: 'other' })), /not an assistant input/],
     ['a model that is not a Claude id', () => file(input({ model: 'gpt-5; rm -rf /' })), /not a Claude model id/],
-    ['an oversized system prompt', () => file(input({ system: 'x'.repeat(1_000_001) })), /system prompt/],
+    ['an oversized system prompt', () => file(input({ system: 'x'.repeat(300_001) })), /system prompt/],
     ['no contexts', () => file(input({ contexts: null })), /contexts/],
     ['no profile fact', () => file(input({ profile: { ...profile, availability: '' } })), /profile\.availability/],
     ['an answer budget over the cap', () => file(input({ request: { ...request, maxTokens: { question: 1500, fit: 50_000 } } })), /answer budget/],
@@ -105,21 +105,39 @@ describe('the questions, asked the way the live assistant asks', () => {
     expect(result.text).not.toContain('[[in:')
   })
 
-  it("asks both sides with main's model and settings, and says so when the branch names another model", async () => {
+  it("asks both sides with the model main's code names, whatever either input says, and main's settings within bounds", async () => {
     const { fetchImpl, calls } = model()
     const result = await run({ ...paths({ model: 'claude-mythos-9', request: { ...request, maxTokens: { question: 4000, fit: 4000 }, output_config: { effort: 'max' } } }), key: 'k', fetchImpl })
     expect(result.code).toBe(0)
-    expect(new Set(calls.map((call) => call.body.model))).toEqual(new Set(['claude-opus-5-5']))
+    expect(new Set(calls.map((call) => call.body.model))).toEqual(new Set([liveModel()]))
     expect(calls.every((call) => call.body.max_tokens <= 2200 && call.body.output_config.effort === 'low')).toBe(true)
-    expect(result.text).toContain("Note: the branch names the model claude-mythos-9; both sides were asked with main's, claude-opus-5-5.")
+    expect(result.text).toContain(`Note: the branch's input names the model claude-mythos-9; both sides were asked with the one main's code names, ${liveModel()}.`)
   })
 
-  it("refuses a branch system prompt far larger than main's", async () => {
-    expect(systemCap(10)).toBe(200_000)
-    expect(systemCap(100_000)).toBe(400_000)
+  it("never takes the model from main's input either: main.json naming another model is only noted", async () => {
     const { fetchImpl, calls } = model()
-    const result = await run({ ...paths({ system: 'x'.repeat(200_001) }), key: 'k', fetchImpl })
-    expect(result.text).toMatch(/Result: did not run \(the branch's system prompt is 200001 characters, over the 200000/)
+    const result = await run({ ...paths({}, { model: 'claude-costly-1' }), key: 'k', fetchImpl })
+    expect(new Set(calls.map((call) => call.body.model))).toEqual(new Set([liveModel()]))
+    expect(result.text).toContain("Note: main's input names the model claude-costly-1;")
+  })
+
+  it("reads the model from main's agent.ts, and does not run without it", async () => {
+    expect(liveModel()).toMatch(/^claude-/)
+    const agent = join(dir, 'agent.ts')
+    writeFileSync(agent, "export const MODEL = 'claude-test-1'\n")
+    expect(liveModel(agent)).toBe('claude-test-1')
+    writeFileSync(agent, "export const MODEL = 'gpt-5'\n")
+    const { fetchImpl, calls } = model()
+    expect((await run({ ...paths(), key: 'k', fetchImpl, agentPath: agent })).text).toMatch(/Result: did not run \(main's .*agent\.ts names no Claude model\.\)/)
+    expect((await run({ ...paths(), key: 'k', fetchImpl, agentPath: join(dir, 'missing.ts') })).text).toMatch(/cannot be read here/)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('refuses a system prompt over the absolute cap on either side', async () => {
+    expect(MAX_SYSTEM).toBe(300_000)
+    const { fetchImpl, calls } = model()
+    expect((await run({ ...paths({ system: 'x'.repeat(300_001) }), key: 'k', fetchImpl })).text).toMatch(/Result: did not run \(the branch input's system prompt is missing or over 300000 characters\.\)/)
+    expect((await run({ ...paths({}, { system: 'x'.repeat(300_001) }), key: 'k', fetchImpl })).text).toMatch(/the main input's system prompt/)
     expect(calls).toHaveLength(0)
   })
 
@@ -249,8 +267,8 @@ describe('the parts on their own', () => {
   })
 
   it("keeps main's request within the harness's bounds", () => {
-    expect(requestOf(input({ request: { maxTokens: { question: 1, fit: 2 }, betas: ['ok-beta', 'Bad Beta!', 5], thinking: { type: 'enabled' }, output_config: { effort: 'max' }, fallbacks: 'other' } }))).toEqual({ model: 'claude-opus-5-5', maxTokens: { question: 1, fit: 2 }, thinking: undefined, effort: undefined, betas: ['ok-beta'], fallbacks: undefined })
-    expect(requestOf(input({ request: { maxTokens: { question: 1, fit: 2 } } })).betas).toEqual([])
+    expect(requestOf(input({ request: { maxTokens: { question: 1, fit: 2 }, betas: ['ok-beta', 'Bad Beta!', 5], thinking: { type: 'enabled' }, output_config: { effort: 'max' }, fallbacks: 'other' } }), 'claude-opus-5-5')).toEqual({ model: 'claude-opus-5-5', maxTokens: { question: 1, fit: 2 }, thinking: undefined, effort: undefined, betas: ['ok-beta'], fallbacks: undefined })
+    expect(requestOf(input({ request: { maxTokens: { question: 1, fit: 2 } } }), 'claude-opus-5-5').betas).toEqual([])
   })
 
   it('shows sources by title, at most as many as the kind allows, and the text without the hidden line', () => {
