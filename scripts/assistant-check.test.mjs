@@ -297,3 +297,17 @@ describe('the command line', () => {
     expect(written[out]).toMatch(/did not run/)
   })
 })
+
+describe("the checks against the profile lines the assistant's prompt states (#56)", () => {
+  it('pass on the facts as the prompt gives them, from the real profile', async () => {
+    const { profile: live } = await import('../src/resume.ts')
+    const { systemPrompt } = await import('../functions/_lib/ask/prompt.ts')
+    const line = systemPrompt([]).split('\n').find((text) => text.includes('Work authorization:'))
+    expect(line).toContain(`Based in ${live.location}.`)
+    expect(line).toContain(`Work authorization: ${live.workAuthorization}.`)
+    expect(line).toContain(`Availability: ${live.availability}.`)
+    expect(line).toContain(`Team size led: ${live.teamSize}.`)
+    const facts = { location: live.location, workAuthorization: live.workAuthorization, availability: live.availability, teamSize: live.teamSize }
+    for (const id of ['location', 'team', 'availability']) expect(checkAnswer(id, line, facts), id).toMatchObject({ ok: true })
+  })
+})
