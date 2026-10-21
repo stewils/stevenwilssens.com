@@ -67,8 +67,10 @@ header h1 { margin: 0 0 3px; font-size: 25pt; font-weight: 800; letter-spacing: 
 header .headline { font-size: 11.6pt; font-weight: 700; color: var(--green); letter-spacing: -0.2pt; }
 header .contact { text-align: right; font-size: 8.6pt; line-height: 1.55; color: var(--muted); }
 header .contact strong { color: var(--ink); font-weight: 600; }
-.facts { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 16px; padding: 9px 0 4px; font-size: 9.2pt; line-height: 1.35; }
+.facts { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 2px 16px; padding: 9px 0 4px; font-size: 9.2pt; line-height: 1.35; }
 .facts .mono { display: block; margin-bottom: 2px; }
+/* The work arrangement runs the full width under the three facts: one line, where a second line in "Looking for" would wrap to three and push the older roles' bullets off the two pages. */
+.facts .arrangement { grid-column: 1 / -1; }
 section { margin-top: 8px; break-inside: auto; }
 h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; font-family: 'DM Mono', monospace; font-size: 7.6pt; font-weight: 500; text-transform: uppercase; color: var(--green); }
 h2::after { content: ''; flex: 1; height: 1px; background: var(--line); }
@@ -128,6 +130,7 @@ body.compact .foot { font-size: 8.7pt; }
   <div><span class="mono">Looking for</span>${esc(profile.lookingFor)} · ${esc(profile.availability.toLowerCase())}</div>
   <div><span class="mono">Scope</span>Led teams of ${esc(profile.teamSize)}; telemetry from 1.6B+ Windows devices</div>
   <div><span class="mono">Background</span>Product leader since 2008, software engineer and team lead before that</div>
+  <div class="arrangement">${esc(profile.workArrangement)}</div>
 </div>
 
 <section>

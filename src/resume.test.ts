@@ -3,11 +3,13 @@
 // fails when the two drift, so a content change never ships without a new resume.
 import { describe, expect, it } from 'vitest'
 import { analyzeResume, atsScore, compareScores, dataQuestions, extractPdf, formatComparison, lenses, readBaseline, resumePath } from '../scripts/resume-check.mjs'
-import { experiences } from './resume'
+import { experiences, impact, profile, selectedWork } from './resume'
 
 const pointsOf = (key: string) => experiences.find((item) => item.key === key)!.points
 // The PDF's text the way resume-check reads it: one line, straight quotes and hyphens, lower case.
 const normalize = (text: string) => text.replace(/[‘’]/g, "'").replace(/[–—]/g, '-').replace(/\s+/g, ' ').trim().toLowerCase()
+// A word hyphenated at a line break ("coordi- nated") read as one word.
+const joinHyphens = (text: string) => text.replace(/([a-z])- ([a-z])/g, '$1$2')
 const pdfText = async () => normalize((await extractPdf(resumePath)).text)
 
 describe('the resume PDF', () => {
@@ -92,11 +94,92 @@ describe('the Windows Data roles', () => {
       'Owned strategy and roadmap for the data platform and insights products Windows engineers and PMs use to ship higher-quality releases.',
       'Built the quality measurement framework that underpinned Windows K2, Microsoft’s high-profile push to improve Windows reliability and performance.',
       'Ran the weekly ship-readiness quality review where Windows VPs made release decisions based on my team’s data on ship-blocking issues.',
-      'Scaled experimentation adoption across Windows, significantly reducing the number of features pulled back after release.',
+      'Scaled experimentation across Windows to hundreds of concurrent experiments, significantly reducing the number of features pulled back after release.',
       'Owned the multi-million-dollar Windows data infrastructure budget; shut down a low-adoption on-device model platform and reinvested in platform modernization, cutting costs 30% over two years.',
       'Shifted the team to AI-driven analytics and launched the first version, letting people ask business questions in natural language across every source in the data platform instead of relying on fixed queries.',
       'Partnered with engineering, data science, and research leadership across telemetry from more than 1.6 billion Windows devices.',
     ])
     expect(points[0]).toContain('Microsoft’s')
+  })
+})
+
+// Steven's approved wording of 2026-10-21: how he works, the Cosmos hire, and four outcomes.
+describe('the work arrangement', () => {
+  it('profile.workArrangement is Steven’s sentence, right after location, and location, authorization and availability are unchanged', () => {
+    expect(profile.workArrangement).toBe('Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.')
+    const keys = Object.keys(profile)
+    expect(keys.indexOf('workArrangement')).toBe(keys.indexOf('location') + 1)
+    expect(profile.location).toBe('Seattle, Washington')
+    expect(profile.workAuthorization).toBe('US permanent resident (green card)')
+    expect(profile.availability).toBe('Available now')
+  })
+
+  it('is printed once in the PDF, under the facts and before the summary, and the contact block still reads', async () => {
+    const text = joinHyphens(await pdfText())
+    const sentence = normalize(profile.workArrangement)
+    expect(text.split(sentence)).toHaveLength(2)
+    expect(text.indexOf(sentence)).toBeGreaterThan(text.indexOf('looking for'))
+    expect(text.indexOf(sentence)).toBeLessThan(text.indexOf(normalize(profile.summary).slice(0, 60)))
+    const report = await analyzeResume()
+    expect(report.findings.filter((finding: { id?: string; message: string }) => /contact/i.test(`${finding.id ?? ''} ${finding.message}`))).toEqual([])
+  }, 30_000)
+})
+
+describe('the early career', () => {
+  it('cosmos explains the Info Support overlap and keeps its dates', () => {
+    const cosmos = experiences.find((item) => item.key === 'cosmos')!
+    expect(cosmos.summary).toBe('Built and supported software components across C# client and Java server systems using CORBA middleware. Joined as a consultant from Info Support, then hired full-time.')
+    expect(cosmos).toMatchObject({ dates: 'Jan 2004 - Dec 2005', role: 'Software Developer', location: 'Antwerp Area, Belgium' })
+    expect(cosmos.points).toEqual(['Provided technical guidance, application redesigns, developer support, and code reviews.', 'Worked on the Technical Components team responsible for construction, maintenance, and support.'])
+  })
+
+  // The PDF prints each Belgian role in one line with its summary, so the sentence is there too.
+  it('prints the new experimentation bullet under the Group PM role, the Cosmos sentence, and no longer the old bullet', async () => {
+    const text = joinHyphens(await pdfText())
+    const heading = text.indexOf('principal group product manager - windows & devices data')
+    const next = text.indexOf('principal product manager lead - windows data')
+    const bullet = text.indexOf(normalize(pointsOf('windows-devices-data')[4]))
+    expect(heading).toBeGreaterThan(-1)
+    expect(bullet).toBeGreaterThan(heading)
+    expect(bullet).toBeLessThan(next)
+    expect(text).not.toContain('scaled experimentation adoption')
+    expect(text).toContain('joined as a consultant from info support, then hired full-time.')
+  }, 30_000)
+})
+
+describe('the selected work outcomes', () => {
+  const work = (key: string) => selectedWork.find((item) => item.key === key)!
+
+  it('windows-quality says who adopted it and the roughly 30%, still sourced to Amit Gupte', () => {
+    expect(work('windows-quality')).toEqual({
+      key: 'windows-quality',
+      title: 'Windows quality, measured from preview channels to retail',
+      period: '2020 - 2026',
+      role: 'csx-data',
+      context: 'Windows ships to more than 1.6 billion devices. Engineers needed to know whether a release was healthy before it reached customers, and to find the issues that mattered once it had.',
+      work: 'Led the PM team that built the data products and the review rhythms measuring Windows quality across the Insider preview channels and at retail scale, weaving customer signals and machine learning into insights engineers act on.',
+      outcome: 'Adopted by every Windows team, and behind the roughly 30% drop in issue days across Perfect Day scenarios.',
+      source: 'Amit Gupte',
+    })
+    // The key number it states keeps its tile and its role.
+    expect(impact).toContainEqual({ value: '~30%', label: 'fewer issue days across Perfect Day scenarios', backing: 'csx-data' })
+  })
+
+  it('okr-tool keeps Amit’s sentence and adds the six months and Viva Goals', () => {
+    expect(work('okr-tool')).toEqual({
+      key: 'okr-tool',
+      title: 'An OKR tool, rebuilt with AI when the old one retired',
+      period: '2024 - 2026',
+      role: 'windows-devices-data',
+      context: 'The organization’s OKR management tool was being retired, leaving the planning rhythm without a home.',
+      work: 'With a member of my team, ideated and stood up a working replacement from scratch using AI coding tools, rather than waiting for a procurement cycle.',
+      outcome: 'The gap was closed with a functional replacement, and the project became the team’s working example of a modern AI development lifecycle. Built in six months to replace Viva Goals, Microsoft’s acquired OKR product, after it was retired.',
+      source: 'Amit Gupte',
+    })
+  })
+
+  it('wilssens-com says about eight family mailboxes and nothing else changed', () => {
+    expect(work('wilssens-com').outcome).toBe('Live with five sites and about eight family mailboxes, each site on its own isolated Worker and database; the design decisions are written up for hiring managers.')
+    expect(work('wilssens-com').link).toEqual({ href: '/building-wilssens', label: 'Read the write-up' })
   })
 })

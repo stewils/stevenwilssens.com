@@ -72,6 +72,7 @@ export const siteTools: ModelContextTool[] = [
       lookingFor: profile.lookingFor,
       availability: profile.availability,
       location: profile.location,
+      workArrangement: profile.workArrangement,
       workAuthorization: profile.workAuthorization,
       teamSize: `Led teams of ${profile.teamSize}`,
       contact: { email: profile.email, linkedin: profile.linkedin, site: profile.site, resumePdf: `${siteUrl}${profile.resumePdf}` },

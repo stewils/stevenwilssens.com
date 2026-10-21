@@ -4,7 +4,7 @@
 // that the build publishes next to the pages, so the assistant never knows more
 // than Steven chose to publish. It is byte-stable between requests (the write-ups
 // change only with a deploy), so the API caches it.
-import { education, experiences, honors, languages, news, recommendations } from '../../../src/resume'
+import { education, experiences, honors, languages, news, profile, recommendations } from '../../../src/resume'
 import { grantedPatents, patentApplications } from '../../../src/patents'
 import type { DossierEntry } from '../mcp/store'
 
@@ -41,6 +41,7 @@ const about = `Steven Wilssens is a principal product leader for data and AI, ba
 Before leading Windows data teams, he built products and platforms across Azure DevOps, spatial audio, game streaming and operating systems. Earlier he was a developer and team lead in Belgium, where he learned to pair technical depth with practical delivery and the growth of the people around him.
 He describes his work as product, portfolio and people leadership grounded in customer insight, rigorous execution and technical judgment. Several of the recommendations on his site come from people who reported to him for years. When a retiring OKR tool left a gap, a member of his team and he stood up a replacement from scratch with AI tools; he built wilssens.com the same way, to stay sharp on what his teams ship, not to replace them.
 Education: ${education.degree}, ${education.school} (${education.dates}). Languages: ${languages}.
+Work arrangement, as he publishes it: ${profile.workArrangement}
 Contact: ${contact.email}, LinkedIn ${contact.linkedin}. Résumé PDF: ${contact.resume}. Site: ${siteUrl}.`
 
 const projects = `- wilssens.com: a family platform he built and runs: email and websites at the family domain for everyone named Wilssens, with an AI help assistant, MCP connectors, a command line and payments ready if it grows. The write-up [site:article] at ${siteUrl}/building-wilssens explains how it was built with AI tools and the rules behind it.

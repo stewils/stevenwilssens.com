@@ -24,6 +24,11 @@ describe('diffResume', () => {
     expect(diffResume(resume(), resume())).toEqual([])
   })
 
+  it('lists a new work arrangement under Profile', () => {
+    const after = resume({ profile: { ...resume().profile, workArrangement: 'Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.' } })
+    expect(diffResume(resume(), after)).toEqual([{ section: 'Profile', kind: 'added', what: 'The work arrangement was added', to: 'Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.' }])
+  })
+
   it('sees a reworded bullet as one change with the old and the new text', () => {
     const after = resume({ experiences: [role({ points: ['Led a team of 10 to 20 product managers across three sites.', 'Set the direction for experimentation across Windows.'] })] })
     const changes = diffResume(resume(), after)

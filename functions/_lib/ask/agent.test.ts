@@ -5,6 +5,7 @@ import { answerIsOurs, ask, askStatus, CHECK_AFTER_ALL_HITS, CHECK_AFTER_IP_HITS
 import { articlePages, articleText, dossierText, loadArticles, sources, systemPrompt } from './prompt'
 import { dayOf, MemoryAskStore } from './store'
 import { visitorHash } from '../visitor'
+import { profile } from '../../../src/resume'
 
 const env = { HASH_SALT: 'salt', ANTHROPIC_API_KEY: 'sk-test' } as unknown as Env
 const url = 'https://steven.wilssens.com/api/ask'
@@ -45,6 +46,12 @@ describe('the prompt', () => {
     // Stable between calls, so the API can cache it.
     expect(systemPrompt(await dossier.list({ visibility: 'public' }))).toBe(text)
     expect(dossierText([])).not.toContain("Steven's own notes")
+  })
+
+  it('quotes the published work arrangement once and keeps the rule against inferring relocation', () => {
+    const text = systemPrompt([])
+    expect(dossierText([]).split(profile.workArrangement)).toHaveLength(2)
+    expect(text).toContain('Never infer level, compensation, visa status, clearance or willingness to relocate; those are for him to answer.')
   })
 
   it('reads the Building write-ups in full from the Markdown copies, without the footer and the navigation', async () => {

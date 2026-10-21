@@ -34,6 +34,10 @@ describe('resume site', () => {
     expect(screen.getByRole('heading', { name: 'Hiring a product leader for data, experimentation or AI?' })).toBeInTheDocument()
     expect(screen.getByText(/Available now, based in Seattle, Washington, a US permanent resident/)).toBeInTheDocument()
     expect(screen.getAllByText(/choosing my next/).length).toBeLessThanOrEqual(1)
+    // The work arrangement is its own fact, after location and authorization, so the city never shows twice in one line.
+    const facts = Array.from(document.querySelectorAll('.hero-facts > span')).map((span) => span.textContent)
+    expect(facts.slice(2)).toEqual(['Seattle, Washington · US permanent resident (green card)', 'Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.'])
+    expect(Array.from(document.querySelectorAll('body *')).some((element) => element.children.length === 0 && /Seattle, Washington/.test(element.textContent ?? '') && /Seattle-based/.test(element.textContent ?? ''))).toBe(false)
   })
 
   it('shows the selected work from the data and AI years, each case with its source', () => {
@@ -45,6 +49,15 @@ describe('resume site', () => {
     expect(screen.getByRole('heading', { name: 'An OKR tool, rebuilt with AI when the old one retired' })).toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: 'Amit Gupte' }).length).toBeGreaterThan(0)
     expect(screen.getByRole('link', { name: /Read the write-up/ })).toHaveAttribute('href', '/building-wilssens')
+    const caseOf = (title: string) => screen.getByRole('heading', { name: title }).closest('article') as HTMLElement
+    const quality = caseOf('Windows quality, measured from preview channels to retail')
+    expect(within(quality).getByText('Adopted by every Windows team, and behind the roughly 30% drop in issue days across Perfect Day scenarios.')).toBeInTheDocument()
+    expect(within(quality).getByRole('link', { name: 'Amit Gupte' })).toBeInTheDocument()
+    const okr = caseOf('An OKR tool, rebuilt with AI when the old one retired')
+    expect(within(okr).getByText('The gap was closed with a functional replacement, and the project became the team’s working example of a modern AI development lifecycle. Built in six months to replace Viva Goals, Microsoft’s acquired OKR product, after it was retired.')).toBeInTheDocument()
+    expect(within(okr).getByRole('link', { name: 'Amit Gupte' })).toBeInTheDocument()
+    expect(screen.getByText('Live with five sites and about eight family mailboxes, each site on its own isolated Worker and database; the design decisions are written up for hiring managers.')).toBeInTheDocument()
+    expect(screen.queryByText(/the family’s mailboxes/)).toBeNull()
   })
 
   it('moves the honors into the About sidebar with the hiring logistics', () => {
@@ -54,6 +67,10 @@ describe('resume site', () => {
     expect(screen.getByText('US permanent resident (green card)')).toBeInTheDocument()
     expect(screen.getByText('Seattle, Washington')).toBeInTheDocument()
     expect(within(screen.getByRole('list', { name: 'Honors and awards' })).getAllByRole('listitem')).toHaveLength(4)
+    // Work arrangement sits between "Based in" and "Work authorization".
+    const labels = Array.from(document.querySelectorAll('.side-note > span')).map((span) => span.textContent)
+    expect(labels.slice(labels.indexOf('Based in'), labels.indexOf('Based in') + 3)).toEqual(['Based in', 'Work arrangement', 'Work authorization'])
+    expect(screen.getByText('Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.').tagName).toBe('STRONG')
   })
 
   it('features the wilssens.com write-up on the home page', () => {
@@ -176,6 +193,15 @@ describe('resume site', () => {
     expect(bulletsOf('Principal Group Product Manager - Windows & Devices Data')[0]).toHaveTextContent('Led a PM organization of about 20, initially through three people managers, then led its move to a flatter team of about 12 during Microsoft’s cost reductions; roughly half the team was promoted under my leadership.')
     expect(screen.queryByText(/Led a PM organization of 10 to 20/)).toBeNull()
     expect(screen.queryByText(/designed its move to a flatter structure/)).toBeNull()
+  })
+
+  it('shows the experimentation scale and the Cosmos hire on the experience page', () => {
+    setPath('/experience')
+    render(<App />)
+
+    expect(screen.getByText('Scaled experimentation across Windows to hundreds of concurrent experiments, significantly reducing the number of features pulled back after release.')).toBeInTheDocument()
+    expect(screen.queryByText(/Scaled experimentation adoption/)).toBeNull()
+    expect(screen.getByText(/Joined as a consultant from Info Support, then hired full-time\./)).toBeInTheDocument()
   })
 
   it('shows a not-found page for unknown paths', () => {
