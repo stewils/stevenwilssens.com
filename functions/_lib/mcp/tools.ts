@@ -195,7 +195,11 @@ const clock = (iso: string | null) => (iso && /^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(
 export const blockedCauses = (pull: PullRequest, status: PullStatus): Blocked => {
   const n = pull.number
   const ranked: [number, string][] = []
-  const verdicts = status.verdicts && !status.verdicts.stale ? status.verdicts : null
+  // The team's verdicts count only once its check on this head has finished: after a recheck the old verdicts
+  // for the same head stay in the comment while the new review runs, and reading them would offer a recheck that
+  // cancels the review reading Steven's reply. Until then the check is "running" (or "not run").
+  const team = status.checks.find((check) => check.name === 'team')
+  const verdicts = status.verdicts && !status.verdicts.stale && team?.status === 'completed' ? status.verdicts : null
   const link = verdicts?.url ?? pull.url
   const objections = verdicts ? verdicts.roles.filter((role) => role.verdict === 'CHANGES_REQUESTED' || role.verdict === 'NEEDS_STEVEN') : []
   for (const role of objections) {
@@ -1081,7 +1085,9 @@ export const tools: Tool[] = [
         if (target.merged) throw new ToolError(`#${number} is already merged; there is nothing to recheck.`)
         if (target.state === 'closed') throw new ToolError(`#${number} is closed; recheck starts the checks of an open pull request. To run it again, redo it with request_site_update (redo: ${number}).`)
         if (!target.branch.startsWith('update/')) throw new ToolError(`#${number} is not a Site update pull request (its branch is ${target.branch}, not update/…): only those are rechecked from here.`)
-        await github.reopen(number)
+        try { await github.reopen(number) } catch (error) {
+          throw new ToolError(`${quotedReason(String((error as Error)?.message ?? error))}. Tell Steven: reopen it on GitHub (${target.url}, "Reopen pull request"); that starts its checks too.`)
+        }
         return { rechecked: true, pullRequest: { number, url: target.url }, next: `#${number} was closed and reopened as Steven, without a new commit, so Review and Site checks start on it now ("gates", "team", "check"). The team review takes a while: ask site_update_status again in a few minutes. Nothing merges until Steven says so.` }
       }
       if (!bool(args, 'confirm')) throw new ToolError('Ask Steven to confirm, in his words, that this pull request should go live, then call again with confirm: true.')

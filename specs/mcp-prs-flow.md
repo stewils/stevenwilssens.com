@@ -1202,6 +1202,22 @@ Where the build differs from the text above, and why:
   ("Work authorization: …", "Availability: …") and tells the assistant to state them
   exactly as given, so an honest answer carries every word (the developer's m3: no
   change).
+- **Round 3 (the team review on GitHub).** The team's verdicts count only once its
+  check on the head has finished, so after a recheck the MCP says "running" and does not
+  offer recheck again. Job A builds the export inside the checkout and main's worktree
+  (`--outDir .assistant-export`, gitignored), where node_modules resolves its imports.
+  Evidence, 2026-10-20, from a fresh clone in a temp folder: `npm ci` and `npm run build`
+  exit 0; `npx vite build --ssr scripts/assistant-export.ts --outDir .assistant-export
+  --emptyOutDir --logLevel warn` exits 0; `node .assistant-export/assistant-export.js dist
+  https://steven.wilssens.com/api/notes …` reports "did not run" (the endpoint answers
+  404 until this merges), and with a `data:` notes address it writes the input
+  ("claude-opus-5-5, 142212 characters of system prompt, 0 public notes, 5 write-ups").
+  The bundle imports only `node:` modules (the model client is not reached from the
+  export), and `scripts/assistant-export.test.ts` builds and runs it the same way. Also:
+  a failed reopen retries once, then says the pull request is closed and how to reopen
+  it; the bundle check reads paths with `git -z`; `publish` takes only its own run's
+  branch; the team takes the assistant report only when its digest matches job B's
+  output; the scope includes `assistant-input.ts` and `assistant-export.ts`.
 - **Merge order: #56 (`mcp-about-proposals`) merges before this pull request** (PM, round
   2). The new check holds the assistant's answers on location, work authorization and
   availability to `profile` in `src/resume.ts`. On main today the assistant's prompt

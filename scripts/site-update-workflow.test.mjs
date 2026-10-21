@@ -253,7 +253,7 @@ describe('the bot token never shares a job with code Claude or the branch wrote 
       expect(runOf(take)).toBe('node scripts/site-update-bundle.mjs "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "$BASE" origin/main "$GITHUB_SHA"')
       expect(envOf(take)).toContain('BASE: ${{ needs.update.outputs.base }}')
     }
-    for (const name of ['Push the branch', 'Open the pull request']) expect(runOf(publishStep(name)), name).toContain('[[ "$BRANCH" =~ ^update/[a-z0-9-]+-[0-9]+$ ]] ||')
+    for (const name of ['Push the branch', 'Open the pull request']) expect(runOf(publishStep(name)), name).toContain('[[ "$BRANCH" =~ ^update/[a-z0-9-]+-[0-9]+$ ]] && [[ "$BRANCH" == *-"$GITHUB_RUN_NUMBER" ]] ||')
   })
 
   it('closes the pull request a run supersedes only when it is an open Site update pull request of this repository, by the site bot or the built-in bot', () => {

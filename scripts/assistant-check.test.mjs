@@ -89,7 +89,7 @@ describe('the questions, asked the way the live assistant asks', () => {
     for (const call of calls) {
       expect(call.url).toBe('https://api.anthropic.com/v1/messages')
       expect(call.headers).toMatchObject({ 'x-api-key': 'test-key', 'anthropic-beta': 'server-side-fallback-2026-07-01' })
-      expect(call.body).toMatchObject({ model: 'claude-opus-5-5', thinking: { type: 'adaptive' }, output_config: { effort: 'low' }, fallbacks: 'default' })
+      expect(call.body).toMatchObject({ model: liveModel(), thinking: { type: 'adaptive' }, output_config: { effort: 'low' }, fallbacks: 'default' })
       expect(call.body.system[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' })
       expect(call.body.max_tokens).toBe(idOf(call.body) === 'fit' ? 2200 : 1500)
     }

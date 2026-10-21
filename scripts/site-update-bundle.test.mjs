@@ -141,6 +141,8 @@ describe('the bundle', () => {
 
   it.each([
     ['adds a workflow', (cwd) => write(cwd, '.github/workflows/x.yml', 'on: push\n')],
+    // git would print these names quoted ("\".github/w\\303\\266rk…\"") without -z.
+    ['adds a file under .github/ whose name git quotes (non-ASCII)', (cwd) => write(cwd, '.github/wörkflows/x.yml', 'on: push\n')],
     ['renames a file into .github/', (cwd) => { mkdirSync(join(cwd, '.github')); git(cwd, 'mv', 'README.md', '.github/README.md') }],
     ['changes .github/ and changes it back in a later commit', (cwd) => {
       write(cwd, '.github/CODEOWNERS', '* @someone\n')

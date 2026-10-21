@@ -172,7 +172,7 @@ jobs:
           # The assistant reads its code and prompt, the résumé and the write-ups. The panel (src/ask/) has its own
           # component tests. A fork's pull request gets no model key, so it is not checked here.
           run=false
-          if [ "$SAME_REPO" = true ] && git diff --name-only origin/main...HEAD | grep -qE '^(functions/api/ask|functions/_lib/ask/|src/resume\.ts$|src/patents\.ts$|src/articles/)'; then run=true; fi
+          if [ "$SAME_REPO" = true ] && git diff --name-only origin/main...HEAD | grep -qE '^(functions/api/ask|functions/_lib/ask/|functions/_lib/assistant-input\.ts$|scripts/assistant-export\.ts$|src/resume\.ts$|src/patents\.ts$|src/articles/)'; then run=true; fi
           # The check is main's: its export and its harness. Until main has both (the pull request that adds them),
           # it is not set up, which the team reads as such: never as a pass, and never for a model error or a missing key.
           setup=false
@@ -192,8 +192,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/assistant-input"
           npm ci
           npm run build
-          npx vite build --ssr scripts/assistant-export.ts --outDir "$RUNNER_TEMP/export-branch" --emptyOutDir --logLevel warn
-          node "$RUNNER_TEMP/export-branch/assistant-export.js" dist https://steven.wilssens.com/api/notes "$RUNNER_TEMP/assistant-input/branch.json"
+          npx vite build --ssr scripts/assistant-export.ts --outDir .assistant-export --emptyOutDir --logLevel warn
+          node .assistant-export/assistant-export.js dist https://steven.wilssens.com/api/notes "$RUNNER_TEMP/assistant-input/branch.json"
       - name: main's input
         if: steps.scope.outputs.run == 'true' && steps.scope.outputs.setup == 'true'
         run: |
@@ -203,8 +203,8 @@ jobs:
           cd "$main"
           npm ci
           npm run build
-          npx vite build --ssr scripts/assistant-export.ts --outDir "$RUNNER_TEMP/export-main" --emptyOutDir --logLevel warn
-          node "$RUNNER_TEMP/export-main/assistant-export.js" dist https://steven.wilssens.com/api/notes "$RUNNER_TEMP/assistant-input/main.json"
+          npx vite build --ssr scripts/assistant-export.ts --outDir .assistant-export --emptyOutDir --logLevel warn
+          node .assistant-export/assistant-export.js dist https://steven.wilssens.com/api/notes "$RUNNER_TEMP/assistant-input/main.json"
       - uses: actions/upload-artifact@v4
         if: steps.scope.outputs.run == 'true' && steps.scope.outputs.setup == 'true'
         with:
@@ -222,6 +222,10 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+    # The report's digest: job A ran the branch's code in this run and could upload an artifact by the report's
+    # name too, so the team step takes the report only when it is the one this job wrote.
+    outputs:
+      digest: ${{ steps.ask.outputs.digest }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -235,12 +239,16 @@ jobs:
           name: assistant-input
           path: ${{ runner.temp }}/assistant-input
       - name: Ask the assistant on the branch and on main
+        id: ask
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           mkdir -p "$RUNNER_TEMP/assistant-check"
           out="$RUNNER_TEMP/assistant-check/assistant-check.md"
-          node scripts/assistant-check.mjs --branch "$RUNNER_TEMP/assistant-input/branch.json" --main "$RUNNER_TEMP/assistant-input/main.json" --out "$out"
+          code=0
+          node scripts/assistant-check.mjs --branch "$RUNNER_TEMP/assistant-input/branch.json" --main "$RUNNER_TEMP/assistant-input/main.json" --out "$out" || code=$?
+          if [ -f "$out" ]; then echo "digest=$(sha256sum "$out" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"; fi
+          exit "$code"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -405,9 +413,14 @@ jobs:
           SETUP: ${{ needs.assistant-input.outputs.setup }}
           INPUT: ${{ needs.assistant-input.result }}
           CHECK: ${{ needs.assistant.result }}
+          DIGEST: ${{ needs.assistant.outputs.digest }}
         run: |
           # The recruiter's evidence for the assistant: the answers, or why there are none. Never silence.
           report=.review/assistant/assistant-check.md
+          # Only the report the check job wrote: its digest is that job's output, which no other job can set.
+          if [ -f "$report" ] && [ "$(sha256sum "$report" | cut -d' ' -f1)" != "$DIGEST" ]; then
+            printf '# The assistant check\n\nResult: did not run (the report found is not the one the check job wrote; see the run).\n' > "$report"
+          fi
           if [ "$INPUT" = success ] && [ "$SCOPE" = true ] && [ "$SETUP" != true ]; then
             mkdir -p .review/assistant
             printf '# The assistant check\n\nResult: not set up on main yet (main has no scripts/assistant-check.mjs and scripts/assistant-export.ts: the pull request that adds the check).\n' > "$report"

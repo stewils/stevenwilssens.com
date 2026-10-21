@@ -39,3 +39,7 @@ coverage
 screenshots
 # Review notes the team writes while working on a branch
 .review
+
+# The assistant check's bundled export (Review workflow, job A): built inside the checkout so it resolves node_modules.
+.assistant-export
+.assistant-export-test

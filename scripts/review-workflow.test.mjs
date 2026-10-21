@@ -69,6 +69,7 @@ describe('the assistant check (AC-9)', () => {
   it.each([
     ['functions/api/ask.ts', true], ['functions/api/ask/report.ts', true], ['functions/_lib/ask/prompt.ts', true], ['src/resume.ts', true],
     ['src/articles/site/SiteArticle.tsx', true], ['src/articles/aibreaker/feed.json', true], ['src/patents.ts', true],
+    ['functions/_lib/assistant-input.ts', true], ['scripts/assistant-export.ts', true],
     ['src/ask/AskAssistant.tsx', false], ['src/resume.test.ts', false], ['functions/_lib/github.ts', false], ['README.md', false],
   ])('a change to %s runs it: %s', (path, runs) => {
     expect(pattern.test(path)).toBe(runs)
@@ -83,7 +84,12 @@ describe('the assistant check (AC-9)', () => {
     expect(input).toMatch(/^ {4}permissions: \{\}$/m)
     expect(input).not.toMatch(/secrets\./)
     expect(input).toContain('persist-credentials: false')
-    expect(stepOf(input, "The branch's input")).toContain('node "$RUNNER_TEMP/export-branch/assistant-export.js" dist https://steven.wilssens.com/api/notes "$RUNNER_TEMP/assistant-input/branch.json"')
+    // The bundle is built inside the checkout (and inside main's worktree), where node_modules resolves its imports.
+    for (const [name, out] of [["The branch's input", 'branch.json'], ["main's input", 'main.json']]) {
+      expect(stepOf(input, name)).toContain('npx vite build --ssr scripts/assistant-export.ts --outDir .assistant-export --emptyOutDir --logLevel warn')
+      expect(stepOf(input, name)).toContain(`node .assistant-export/assistant-export.js dist https://steven.wilssens.com/api/notes "$RUNNER_TEMP/assistant-input/${out}"`)
+    }
+    expect(input).not.toMatch(/--outDir "\$RUNNER_TEMP/)
     expect(stepOf(input, "main's input")).toContain('git worktree add --detach "$main" origin/main')
     expect(stepOf(input, "main's input")).toContain('"$RUNNER_TEMP/assistant-input/main.json"')
     // main's input is built by main's own export, never a copy from the branch.
@@ -112,6 +118,15 @@ describe('the assistant check (AC-9)', () => {
     const inCheck = workflow.indexOf(check)
     const inPrompt = workflow.indexOf(prompt)
     expect(uses.every((at) => (at > inCheck && at < inCheck + check.length) || (at > inPrompt && at < inPrompt + prompt.length))).toBe(true)
+  })
+
+  it('takes the report only when it is the one the check job wrote (its digest is that job\'s output; job A ran branch code and could upload one too)', () => {
+    expect(check).toContain('digest: ${{ steps.ask.outputs.digest }}')
+    expect(stepOf(check, 'Ask the assistant on the branch and on main')).toContain('if [ -f "$out" ]; then echo "digest=$(sha256sum "$out" | cut -d\' \' -f1)" >> "$GITHUB_OUTPUT"; fi')
+    const notRun = stepOf(team, 'Say when the assistant check did not run')
+    expect(notRun).toContain('DIGEST: ${{ needs.assistant.outputs.digest }}')
+    expect(notRun).toContain('if [ -f "$report" ] && [ "$(sha256sum "$report" | cut -d\' \' -f1)" != "$DIGEST" ]; then')
+    expect(notRun.indexOf('!= "$DIGEST"')).toBeLessThan(notRun.indexOf('not set up on main yet'))
   })
 
   it('team still runs when the assistant check failed or was skipped, and then reads "did not run"', () => {
@@ -147,7 +162,8 @@ describe('what the reviewers are told (AC-10, AC-8)', () => {
 })
 
 describe("the recruiter's rule for the assistant check (AC-9)", () => {
-  const recruiter = readFileSync(join(root, '.claude/agents/senior-recruiter.md'), 'utf8').replace(/\r\n/g, '\n').replace(/\s+/g, ' ')
+  // This commit's rule, through git: the Review workflow puts main's .claude/ on the disk before its team job.
+  const recruiter = execFileSync('git', ['show', 'HEAD:.claude/agents/senior-recruiter.md'], { cwd: root, encoding: 'utf8' }).replace(/\r\n/g, '\n').replace(/\s+/g, ' ')
 
   it('a check that did not run is CHANGES_REQUESTED, never NEEDS_STEVEN or APPROVE, and the CI answers replace the preview', () => {
     expect(recruiter).toContain('those answers replace the preview as your evidence')

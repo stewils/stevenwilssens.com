@@ -327,7 +327,12 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
     },
     reopen: async (number) => {
       await api(`/pulls/${number}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed' }) })
-      await api(`/pulls/${number}`, { method: 'PATCH', body: JSON.stringify({ state: 'open' }) })
+      // Closed, it must open again: one more try, then an error that says it is closed now.
+      try { await api(`/pulls/${number}`, { method: 'PATCH', body: JSON.stringify({ state: 'open' }) }) } catch {
+        try { await api(`/pulls/${number}`, { method: 'PATCH', body: JSON.stringify({ state: 'open' }) }) } catch (error) {
+          throw new GitHubError(`#${number} was closed and could not be opened again (${String((error as Error).message ?? error).slice(0, 200)}); it is closed now`, error instanceof GitHubError ? error.status : 500)
+        }
+      }
     },
     repositoryDispatch: async (eventType, payload) => { await api('/dispatches', { method: 'POST', body: JSON.stringify({ event_type: eventType, client_payload: payload }) }) },
     headOf: async (repository, branch) => {

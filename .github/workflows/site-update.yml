@@ -433,7 +433,7 @@ jobs:
           BRANCH: ${{ needs.update.outputs.branch }}
         run: |
           set -e
-          [[ "$BRANCH" =~ ^update/[a-z0-9-]+-[0-9]+$ ]] || { echo "::error::Not a Site update branch: $BRANCH"; exit 1; }
+          [[ "$BRANCH" =~ ^update/[a-z0-9-]+-[0-9]+$ ]] && [[ "$BRANCH" == *-"$GITHUB_RUN_NUMBER" ]] || { echo "::error::Not this run's Site update branch: $BRANCH"; exit 1; }
           # The token goes in for this push only (as actions/checkout does it), masked in the log; no hooks run.
           auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
           echo "::add-mask::$auth"
@@ -458,7 +458,7 @@ jobs:
           SPEC: ${{ needs.update.outputs.spec }}
           SLUG: ${{ vars.SITE_BOT_SLUG }}
         run: |
-          [[ "$BRANCH" =~ ^update/[a-z0-9-]+-[0-9]+$ ]] || { echo "::error::Not a Site update branch: $BRANCH"; exit 1; }
+          [[ "$BRANCH" =~ ^update/[a-z0-9-]+-[0-9]+$ ]] && [[ "$BRANCH" == *-"$GITHUB_RUN_NUMBER" ]] || { echo "::error::Not this run's Site update branch: $BRANCH"; exit 1; }
           # The numbers from the update job, checked again: anything else reads unknown.
           [[ "$SCORE_BEFORE" =~ ^[0-9]+$ ]] || SCORE_BEFORE=unknown
           [[ "$SCORE_AFTER" =~ ^[0-9]+$ ]] || SCORE_AFTER=unknown

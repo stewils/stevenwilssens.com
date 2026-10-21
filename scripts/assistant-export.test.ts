@@ -1,6 +1,7 @@
 // @vitest-environment node
 // Job A's command line (scripts/assistant-export.ts): it writes the input, or says the check did
 // not run; it never writes a file without the notes.
+import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -44,4 +45,25 @@ describe("job A's export", () => {
     expect(await runExport([dir], { error: (line) => lines.push(line) })).toBe(2)
     expect(lines[0]).toMatch(/^Usage:/)
   })
+})
+
+describe("job A's built bundle, as the workflow builds and runs it", () => {
+  // The exact commands of review.yml's assistant-input job: built inside the checkout, so its imports
+  // (the model client among them) resolve from node_modules, then run with node. Real build: slow.
+  it('builds with vite --ssr inside the checkout and runs with node, writing the input', () => {
+    const root = join(import.meta.dirname, '..')
+    const outDir = '.assistant-export-test'
+    const site = mkdtempSync(join(tmpdir(), 'assistant-export-dist-'))
+    try {
+      writeFileSync(join(site, 'building-this-site.md'), '# The site\n\nHow it was built.')
+      execFileSync(process.execPath, [join(root, 'node_modules/vite/bin/vite.js'), 'build', '--ssr', 'scripts/assistant-export.ts', '--outDir', outDir, '--emptyOutDir', '--logLevel', 'warn'], { cwd: root, stdio: 'pipe' })
+      const out = join(site, 'branch.json')
+      const log = execFileSync(process.execPath, [join(outDir, 'assistant-export.js'), site, 'data:application/json,{"notes":[]}', out], { cwd: root, encoding: 'utf8' })
+      expect(log).toMatch(/^The assistant's input: claude-[a-z0-9.-]+, \d+ characters of system prompt, 0 public notes, 1 write-ups\.\n$/)
+      expect(JSON.parse(readFileSync(out, 'utf8'))).toMatchObject({ schema: 'assistant-input/1', notes: 0, articles: 1 })
+    } finally {
+      rmSync(join(root, outDir), { recursive: true, force: true })
+      rmSync(site, { recursive: true, force: true })
+    }
+  }, 120_000)
 })

@@ -15,6 +15,9 @@ import {
 } from './team-manifest.mjs'
 
 const repoRoot = resolve(import.meta.dirname, '..')
+// The rules as this commit has them. The Review workflow puts main's CLAUDE.md and .claude/ on the disk before
+// its team job (the rules it reviews by), so the tests of this change's rules read them through git.
+const committed = (path) => execFileSync('git', ['show', `HEAD:${path}`], { cwd: repoRoot, encoding: 'utf8' })
 const SLOW = 120_000
 const made = []
 afterAll(() => { for (const dir of made) rmSync(dir, { recursive: true, force: true }) })
@@ -843,7 +846,7 @@ describe('this repository', () => {
   }, SLOW)
 
   it('draws step 8 as the pull request with its three required checks, still 10 nodes, the gates and Steven where they were (specs/mcp-prs-flow.md, AC-11)', () => {
-    const team = readFileSync(join(repoRoot, '.claude/team.md'), 'utf8').replace(/\r\n/g, '\n')
+    const team = committed('.claude/team.md').replace(/\r\n/g, '\n')
     expect(team).toContain("  subgraph pr [Pull request: its required checks start on it]\n    prGates[gates: main's checkers]\n    prTeam[team: six reviews, with the assistant check in CI]\n    prCheck[check: site checks]\n  end\n")
     for (const line of ['  class ask,steven1,merge you', '  class spec,reviews,pr gate', '  %% step 8: pr', '  %% step 9: merge', '  pr --> merge([Steven merges]) --> deploy[Deploy to steven.wilssens.com]']) expect(team).toContain(line)
     expect(team).not.toMatch(/auto-?merge|merges by itself|redo/i)
@@ -861,7 +864,7 @@ describe('this repository', () => {
   }, SLOW)
 
   it('CLAUDE.md says who opens Site update pull requests and what that changes (AC-13)', () => {
-    const claude = readFileSync(join(repoRoot, 'CLAUDE.md'), 'utf8').replace(/\r\n/g, '\n')
+    const claude = committed('CLAUDE.md').replace(/\r\n/g, '\n')
     const rules = cutSection(claude, 'The team').replace(/\s+/g, ' ')
     for (const words of ["pushed and opened by the site's GitHub App", 'runs no branch code', 'the required checks start on the pull request', 'read-only token', 'nothing the App or a workflow writes counts as his', 'assistant check', 'recheck: true', 'Merging stays his']) expect(rules, words).toContain(words)
     const mcp = cutSection(claude, 'The MCP server').replace(/\s+/g, ' ')

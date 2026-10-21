@@ -428,10 +428,19 @@ describe('what holds a blocked Site update pull request (AC-8)', () => {
     expect(fake.calls.status).toEqual([])
   })
 
+  it('after a recheck, reads the old verdicts for the same head as nothing while the new team review runs: "running", and no recheck', async () => {
+    const old = { sha: HEAD, url: commentUrl, stale: false, roles: [{ role: 'security-engineer', verdict: 'NEEDS_STEVEN', summary: 'Should the CI key have a spend limit?' }, { role: 'senior-recruiter', verdict: 'CHANGES_REQUESTED', summary: 'x' }] }
+    for (const status of ['queued', 'in_progress']) {
+      const result = await causesOf(statusOf({ checks: [green('gates'), { ...green('team'), status, conclusion: null, startedAt: '2026-10-20T16:00:00Z' }, green('check')], verdicts: old }))
+      expect(result.text).toBe('#60 is not ready yet: "team" is still running (started 16:00 UTC). Merge it once it passes; wait_for_site_update does not follow checks, so ask again in a few minutes.')
+      expect(result.recheck).toBe(false)
+    }
+  })
+
   it('names at most three causes, the most decisive first', async () => {
     const result = await causesOf(statusOf({
-      checks: [{ ...green('gates'), conclusion: 'failure', step: 'Lint' }, { ...green('check'), status: 'queued', conclusion: null, startedAt: null }],
-      waiting: ['team'],
+      checks: [{ ...green('gates'), conclusion: 'failure', step: 'Lint' }, { ...green('team'), conclusion: 'failure' }, { ...green('check'), status: 'queued', conclusion: null, startedAt: null }],
+      waiting: ['check'],
       verdicts: { sha: HEAD, url: commentUrl, stale: false, roles: [{ role: 'ux-designer', verdict: 'CHANGES_REQUESTED', summary: 'The box overflows at 320px.' }, { role: 'product-manager', verdict: 'NEEDS_STEVEN', summary: 'Which title?' }] },
     }))
     const lines = result.text.split(/ (?=#60)/)
@@ -482,6 +491,14 @@ describe('what holds a blocked Site update pull request (AC-8)', () => {
 })
 
 describe('recheck and the redo of a write-up refresh (AC-7)', () => {
+  it('recheck that could not open the pull request again says it is closed and how to reopen it', async () => {
+    const fake = fakeGitHub({ pulls: [blocked(60)] })
+    const github = { ...fake.github, reopen: async () => { throw new Error('#60 was closed and could not be opened again (GitHub 422); it is closed now') } }
+    const result = await call(new MemoryStore(), 'merge_site_update', { number: 60, recheck: true }, { github })
+    expect(result.isError).toBe(true)
+    expect(result.text).toBe('#60 was closed and could not be opened again (GitHub 422); it is closed now. Tell Steven: reopen it on GitHub (https://github.com/x/pull/60, "Reopen pull request"); that starts its checks too.')
+  })
+
   it('recheck closes and reopens a Site update pull request with the MCP token: no commit, no dispatch, no merge, no confirm needed', async () => {
     const store = new MemoryStore()
     const fake = fakeGitHub({ pulls: [blocked(60)] })

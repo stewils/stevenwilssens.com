@@ -427,6 +427,14 @@ describe("a pull request's status", () => {
 })
 
 describe('recheck, a refresh sent again, and another repository\'s main', () => {
+  it('tries once more when opening again fails, and says the pull request is closed when that fails too', async () => {
+    const again = fakeFetch({ 'PATCH /pulls/12': [{ body: {} }, { status: 502, text: 'bad gateway' }, { body: {} }] })
+    await again.client.reopen(12)
+    expect(again.calls.map((call) => call.body)).toEqual([{ state: 'closed' }, { state: 'open' }, { state: 'open' }])
+    const stuck = fakeFetch({ 'PATCH /pulls/12': [{ body: {} }, { status: 502, text: 'bad gateway' }, { status: 422, body: { message: 'branch was deleted' } }] })
+    await expect(stuck.client.reopen(12)).rejects.toMatchObject({ status: 422, message: '#12 was closed and could not be opened again (GitHub 422 on /pulls/12: branch was deleted); it is closed now' })
+  })
+
   it('closes and reopens a pull request, with no comment', async () => {
     const { client, calls } = fakeFetch({ 'PATCH /pulls/12': [{ body: {} }, { body: {} }] })
     await client.reopen(12)

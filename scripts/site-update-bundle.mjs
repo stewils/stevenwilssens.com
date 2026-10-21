@@ -53,7 +53,9 @@ export function takeBundle({ bundle, branch, base, main = 'origin/main', start =
   if (git('rev-list', '--merges', `${base}..${ref}`).trim()) return refuse(5, `${name} holds a merge commit: it is refused.`)
   // Every path any commit on the branch touched, renames as both their paths; and, a second line behind the
   // merge refusal above, the change as a whole (what a merge could hide from the per-commit log).
-  const workflows = underGithub([...git('log', '--format=', '--name-only', '--no-renames', `${base}..${ref}`).split('\n'), ...git('diff', '--name-only', '--no-renames', base, ref).split('\n')])
+  // NUL-separated (-z): git quotes a name with a non-ASCII character or a quote in it otherwise, and a quoted
+  // name ("\".github/…") does not start with .github/.
+  const workflows = underGithub([...git('log', '--format=', '--name-only', '--no-renames', '-z', `${base}..${ref}`).split(/[\0\n]/), ...git('diff', '--name-only', '--no-renames', '-z', base, ref).split('\0')])
   if (workflows.length) return refuse(6, `${name} touches ${workflows.slice(0, 5).join(', ')}: a change to .github/ is not pushed by the site bot.`)
   return { ok: true, code: 0, sha, message: `${name} at ${sha.slice(0, 7)}: grows from main at ${base.slice(0, 7)} and touches nothing under .github/.` }
 }
