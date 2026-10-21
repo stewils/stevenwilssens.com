@@ -6,7 +6,8 @@ import { about, education, experiences, honors, impact, languages, news, profile
 import { grantedPatents, patentApplications } from '../../../src/patents'
 import { markdownPath, pageMeta, routes, type Page } from '../../../src/pageMeta'
 import type { AskGap, DossierEntry, DossierStore, Proposal, ProposalStatus, Visibility } from './store'
-import { noChangeStep, sameRepo, type GitHub, type PullRequest, type RunFailure, type WorkflowRun } from '../github'
+import { failedConclusions, noChangeStep, requiredChecks, sameRepo, type GitHub, type PullRequest, type PullStatus, type RunFailure, type WorkflowRun } from '../github'
+import sources from '../../../src/articles/sources.json'
 import { dossierText } from '../ask/prompt'
 import { compareLinkedIn, linkedInTexts, parseLinkedInCsv, parseLinkedInText, type LinkedInProfile } from '../review/linkedin'
 import { reviewForRecruiters, type ResumeReport } from '../review/recruiter'
@@ -166,8 +167,68 @@ const sleepFor = (ctx: ToolContext, ms: number) => (ctx.sleep ?? ((wait) => new 
 const mergeTrouble = (pull: PullRequest) => {
   if (pull.state === 'closed') return pull.merged ? `#${pull.number} is already merged.` : `#${pull.number} is closed. Redo it with request_site_update (redo: ${pull.number}) to get a fresh pull request.`
   if (pull.mergeable === false || pull.mergeableState === 'dirty') return `#${pull.number} conflicts with main: another change touched the same files (usually src/resume.ts and the résumé PDF, which every update regenerates) and merged first. GitHub cannot merge it. Redo it on a fresh branch from main with request_site_update (redo: ${pull.number}) or merge_site_update (redo: true); the same instruction runs again, the old pull request is closed, and the proposals it carries move with it.`
-  if (pull.mergeableState === 'blocked') return `#${pull.number} is blocked by the repository's branch rules (a required check or review). Open ${pull.url} to see which.`
   return null
+}
+
+// What holds a blocked pull request, from its own data (specs/mcp-prs-flow.md, AC-8): at most
+// three causes, the most decisive first, each with the one next step. Reviewer text comes only
+// from the team-verdicts marker of the Review workflow's own comment, quoted as data with
+// GitHub's link to that comment. recheck: whether merge_site_update with recheck: true helps.
+export type Blocked = { causes: string[]; recheck: boolean }
+const MAX_CAUSES = 3
+const roleNames: [RegExp, string][] = [[/product/i, 'product manager'], [/recruit/i, 'recruiter'], [/design|ux/i, 'designer'], [/secur/i, 'security engineer'], [/test/i, 'tester'], [/develop|engineer|code/i, 'developer']]
+export const roleName = (role: string) => roleNames.find(([pattern]) => pattern.test(role))?.[1] ?? (quotedReason(role) ?? 'a reviewer').toLowerCase().slice(0, 40)
+// A reviewer's words as data: one line, no links of their own, no double quotes, at most 160 characters.
+export const quoteFinding = (text: string) => {
+  const line = (quotedReason(text) ?? '').replace(/https?:\/\/\S+/gi, '[link]').replace(/"/g, "'")
+  const points = Array.from(line)
+  return points.length > 160 ? `${points.slice(0, 159).join('').trimEnd()}…` : line || 'no summary given'
+}
+const names = (list: string[]) => {
+  const quoted = list.map((name) => `"${name}"`)
+  return quoted.length > 1 ? `${quoted.slice(0, -1).join(', ')} and ${quoted.at(-1)}` : quoted[0]
+}
+const clock = (iso: string | null) => (iso && /^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(iso) ? `${iso.slice(11, 16)} UTC` : null)
+export const blockedCauses = (pull: PullRequest, status: PullStatus): Blocked => {
+  const n = pull.number
+  const ranked: [number, string][] = []
+  const verdicts = status.verdicts && !status.verdicts.stale ? status.verdicts : null
+  const link = verdicts?.url ?? pull.url
+  const objections = verdicts ? verdicts.roles.filter((role) => role.verdict === 'CHANGES_REQUESTED' || role.verdict === 'NEEDS_STEVEN') : []
+  for (const role of objections) {
+    if (role.verdict === 'CHANGES_REQUESTED') ranked.push([1, `#${n}: the ${roleName(role.role)} asked for changes: "${quoteFinding(role.summary)}" (${link}). Ask for the fix with request_site_update, or close it with close_site_update.`])
+    else ranked.push([2, `#${n}: the ${roleName(role.role)} waits for Steven's answer: "${quoteFinding(role.summary)}" (${link}). He replies there; merge_site_update with recheck: true then runs the review again with his reply.`])
+  }
+  for (const check of status.checks) {
+    if (check.status !== 'completed' || !check.conclusion || !failedConclusions.includes(check.conclusion)) continue
+    if (check.name === 'team' && objections.length) continue // the reviewers above say why
+    const where = check.step ? ` at "${quotedReason(check.step)}"` : ''
+    ranked.push([3, `#${n}: "${check.name}" failed${where}${check.url ? ` (${check.url})` : ''}. Ask for the fix with request_site_update, or close it with close_site_update.`])
+  }
+  if (pull.resumeScore?.lower && !status.labels.includes('accept-lower-score')) ranked.push([4, `#${n} lowers the résumé score from ${pull.resumeScore.before} to ${pull.resumeScore.after}; only Steven's accept-lower-score label on GitHub lets it merge, and then merge_site_update with acceptLowerScore: true.`])
+  const present = new Set(status.checks.map((check) => check.name))
+  const waiting = status.waiting.filter((name) => !status.checks.some((check) => check.name === name && check.status !== 'completed'))
+  if (waiting.length) ranked.push([5, `#${n}: ${names(waiting)} ${waiting.length > 1 ? 'wait' : 'waits'} for approval on GitHub (a run started by a bot). Call merge_site_update with recheck: true to start ${waiting.length > 1 ? 'them' : 'it'} as Steven.`])
+  const missing = requiredChecks.filter((name) => !present.has(name) && !waiting.includes(name))
+  if (missing.length) ranked.push([6, `#${n} cannot merge yet: ${names(missing)} ${missing.length > 1 ? 'have' : 'has'} not run on its latest commit. Call merge_site_update with recheck: true to start ${missing.length > 1 ? 'them' : 'it'}.`])
+  const running = status.checks.filter((check) => check.status !== 'completed')
+  if (running.length) {
+    const started = clock([...running.map((check) => check.startedAt)].filter(Boolean).sort()[0] ?? null)
+    ranked.push([7, `#${n} is not ready yet: ${names(running.map((check) => check.name))} ${running.length > 1 ? 'are' : 'is'} still running${started ? ` (started ${started})` : ''}. Merge it once ${running.length > 1 ? 'they pass' : 'it passes'}; wait_for_site_update does not follow checks, so ask again in a few minutes.`])
+  }
+  if (!ranked.length) return { causes: [`GitHub still reports #${n} as blocked, although every required check passed and no reviewer is waiting; it may still be working it out. Call merge_site_update again in a minute.`], recheck: false }
+  const causes = ranked.sort((a, b) => a[0] - b[0]).slice(0, MAX_CAUSES)
+  return { causes: causes.map(([, text]) => text), recheck: causes.some(([rank]) => rank === 2 || rank === 5 || rank === 6) }
+}
+// Why an open pull request of this repository does not merge, or null when nothing holds it.
+const troubleOf = async (github: GitHub, pull: PullRequest): Promise<Blocked | null> => {
+  const plain = mergeTrouble(pull)
+  if (plain) return { causes: [plain], recheck: false }
+  if (pull.state !== 'open' || pull.mergeableState !== 'blocked') return null
+  try { return blockedCauses(pull, await github.status(pull.number)) } catch (error) {
+    console.error('pull status', String(error))
+    return { causes: [`#${pull.number} is blocked by the repository's branch rules, and what holds it could not be read here (${quotedReason(String((error as Error)?.message ?? error))?.slice(0, 200)}). Call merge_site_update again in a minute.`], recheck: false }
+  }
 }
 const shapeRun = (run: WorkflowRun) => ({ id: run.id, number: run.number, status: run.status, conclusion: run.conclusion, startedAt: run.createdAt, url: run.url, branch: run.branch, title: run.title })
 // The run a dispatch started: the newest run of the workflow with that title, started around now.
@@ -231,12 +292,32 @@ const startUpdate = async (ctx: ToolContext, github: GitHub, request: { title: s
   if (request.proposals.length) inputs.proposals = request.proposals.join(',')
   if (request.supersedes) inputs.supersedes = String(request.supersedes)
   await github.dispatch(updateWorkflow, 'main', inputs)
+  return awaitRun(ctx, github, request.title)
+}
+const awaitRun = async (ctx: ToolContext, github: GitHub, title: string) => {
   let run: WorkflowRun | null = null
   for (let attempt = 0; attempt < 3 && !run; attempt++) {
     await sleepFor(ctx, 2000)
-    run = await findRun(github, request.title, ctx.now)
+    run = await findRun(github, title, ctx.now)
   }
   return run
+}
+type Project = { name: string; repository: string; article: string | null }
+const projectOf = (key: string | null | undefined) => (key && key !== '_comment' ? (sources as unknown as Record<string, Project>)[key] ?? null : null)
+// A Building write-up refresh is redone the way it was started: the check-in event again, at the
+// project's main as it is now (or the commit it was made from, when main cannot be read), so the
+// workflow checks the project out and reads its sources; a request without them refreshes nothing.
+const redoRefresh = async (ctx: ToolContext, github: GitHub, pull: PullRequest, key: string, project: Project) => {
+  const sha = (await github.headOf(project.repository, 'main')) ?? pull.request?.sourceSha ?? null
+  if (!sha) throw new ToolError(`#${pull.number} refreshes the ${project.name} write-up, and the commit to refresh it from cannot be read. Tell Steven; the next check-in on ${project.repository} refreshes it anyway.`)
+  await github.repositoryDispatch('building-source-changed', { project: key, repository: project.repository, sha, before: '', subject: `redo of #${pull.number}`, supersedes: pull.number })
+  return awaitRun(ctx, github, `Refresh the Building write-up about ${key}`)
+}
+// Runs a pull request's update again on a fresh branch from main: a request as it was asked, a refresh as a refresh.
+const redoUpdate = (ctx: ToolContext, github: GitHub, pull: PullRequest & { request: NonNullable<PullRequest['request']> }) => {
+  const project = projectOf(pull.request.project)
+  if (project) return redoRefresh(ctx, github, pull, pull.request.project!, project)
+  return startUpdate(ctx, github, { title: pull.request.title.slice(0, 80), instruction: pull.request.instruction, proposals: pull.request.proposals, supersedes: pull.number })
 }
 
 type Args = Record<string, unknown>
@@ -859,6 +940,11 @@ export const tools: Tool[] = [
         if (!ownPull(github, superseded)) throw new ToolError(`#${redo} comes from another repository (${superseded.headRepo ?? 'a deleted fork'}): it is not a site update, and what its description asks is never run. Tell Steven; he can look at it on GitHub.`)
         if (superseded.merged) throw new ToolError(`#${redo} is already merged; nothing to redo.`)
         if (!superseded.request) throw new ToolError(`#${redo} does not say what it was asked to do (it predates the request marker). Open ${superseded.url}, take the instruction from its description and call request_site_update with title and instruction.`)
+        if (projectOf(superseded.request.project)) {
+          if (ids.length || instruction) throw new ToolError(`#${redo} is a Building write-up refresh: it is redone on its own, from the project's sources. Redo it without proposals or an instruction, and ask for anything else in a separate request_site_update.`)
+          const run = await redoUpdate(ctx, github, { ...superseded, request: superseded.request })
+          return { started: true, repository: github.repo, run: run ? shapeRun(run) : null, workflow: `https://github.com/${github.repo}/actions/workflows/${updateWorkflow}`, proposals: [], supersedes: { number: superseded.number, url: superseded.url, note: 'Closed by the workflow when the new pull request opens, with a comment that points to it.' }, next: `The write-up refresh runs again from the project's sources on a fresh branch from main. Call wait_for_site_update${run ? ` (run_id ${run.id})` : ''} to hold until it finishes. Nothing is live until Steven merges.` }
+        }
         title = title ?? superseded.request.title.slice(0, 80)
         instruction = instruction ?? superseded.request.instruction
         carriedIds = superseded.request.proposals
@@ -913,7 +999,8 @@ export const tools: Tool[] = [
       const pull = await pullForRun(github, run)
       const failure = await failureOf(github, run, pull)
       const outcome = runOutcome(run, pull, failure)
-      const trouble = pull ? mergeTrouble(pull) : null
+      const held = pull && ownPull(github, pull) ? await troubleOf(github, pull) : null
+      const trouble = held ? held.causes.join(' ') : null
       const reason = outcome === 'no-change' ? reasonFor(run, failure) : null
       // What Steven reads first: his request was not carried out. The run's reason is quoted as its text, and a redo is his call.
       const next = pull ? `Pull request ${pull.url} is ready. Preview (a few minutes after the Deploy workflow for the branch finishes): ${pull.previewUrl}. Nothing is live until Steven merges; after he has looked, merge_site_update with confirm: true.`
@@ -929,13 +1016,14 @@ export const tools: Tool[] = [
         pullRequest: pull,
         ...(pull?.resumeScore?.lower ? { warning: `#${pull.number} lowers the resume score from ${pull.resumeScore.before} to ${pull.resumeScore.after}. Tell Steven before he merges; the pull request says which checks got worse.` } : {}),
         ...(trouble ? { mergeTrouble: trouble } : {}),
+        ...(held?.recheck ? { recheck: true } : {}),
         next,
       }
     },
   },
   {
     name: 'site_update_status',
-    description: 'Recent runs of the "Site update" workflow and the open pull requests, each with its preview link (https://<branch>.stevenwilssens.pages.dev), whether GitHub can merge it (mergeTrouble explains a conflict or a block and what to do), its résumé score against main, and the proposals it carries.',
+    description: 'Recent runs of the "Site update" workflow and the open pull requests, each with its preview link (https://<branch>.stevenwilssens.pages.dev), whether GitHub can merge it (mergeTrouble names what holds it, from the pull request\'s own checks and reviewers, at most three causes with the next step each; recheck: true when merge_site_update with recheck: true starts checks that did not start), its résumé score against main, and the proposals it carries.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     readOnly: true,
     run: async (_args, ctx) => {
@@ -953,7 +1041,10 @@ export const tools: Tool[] = [
         const outcome = runOutcome(run, pull, failure)
         return { ...shapeRun(run), outcome, ...(outcome === 'no-change' ? { reason: reasonFor(run, failure) } : {}), ...(pull ? { pullRequest: pull.number } : {}) }
       }))
-      const shaped = pulls.map((pull) => ({ ...pull, proposals: pull.request?.proposals ?? [], supersedes: pull.request?.supersedes ?? null, request: undefined, mergeTrouble: mergeTrouble(pull) }))
+      const shaped = await Promise.all(pulls.map(async (pull) => {
+        const held = await troubleOf(github, pull)
+        return { ...pull, proposals: pull.request?.proposals ?? [], supersedes: pull.request?.supersedes ?? null, request: undefined, mergeTrouble: held ? held.causes.join(' ') : null, ...(held?.recheck ? { recheck: true } : {}) }
+      }))
       const lowering = pulls.filter((pull) => pull.resumeScore?.lower)
       const stuck = shaped.filter((pull) => pull.mergeTrouble)
       return {
@@ -969,12 +1060,22 @@ export const tools: Tool[] = [
   },
   {
     name: 'merge_site_update',
-    description: 'Merge a pull request into main, which deploys it to production at steven.wilssens.com. Only after Steven has looked at the preview and said in this conversation that this pull request should go live; pass confirm: true to record that. Never call it on your own initiative. When the pull request lowers the resume score (site_update_status shows resumeScore.lower), the merge is refused until Steven has heard the warning and accepts it: then pass acceptLowerScore: true. When GitHub cannot merge it (a conflict with main, usually because another update merged first), the answer says why; with redo: true the same update is run again on a fresh branch from main and the old pull request closed, and the new one needs its own merge. The résumé proposals the pull request carries are marked applied on merge.',
-    inputSchema: { type: 'object', properties: { number: { type: 'integer', description: 'The pull request number' }, confirm: { type: 'boolean', description: 'true only when Steven said this pull request should go live' }, acceptLowerScore: { type: 'boolean', description: 'true only when Steven was told the pull request lowers the resume score and still wants it live' }, redo: { type: 'boolean', description: 'When the pull request conflicts with main: run the same update again on a fresh branch and close this one' } }, required: ['number', 'confirm'], additionalProperties: false },
+    description: 'Merge a pull request into main, which deploys it to production at steven.wilssens.com. Only after Steven has looked at the preview and said in this conversation that this pull request should go live; pass confirm: true to record that. Never call it on your own initiative. When the pull request lowers the resume score (site_update_status shows resumeScore.lower), the merge is refused until Steven has heard the warning and accepts it: then pass acceptLowerScore: true. When GitHub cannot merge it (a conflict with main, usually because another update merged first), the answer says why; with redo: true the same update is run again on a fresh branch from main and the old pull request closed, and the new one needs its own merge. When the pull request is blocked, the answer names what holds it (a check that has not started, is running or failed, a reviewer who asked for changes or waits for Steven, a lower résumé score). recheck: true (no confirm needed: nothing merges) closes and reopens a Site update pull request so its required checks start again, as Steven, without a new commit; use it when a check has not started or waits for approval, or after Steven replied to a reviewer. The résumé proposals the pull request carries are marked applied on merge.',
+    inputSchema: { type: 'object', properties: { number: { type: 'integer', description: 'The pull request number' }, confirm: { type: 'boolean', description: 'true only when Steven said this pull request should go live' }, acceptLowerScore: { type: 'boolean', description: 'true only when Steven was told the pull request lowers the resume score and still wants it live' }, redo: { type: 'boolean', description: 'When the pull request conflicts with main: run the same update again on a fresh branch and close this one' }, recheck: { type: 'boolean', description: 'Start its checks again instead of merging: closes and reopens the pull request (no commit, no merge)' } }, required: ['number'], additionalProperties: false },
     readOnly: false,
     run: async (args, ctx) => {
       const github = needGitHub(ctx)
       const number = int(args, 'number', 0, 1, Number.MAX_SAFE_INTEGER)
+      if (bool(args, 'recheck')) {
+        const target = await github.pull(number)
+        if (!target) throw new ToolError(`no pull request #${number}`)
+        if (!ownPull(github, target)) throw new ToolError(`#${number} comes from another repository (${target.headRepo ?? 'a deleted fork'}): it is not a site update and is not rechecked from here.`)
+        if (target.merged) throw new ToolError(`#${number} is already merged; there is nothing to recheck.`)
+        if (target.state === 'closed') throw new ToolError(`#${number} is closed; recheck starts the checks of an open pull request. To run it again, redo it with request_site_update (redo: ${number}).`)
+        if (!target.branch.startsWith('update/')) throw new ToolError(`#${number} is not a Site update pull request (its branch is ${target.branch}, not update/…): only those are rechecked from here.`)
+        await github.reopen(number)
+        return { rechecked: true, pullRequest: { number, url: target.url }, next: `#${number} was closed and reopened as Steven, without a new commit, so Review and Site checks start on it now ("gates", "team", "check"). The team review takes a while: ask site_update_status again in a few minutes. Nothing merges until Steven says so.` }
+      }
       if (!bool(args, 'confirm')) throw new ToolError('Ask Steven to confirm, in his words, that this pull request should go live, then call again with confirm: true.')
       let pull = await github.pull(number)
       if (!pull) throw new ToolError(`no pull request #${number}`)
@@ -986,7 +1087,7 @@ export const tools: Tool[] = [
         await sleepFor(ctx, 3000)
         pull = (await github.pull(number)) ?? pull
       }
-      let trouble = mergeTrouble(pull)
+      let trouble = (await troubleOf(github, pull))?.causes.join(' ') ?? null
       let result: { merged: boolean; message: string; sha?: string } | null = null
       if (!trouble) {
         try { result = await github.merge(number) } catch (error) {
@@ -998,7 +1099,7 @@ export const tools: Tool[] = [
         const conflicted = pull.state === 'open' && (pull.mergeable === false || pull.mergeableState === 'dirty' || /conflicts with main/.test(trouble))
         if (conflicted && bool(args, 'redo')) {
           if (!pull.request) throw new ToolError(`${trouble} It cannot be redone automatically: it predates the request marker. Open ${pull.url}, take the instruction from its description and call request_site_update with it.`)
-          const run = await startUpdate(ctx, github, { title: pull.request.title.slice(0, 80), instruction: pull.request.instruction, proposals: pull.request.proposals, supersedes: pull.number })
+          const run = await redoUpdate(ctx, github, { ...pull, request: pull.request })
           return { merged: false, redone: true, run: run ? shapeRun(run) : null, supersedes: { number: pull.number, url: pull.url }, why: trouble, next: `The same update now runs again on a fresh branch from main; #${pull.number} is closed when the new pull request opens. wait_for_site_update${run ? ` (run_id ${run.id})` : ''}, show Steven the new preview, and merge the new pull request once he says so.` }
         }
         throw new ToolError(`${trouble}${conflicted ? ' To redo it now, call merge_site_update again with redo: true.' : ''}`)

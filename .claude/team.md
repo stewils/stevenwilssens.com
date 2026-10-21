@@ -38,7 +38,12 @@ flowchart TD
     r1[Code] & r2[Security] & r3[Tests 90%] & r4[Design + screenshots] & r5[Recruiter: not worse] & r6[PM: acceptance]
   end
   reviews -- changes requested, max 3 rounds --> fix[Developer fixes] --> reviews
-  reviews -- all approve --> pr[Pull request + Review check on GitHub: main's gates and team review]
+  reviews -- all approve --> pr
+  subgraph pr [Pull request: its required checks start on it]
+    prGates[gates: main's checkers]
+    prTeam[team: six reviews, with the assistant check in CI]
+    prCheck[check: site checks]
+  end
   pr --> merge([Steven merges]) --> deploy[Deploy to steven.wilssens.com]
   classDef you stroke-width:3px
   classDef gate stroke-dasharray:4 3
@@ -94,8 +99,13 @@ flowchart TD
 8. **Pull request**: the lead opens it with the change for the reader and the designer's
    before/after screenshots first, then the spec, the sign-off table, the evidence
    (commands and results) and the preview address; the designer confirms the preview.
-   The Review workflow re-runs the checks and the team review on GitHub; branch
-   protection on main requires `gates`, `team` and `check` once Steven turns it on.
+   Branch protection on main requires `gates`, `team` and `check`, from runs the pull
+   request itself started. In the Site update workflow the `publish` job opens the pull
+   request with the site's App, from a runner that runs nothing from the branch, so its
+   events start Review, Site checks and Deploy on the pull request. The Review workflow
+   also runs the assistant check in CI on a change to the assistant, the résumé or a
+   write-up, for the recruiter. When a check did not start, `recheck: true` (the MCP's
+   `merge_site_update`) closes and reopens the pull request.
 9. **Merge**: only when every sign-off is `APPROVE`, CI is green and Steven says so.
    Always a merge commit (`gh pr merge --merge`) whose message says what changed for the
    reader.

@@ -258,6 +258,9 @@ const verifyTurnstile = async (secret: string, token: string, ip: string | null,
 /** `pages` reads one of the site's own static files by path (the Markdown copies of the Building write-ups); without it the assistant knows the write-ups only from the projects section. */
 export type AskDeps = { env: Env; store: AskStore; dossier: DossierStore; waitUntil: (promise: Promise<unknown>) => void; pages?: (path: string) => Promise<string | null>; stream?: StreamFactory; now?: () => number }
 
+/** The second system block: the page the reader is on, and for a pasted job description the fit-check format. The CI assistant check (functions/_lib/assistant-input.ts) sends the same. */
+export const contextFor = (page: string, fit: boolean) => `The reader is on the ${page === 'home' ? 'home' : page} page of steven.wilssens.com.${fit ? ' The last message is a job description pasted for a fit check: follow the fit-check format.' : ''}`
+
 // The write-ups change only with a deploy, which starts new isolates, so one read per isolate is enough.
 let articleCache: Promise<Articles> | null = null
 const articles = (pages: AskDeps['pages']): Promise<Articles> => {
@@ -304,7 +307,7 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
   const system = systemPrompt(entries, writeUps)
   const last = parsed.messages[parsed.messages.length - 1] as Extract<Turn, { role: 'user' }>
   const fit = last.kind === 'fit'
-  const context = `The reader is on the ${parsed.page === 'home' ? 'home' : parsed.page} page of steven.wilssens.com.${fit ? ' The last message is a job description pasted for a fit check: follow the fit-check format.' : ''}`
+  const context = contextFor(parsed.page, fit)
   const messages: Anthropic.Beta.BetaMessageParam[] = parsed.messages.map((turn) => turn.role === 'assistant'
     ? { role: 'assistant', content: `[[in: ${turn.sources.length ? turn.sources.join(', ') : 'none'}]]\n\n${turn.content}` }
     : { role: 'user', content: turn.kind === 'fit' ? `${jdPrefix}\n\n${turn.content}` : turn.content })

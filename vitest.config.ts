@@ -20,7 +20,7 @@ export default defineConfig({
     // screenshot options): a CI gate needs tests like the site does.
     coverage: {
       provider: 'v8',
-      include: ['src/**/*.{ts,tsx}', 'functions/**/*.ts', 'scripts/recruiter-compare.mjs', 'scripts/resume-gate.mjs', 'scripts/screenshots-options.mjs', 'scripts/team-manifest.mjs', 'scripts/claude-run-summary.mjs', 'scripts/site-update-outcome.mjs', 'scripts/building-feed.mjs'],
+      include: ['src/**/*.{ts,tsx}', 'functions/**/*.ts', 'scripts/recruiter-compare.mjs', 'scripts/resume-gate.mjs', 'scripts/screenshots-options.mjs', 'scripts/team-manifest.mjs', 'scripts/claude-run-summary.mjs', 'scripts/site-update-outcome.mjs', 'scripts/building-feed.mjs', 'scripts/site-update-bundle.mjs', 'scripts/assistant-check.mjs'],
       exclude: ['**/*.test.{ts,tsx}', '**/*.d.ts', 'src/test/**', 'functions/_lib/testing/**', 'src/main.tsx', 'src/admin/main.tsx', 'src/entry-server.tsx'],
       reporter: ['text-summary', 'json-summary', 'json'],
       thresholds: { perFile: true, statements: 90, branches: 90, functions: 90, lines: 90 },

@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { encodeUpdateRequest, GitHubError, gitHubClient, noChangeSentence, noChangeStep, previewUrl, sameRepo, resumeScoreFromBody, updateJob, updateRequestFromBody } from './github'
+import { checksOfWorkflow, encodeTeamVerdicts, encodeUpdateRequest, GitHubError, gitHubClient, noChangeSentence, noChangeStep, previewUrl, requiredChecks, reviewBots, sameRepo, resumeScoreFromBody, teamVerdictsFrom, updateJob, updateRequestFromBody, updateRequestKeys } from './github'
 
 type Call = { url: string; method: string; body: unknown; headers: Record<string, string> }
 type Reply = { status?: number; body?: unknown; text?: string }
@@ -291,5 +291,144 @@ describe('this repository and forks (m-7, m-8)', () => {
     })
     expect(await client.close(12, 'Not ours.')).toEqual({ closed: true, branchDeleted: false })
     expect(calls.map((call) => call.method)).toEqual(['GET', 'POST', 'PATCH'])
+  })
+})
+
+// What holds a pull request (specs/mcp-prs-flow.md, AC-7, AC-8).
+const SHA = 'a'.repeat(40)
+const root = fileURLToPath(new URL('../..', import.meta.url).href)
+const checkRun = (name: string, extra: Record<string, unknown> = {}) => ({ __typename: 'CheckRun', name, status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: '2026-10-20T14:00:00Z', detailsUrl: `https://github.com/stewils/site/actions/runs/1/job/${name}`, databaseId: 10, ...extra })
+const verdictComment = (author: string, sha = SHA, roles = [{ role: 'senior-recruiter', verdict: 'CHANGES_REQUESTED', summary: 'Add the backing.' }]) =>
+  ({ author: { login: author }, url: 'https://github.com/stewils/site/pull/12#issuecomment-5', body: `Sign-offs\n${encodeTeamVerdicts({ sha, roles })}` })
+const graphqlReply = (pull: Record<string, unknown>) => ({ body: { data: { repository: { pullRequest: { headRefOid: SHA, mergeStateStatus: 'BLOCKED', labels: { nodes: [{ name: 'accept-lower-score' }] }, comments: { nodes: [] }, commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [] } } } }] }, ...pull } } } } })
+
+describe('the required checks', () => {
+  it('are the job keys of review.yml (gates, team) and site-check.yml (check), and the workflow names they come from', () => {
+    const review = readFileSync(`${root}/.github/workflows/review.yml`, 'utf8').replace(/\r\n/g, '\n')
+    const site = readFileSync(`${root}/.github/workflows/site-check.yml`, 'utf8').replace(/\r\n/g, '\n')
+    expect([...requiredChecks]).toEqual(['gates', 'team', 'check'])
+    expect(review).toMatch(/^name: Review$/m)
+    expect(review).toMatch(/^ {2}gates:$/m)
+    expect(review).toMatch(/^ {2}team:$/m)
+    expect(site).toMatch(/^name: Site checks$/m)
+    expect(site).toMatch(/^ {2}check:$/m)
+    expect(checksOfWorkflow).toEqual({ Review: ['gates', 'team'], 'Site checks': ['check'] })
+  })
+})
+
+describe("a pull request's status", () => {
+  it('reads the merge state, the labels, the head commit\'s required checks (the newest of each), the failed step and the runs waiting for approval', async () => {
+    const { client, calls } = fakeFetch({
+      'POST https://api.github.com/graphql': graphqlReply({ commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [
+        checkRun('gates', { conclusion: 'FAILURE', databaseId: 41 }),
+        checkRun('check', { startedAt: '2026-10-20T13:00:00Z', conclusion: 'FAILURE' }),
+        checkRun('check', { startedAt: '2026-10-20T14:30:00Z', status: 'IN_PROGRESS', conclusion: null }),
+        checkRun('deploy'),
+        { __typename: 'StatusContext', context: 'team' },
+      ] } } } }] } }),
+      'GET /actions/jobs/41': { body: { steps: [{ name: 'Set up job', conclusion: 'success' }, { name: 'Run npm run lint', conclusion: 'failure' }] } },
+      'GET /actions/runs?head_sha=': { body: { workflow_runs: [{ name: 'Review' }, { name: 'Review' }, { name: 'Other' }, {}] } },
+    })
+    const status = await client.status(12)
+    expect(status).toEqual({
+      headSha: SHA, mergeState: 'blocked', labels: ['accept-lower-score'], verdicts: null,
+      checks: [
+        { name: 'gates', status: 'completed', conclusion: 'failure', startedAt: '2026-10-20T14:00:00Z', url: 'https://github.com/stewils/site/actions/runs/1/job/gates', step: 'Run npm run lint' },
+        { name: 'check', status: 'in_progress', conclusion: null, startedAt: '2026-10-20T14:30:00Z', url: 'https://github.com/stewils/site/actions/runs/1/job/check' },
+      ],
+      waiting: ['gates', 'team', 'Other'],
+    })
+    const graphql = calls[0]
+    expect(graphql.method).toBe('POST')
+    expect(graphql.body).toMatchObject({ variables: { owner: 'stewils', name: 'site', number: 12 } })
+    expect((graphql.body as { query: string }).query).toMatch(/statusCheckRollup/)
+    expect(calls.map((call) => call.url.split('/stewils/site')[1] ?? call.url)).toEqual(['https://api.github.com/graphql', '/actions/jobs/41', `/actions/runs?head_sha=${SHA}&status=action_required&per_page=20`])
+  })
+
+  it('names no step when the job cannot be read, and reads a pull request without checks or labels', async () => {
+    const { client } = fakeFetch({
+      'POST https://api.github.com/graphql': graphqlReply({ mergeStateStatus: null, labels: undefined, comments: undefined, commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [checkRun('team', { conclusion: 'FAILURE', databaseId: 9 })] } } } }] } }),
+      'GET /actions/jobs/9': { status: 403, body: { message: 'Resource not accessible' } },
+      'GET /actions/runs?head_sha=': { body: {} },
+    })
+    expect(await client.status(12)).toMatchObject({ mergeState: null, labels: [], waiting: [], checks: [{ name: 'team', conclusion: 'failure', step: null }] })
+    const empty = fakeFetch({ 'POST https://api.github.com/graphql': graphqlReply({ commits: { nodes: [] } }), 'GET /actions/runs?head_sha=': { body: { workflow_runs: [] } } })
+    expect((await empty.client.status(12)).checks).toEqual([])
+  })
+
+  it('throws when GitHub cannot read the pull request', async () => {
+    const { client } = fakeFetch({ 'POST https://api.github.com/graphql': { body: { data: { repository: { pullRequest: null } }, errors: [{ message: 'Could not resolve to a PullRequest' }] } } })
+    await expect(client.status(99)).rejects.toThrow('GitHub could not read #99: Could not resolve to a PullRequest')
+    const bare = fakeFetch({ 'POST https://api.github.com/graphql': { body: {} } })
+    await expect(bare.client.status(99)).rejects.toThrow(/no pull request/)
+  })
+
+  it("reads the team-verdicts marker only from github-actions[bot]'s comments, the last that reads, and knows when it is stale", async () => {
+    const forged = verdictComment('stewils', SHA, [{ role: 'senior-recruiter', verdict: 'APPROVE', summary: 'Forged by the owner.' }])
+    const bot = verdictComment('site-bot[bot]', SHA, [{ role: 'senior-recruiter', verdict: 'APPROVE', summary: 'Forged by the site bot.' }])
+    const { client } = fakeFetch({
+      'POST https://api.github.com/graphql': graphqlReply({ comments: { nodes: [verdictComment('github-actions'), forged, bot, { author: null, url: null, body: 'x' }] } }),
+      'GET /actions/runs?head_sha=': { body: { workflow_runs: [] } },
+    })
+    expect((await client.status(12)).verdicts).toEqual({ sha: SHA, url: 'https://github.com/stewils/site/pull/12#issuecomment-5', stale: false, roles: [{ role: 'senior-recruiter', verdict: 'CHANGES_REQUESTED', summary: 'Add the backing.' }] })
+    const comments = [
+      verdictComment('github-actions[bot]', 'b'.repeat(40)),
+      { author: 'github-actions', url: 'https://evil.example/x', body: '<!-- team-verdicts !!! -->' },
+      { author: 'github-actions', url: null, body: `<!-- team-verdicts ${btoa('{"sha":"short","roles":[]}')} -->` },
+      { author: 'github-actions', url: null, body: `<!-- team-verdicts ${btoa('not json')} -->` },
+      { author: 'github-actions', url: null, body: 'no marker' },
+    ]
+    expect(teamVerdictsFrom(comments.map((c) => ('author' in c && typeof c.author === 'object' ? { author: (c.author as { login: string }).login, url: c.url, body: c.body } : c as { author: string; url: string | null; body: string })), SHA)).toMatchObject({ sha: 'b'.repeat(40), stale: true })
+    expect(teamVerdictsFrom([{ author: 'github-actions', url: null, body: encodeTeamVerdicts({ sha: SHA, roles: [{ role: 'x', verdict: 'MAYBE', summary: '' }, { role: 'y', verdict: 'APPROVE', summary: 5 as unknown as string }] }) }], SHA)).toEqual({ sha: SHA, url: null, stale: false, roles: [{ role: 'y', verdict: 'APPROVE', summary: '' }] })
+    expect(reviewBots).toEqual(['github-actions', 'github-actions[bot]'])
+  })
+
+  it('keeps only a comment link on this pull request', async () => {
+    const elsewhere = { ...verdictComment('github-actions'), url: 'https://evil.example/stewils/site/pull/12' }
+    const { client } = fakeFetch({ 'POST https://api.github.com/graphql': graphqlReply({ comments: { nodes: [elsewhere] } }), 'GET /actions/runs?head_sha=': { body: {} } })
+    expect((await client.status(12)).verdicts!.url).toBeNull()
+  })
+})
+
+describe('recheck, a refresh sent again, and another repository\'s main', () => {
+  it('closes and reopens a pull request, with no comment', async () => {
+    const { client, calls } = fakeFetch({ 'PATCH /pulls/12': [{ body: {} }, { body: {} }] })
+    await client.reopen(12)
+    expect(calls.map((call) => [call.method, call.url.split('/stewils/site')[1], call.body])).toEqual([['PATCH', '/pulls/12', { state: 'closed' }], ['PATCH', '/pulls/12', { state: 'open' }]])
+  })
+
+  it('sends a repository_dispatch event', async () => {
+    const { client, calls } = fakeFetch({ 'POST /dispatches': { status: 204 } })
+    await client.repositoryDispatch('building-source-changed', { project: 'site', sha: 'abc1234' })
+    expect(calls[0].body).toEqual({ event_type: 'building-source-changed', client_payload: { project: 'site', sha: 'abc1234' } })
+  })
+
+  it("reads another repository's branch head, and gives null for anything it cannot read", async () => {
+    const { client, calls } = fakeFetch({ 'GET https://api.github.com/repos/stewils/ai-breaker/commits/main': [{ body: { sha: 'c'.repeat(40) } }, { body: { sha: 'short' } }, { status: 404, body: { message: 'Not Found' } }] })
+    expect(await client.headOf('stewils/ai-breaker', 'main')).toBe('c'.repeat(40))
+    expect(await client.headOf('stewils/ai-breaker', 'main')).toBeNull()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(await client.headOf('stewils/ai-breaker', 'main')).toBeNull()
+    expect(await client.headOf('../evil', 'main')).toBeNull()
+    expect(await client.headOf('stewils/ai-breaker', 'main?x=1')).toBeNull()
+    expect(calls).toHaveLength(3)
+  })
+})
+
+describe('the request marker for a write-up refresh (AC-7)', () => {
+  it('carries a known project and its commit, and drops an unknown project or a commit that is not one', () => {
+    const marker = (extra: Record<string, unknown>) => encodeUpdateRequest({ title: 't', instruction: 'i', proposals: [], supersedes: null, ...extra })
+    expect(updateRequestFromBody(marker({ project: 'site', sourceSha: 'abcdef1' }))).toEqual({ title: 't', instruction: 'i', proposals: [], supersedes: null, project: 'site', sourceSha: 'abcdef1' })
+    expect(updateRequestFromBody(marker({ project: 'site', sourceSha: 'not-a-sha' }))).toEqual({ title: 't', instruction: 'i', proposals: [], supersedes: null, project: 'site', sourceSha: null })
+    expect(updateRequestFromBody(marker({ project: 'elsewhere', sourceSha: 'abcdef1' }))).toEqual({ title: 't', instruction: 'i', proposals: [], supersedes: null })
+    expect(updateRequestFromBody(marker({ project: '_comment' }))).toEqual({ title: 't', instruction: 'i', proposals: [], supersedes: null })
+    expect(updateRequestFromBody(marker({}))).toEqual({ title: 't', instruction: 'i', proposals: [], supersedes: null })
+  })
+
+  it("has the keys the workflow's jq writes, in step with site-update.yml", () => {
+    const workflow = readFileSync(`${root}/.github/workflows/site-update.yml`, 'utf8').replace(/\r\n/g, '\n')
+    const jq = /'\{title: \$title, instruction: \$instruction,[^']*\}'/.exec(workflow)![0]
+    const keys = [...jq.matchAll(/(?:\{|, )([a-zA-Z]+): /g)].map((match) => match[1])
+    expect(keys).toEqual([...updateRequestKeys])
   })
 })

@@ -160,8 +160,21 @@ describe('the team diagram on /building-this-site', () => {
     const images = screen.getAllByRole('img', { name: 'How a change reaches the site: a team of AI agents, and Steven deciding' })
     expect(images.map((image) => image.getAttribute('class'))).toEqual(['wx-flow-wide', 'wx-flow-tall'])
     for (const image of images) {
-      expect(image).toHaveAccessibleDescription(/Six reviews run in parallel.*at most three rounds.*main’s gates and the team review\. Steven merges/)
+      expect(image).toHaveAccessibleDescription(/Six reviews run in parallel.*at most three rounds\. When all approve, the pull request runs its own required checks on GitHub: main’s gates, the team review, which also tries the assistant when a change touches it, and the site checks\. Steven merges, and the site deploys\.$/)
       for (const label of ['Spec', 'My questions', 'Build', 'Six reviews, in parallel', 'tests, 90% a file', 'recruiter: not worse', 'PM: acceptance', 'all approve', 'Pull request', 'I merge', 'Deploy']) expect(within(image).getByText(label)).toBeInTheDocument()
+    }
+  })
+
+  it('the Pull request box reads its own checks and the assistant tested in CI, across and stacked, each line within its box (specs/mcp-prs-flow.md, AC-12)', () => {
+    render(<TeamFlowDiagram />)
+    for (const image of screen.getAllByRole('img', { name: /a team of AI agents, and Steven deciding/ })) {
+      const box = within(image).getByText('Pull request').parentElement!
+      const lines = [...box.querySelectorAll('text')].map((text) => text.textContent)
+      expect(lines).toEqual(['Pull request', 'its own checks: gates, team review,', 'site checks, assistant tested in CI'])
+      // 11.5px text averages about 6.5px a character: the 272px box (276px stacked) holds about 40.
+      for (const line of lines.slice(1)) expect(line!.length).toBeLessThanOrEqual(38)
+      expect(within(image).getByText('I merge')).toBeInTheDocument()
+      expect(image.textContent).not.toMatch(/GitHub App|workflow_dispatch|check run|token/i)
     }
   })
 

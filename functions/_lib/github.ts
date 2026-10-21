@@ -2,9 +2,12 @@
 // (.github/workflows/site-update.yml), where Claude Code edits the site and the
 // resume on a branch and opens a pull request, and it reads runs and pull requests
 // back, merges them, closes them and waits for them. Needs a GitHub token (GITHUB_TOKEN
-// secret) with Actions: write, Contents: write (to delete a closed pull request's branch;
-// read is enough for everything else), Pull requests: write and Checks: read (the reason a
-// run made no change, from its annotations; without it the MCP points to the run instead).
+// secret) with Actions: write, Contents: write (to delete a closed pull request's branch and
+// to send a write-up refresh again; read is enough for everything else), Pull requests: write
+// and Checks: read (the reason a run made no change, from its annotations; without it the MCP
+// points to the run instead). It acts as Steven: closing and reopening a pull request (recheck)
+// starts its checks as him.
+import sources from '../../src/articles/sources.json'
 
 // branch is GitHub's head_branch: the branch the workflow ran from, `main` for every run the
 // MCP dispatches. number is the run number, which the workflow puts at the end of the branch
@@ -29,8 +32,33 @@ export type ResumeScore = { before: number | null; after: number; lower: boolean
 // What the workflow was asked to do, written into the pull request body as a hidden
 // `<!-- site-update-request <base64 JSON> -->` marker: the title and instruction (so the
 // update can be redone on a fresh branch when it conflicts), the résumé proposals it
-// carries (marked applied when it merges) and the pull request it supersedes.
-export type UpdateRequest = { title: string; instruction: string; proposals: number[]; supersedes: number | null }
+// carries (marked applied when it merges) and the pull request it supersedes; for a Building
+// write-up refresh, the project (a key of src/articles/sources.json) and the project's commit it
+// was made from, so a redo sends the refresh again rather than a request without its sources.
+// Keep the keys in step with the `jq` in site-update.yml's "Open the pull request".
+export type UpdateRequest = { title: string; instruction: string; proposals: number[]; supersedes: number | null; project?: string | null; sourceSha?: string | null }
+export const updateRequestKeys = ['title', 'instruction', 'proposals', 'supersedes', 'project', 'sourceSha'] as const
+const projects = Object.keys(sources).filter((key) => key !== '_comment')
+// The checks branch protection on main requires: review.yml's jobs gates and team, site-check.yml's check.
+export const requiredChecks = ['gates', 'team', 'check'] as const
+// Which required checks each workflow reports, for a run that waits for approval.
+export const checksOfWorkflow: Record<string, string[]> = { Review: ['gates', 'team'], 'Site checks': ['check'] }
+// A required check on the pull request's head commit, as the pull request counts it (its newest run).
+// step: the first failed step of a failed check, when GitHub said which.
+export type CheckState = { name: string; status: string; conclusion: string | null; startedAt: string | null; url: string | null; step?: string | null }
+// One reviewer's latest verdict, from the Review workflow's sign-off comment.
+export type TeamVerdict = { role: string; verdict: string; summary: string }
+// What holds a pull request, from its own data: GitHub's merge state, the required checks on
+// its head commit (a missing one never started on it), the runs waiting for approval, its
+// labels, and the team's verdicts with the comment they are in (stale when for another commit).
+export type PullStatus = {
+  headSha: string
+  mergeState: string | null
+  checks: CheckState[]
+  waiting: string[]
+  labels: string[]
+  verdicts: { sha: string; url: string | null; roles: TeamVerdict[]; stale: boolean } | null
+}
 // mergeableState is GitHub's word for why a pull request can or cannot merge: clean,
 // unstable (checks failing), behind (main moved on, still merges), blocked (branch
 // protection), dirty (conflicts with main), unknown (still being computed), or null
@@ -56,6 +84,14 @@ export type GitHub = {
   merge(number: number): Promise<MergeResult>
   // Closes a pull request with a comment saying why; the branch is deleted when the token may (best effort).
   close(number: number, comment: string): Promise<{ closed: boolean; branchDeleted: boolean }>
+  // What holds an open pull request (see PullStatus): one GraphQL query, the runs waiting for approval, the failed steps.
+  status(number: number): Promise<PullStatus>
+  // Closes and reopens a pull request, without a comment or a commit: its pull_request checks start again, as the token's owner.
+  reopen(number: number): Promise<void>
+  // Sends a repository_dispatch event to this repository (a write-up refresh, again).
+  repositoryDispatch(eventType: string, payload: Record<string, unknown>): Promise<void>
+  // The commit a branch of another repository is at (a project's main), or null when it cannot be read.
+  headOf(repository: string, branch: string): Promise<string | null>
 }
 
 // Cloudflare Pages names a branch preview after the branch: lower-case, anything
@@ -80,21 +116,25 @@ export const resumeScoreFromBody = (body: string | null | undefined): ResumeScor
 
 // The request marker is base64 of UTF-8 JSON, so an instruction with quotes, dashes or
 // accents never breaks the HTML comment it travels in.
-export const encodeUpdateRequest = (request: UpdateRequest) => {
-  const bytes = new TextEncoder().encode(JSON.stringify(request))
+const encodeMarker = (value: unknown) => {
   let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return `<!-- site-update-request ${btoa(binary)} -->`
+  for (const byte of new TextEncoder().encode(JSON.stringify(value))) binary += String.fromCharCode(byte)
+  return btoa(binary)
 }
+export const encodeUpdateRequest = (request: UpdateRequest) => `<!-- site-update-request ${encodeMarker(request)} -->`
+// base64 of UTF-8 JSON back to a value; throws on anything else.
+const decodeMarker = (base64: string): unknown => JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))))
+
 export const updateRequestFromBody = (body: string | null | undefined): UpdateRequest | null => {
   const match = lastMatch(/<!--\s*site-update-request\s+([A-Za-z0-9+/=]+)\s*-->/g, body)
   if (match) {
     try {
-      const binary = atob(match[1])
-      const text = new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)))
-      const parsed = JSON.parse(text) as Partial<UpdateRequest>
+      const parsed = decodeMarker(match[1]) as Partial<UpdateRequest>
       if (typeof parsed.title === 'string' && typeof parsed.instruction === 'string') {
-        return { title: parsed.title, instruction: parsed.instruction, proposals: Array.isArray(parsed.proposals) ? parsed.proposals.filter((id): id is number => Number.isInteger(id)) : [], supersedes: typeof parsed.supersedes === 'number' ? parsed.supersedes : null }
+        // A refresh's project and commit, only when they are a known project and a commit id; a marker without them reads as before.
+        const project = typeof parsed.project === 'string' && projects.includes(parsed.project) ? parsed.project : null
+        const sourceSha = project && typeof parsed.sourceSha === 'string' && /^[0-9a-f]{7,40}$/.test(parsed.sourceSha) ? parsed.sourceSha : null
+        return { title: parsed.title, instruction: parsed.instruction, proposals: Array.isArray(parsed.proposals) ? parsed.proposals.filter((id): id is number => Number.isInteger(id)) : [], supersedes: typeof parsed.supersedes === 'number' ? parsed.supersedes : null, ...(project ? { project, sourceSha } : {}) }
       }
     } catch { /* an unreadable marker is the same as none */ }
   }
@@ -102,6 +142,55 @@ export const updateRequestFromBody = (body: string | null | undefined): UpdateRe
   const legacy = /\*\*Instruction\*\*\s*\n\n([\s\S]*?)\n\n\*\*Resume score/.exec(body ?? '')
   return legacy ? { title: '', instruction: legacy[1].trim(), proposals: [], supersedes: null } : null
 }
+
+// The Review workflow posts the team's sign-off table as the built-in token's bot and puts
+// the verdicts in it as a hidden `<!-- team-verdicts <base64 JSON {sha, roles}> -->` marker
+// (review.yml, "Post the sign-offs"). Only that bot's comments are read, and of those the last
+// marker that reads: anyone can comment on a public pull request, so a marker in anyone else's
+// comment, the owner's and the site bot's included, is never the team's.
+export const reviewBots = ['github-actions', 'github-actions[bot]']
+export const verdicts = ['APPROVE', 'CHANGES_REQUESTED', 'NEEDS_STEVEN', 'NOT_APPLICABLE']
+export type PullComment = { author: string | null; url: string | null; body: string }
+export const encodeTeamVerdicts = (value: { sha: string; roles: TeamVerdict[] }) => `<!-- team-verdicts ${encodeMarker(value)} -->`
+export const teamVerdictsFrom = (comments: PullComment[], headSha: string): PullStatus['verdicts'] => {
+  let found: PullStatus['verdicts'] = null
+  for (const comment of comments) {
+    if (!comment.author || !reviewBots.includes(comment.author)) continue
+    const match = lastMatch(/<!--\s*team-verdicts\s+([A-Za-z0-9+/=]+)\s*-->/g, comment.body)
+    if (!match) continue
+    try {
+      const parsed = decodeMarker(match[1]) as { sha?: unknown; roles?: unknown }
+      if (typeof parsed.sha !== 'string' || !/^[0-9a-f]{40}$/.test(parsed.sha) || !Array.isArray(parsed.roles)) continue
+      const roles = (parsed.roles as Record<string, unknown>[]).filter((role) => role && typeof role.role === 'string' && typeof role.verdict === 'string' && verdicts.includes(role.verdict))
+        .map((role) => ({ role: (role.role as string).slice(0, 80), verdict: role.verdict as string, summary: typeof role.summary === 'string' ? role.summary.slice(0, 600) : '' }))
+      found = { sha: parsed.sha, url: comment.url, roles, stale: parsed.sha !== headSha }
+    } catch { /* an unreadable marker is the same as none */ }
+  }
+  return found
+}
+
+// The pull request's status in one query: what branch protection reads (the head commit's check
+// rollup), GitHub's merge state, the labels and the last 100 comments for the team's verdicts.
+const statusQuery = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      headRefOid
+      mergeStateStatus
+      labels(first: 50) { nodes { name } }
+      comments(last: 100) { nodes { author { login } url body } }
+      commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes { __typename ... on CheckRun { name status conclusion startedAt detailsUrl databaseId } } } } } } }
+    }
+  }
+}`
+type CheckRunNode = { __typename?: string; name?: string; status?: string; conclusion?: string | null; startedAt?: string | null; detailsUrl?: string | null; databaseId?: number | null }
+type StatusData = { repository?: { pullRequest?: {
+  headRefOid: string
+  mergeStateStatus?: string | null
+  labels?: { nodes?: { name: string }[] }
+  comments?: { nodes?: { author?: { login?: string } | null; url?: string; body?: string }[] }
+  commits?: { nodes?: { commit?: { statusCheckRollup?: { contexts?: { nodes?: CheckRunNode[] } } | null } }[] }
+} | null } | null }
+export const failedConclusions = ['failure', 'timed_out', 'cancelled', 'startup_failure', 'action_required', 'stale']
 
 const shapePull = (pull: Record<string, unknown>): PullRequest => {
   const head = pull.head as { ref: string; repo?: { full_name?: string } | null }
@@ -117,8 +206,9 @@ const shapePull = (pull: Record<string, unknown>): PullRequest => {
 const shapeRun = (run: Record<string, unknown>): WorkflowRun => ({ id: run.id as number, number: typeof run.run_number === 'number' ? run.run_number : null, event: typeof run.event === 'string' ? run.event : null, status: run.status as string, conclusion: (run.conclusion as string | null) ?? null, createdAt: run.created_at as string, url: run.html_url as string, branch: run.head_branch as string, title: (run.display_title as string) ?? (run.name as string) })
 
 export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetch = fetch): GitHub => {
+  // A path under this repository (/pulls/1), or an absolute API address (another repository, GraphQL).
   const api = async (path: string, init: RequestInit = {}) => {
-    const response = await fetchImpl(`https://api.github.com/repos/${repo}${path}`, {
+    const response = await fetchImpl(path.startsWith('https://') ? path : `https://api.github.com/repos/${repo}${path}`, {
       ...init,
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'steven-wilssens-mcp', ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...(init.headers ?? {}) },
     })
@@ -182,6 +272,47 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
         try { await api(`/git/refs/heads/${branch}`, { method: 'DELETE' }); branchDeleted = true } catch (error) { console.error('branch delete', String(error)) }
       }
       return { closed: true, branchDeleted }
+    },
+    status: async (number) => {
+      const [owner, name] = repo.split('/')
+      const answer = await api('https://api.github.com/graphql', { method: 'POST', body: JSON.stringify({ query: statusQuery, variables: { owner, name, number } }) }) as { data?: StatusData; errors?: { message?: string }[] }
+      const pull = answer?.data?.repository?.pullRequest
+      if (!pull) throw new GitHubError(`GitHub could not read #${number}: ${answer?.errors?.[0]?.message ?? 'no pull request'}`, 404)
+      const headSha = pull.headRefOid
+      const contexts = (pull.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? []).filter((node) => node.__typename === 'CheckRun')
+      // Each required check as the pull request counts it: its newest run on the head commit.
+      const checks: CheckState[] = []
+      for (const check of requiredChecks) {
+        const newest = contexts.filter((node) => node.name === check).sort((a, b) => String(b.startedAt ?? '').localeCompare(String(a.startedAt ?? '')))[0]
+        if (!newest) continue
+        const state: CheckState = { name: check, status: String(newest.status ?? '').toLowerCase(), conclusion: newest.conclusion ? newest.conclusion.toLowerCase() : null, startedAt: newest.startedAt ?? null, url: newest.detailsUrl ?? null }
+        // Where a failed check stopped: an Actions check run is its job, whose steps say which failed.
+        if (state.conclusion && failedConclusions.includes(state.conclusion) && newest.databaseId) {
+          try {
+            const job = await api(`/actions/jobs/${newest.databaseId}`) as { steps?: { name: string; conclusion: string | null }[] }
+            state.step = job.steps?.find((step) => step.conclusion === 'failure')?.name ?? null
+          } catch { state.step = null }
+        }
+        checks.push(state)
+      }
+      const runs = await api(`/actions/runs?head_sha=${headSha}&status=action_required&per_page=20`) as { workflow_runs?: { name?: string }[] }
+      const waiting = [...new Set((runs?.workflow_runs ?? []).flatMap((run) => checksOfWorkflow[run.name ?? ''] ?? (run.name ? [run.name] : [])))]
+      const prefix = `https://github.com/${repo}/pull/${number}`.toLowerCase()
+      const comments = (pull.comments?.nodes ?? []).map((node) => ({ author: node.author?.login ?? null, url: typeof node.url === 'string' && node.url.toLowerCase().startsWith(prefix) ? node.url : null, body: node.body ?? '' }))
+      return { headSha, mergeState: pull.mergeStateStatus ? pull.mergeStateStatus.toLowerCase() : null, checks, waiting, labels: (pull.labels?.nodes ?? []).map((label) => label.name), verdicts: teamVerdictsFrom(comments, headSha) }
+    },
+    reopen: async (number) => {
+      await api(`/pulls/${number}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed' }) })
+      await api(`/pulls/${number}`, { method: 'PATCH', body: JSON.stringify({ state: 'open' }) })
+    },
+    repositoryDispatch: async (eventType, payload) => { await api('/dispatches', { method: 'POST', body: JSON.stringify({ event_type: eventType, client_payload: payload }) }) },
+    headOf: async (repository, branch) => {
+      // owner/name and a branch as GitHub spells them; nothing that could climb out of the path.
+      if (!/^[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(repository) || !/^[A-Za-z0-9_][A-Za-z0-9_./-]*$/.test(branch) || `${repository}/${branch}`.includes('..')) return null
+      try {
+        const commit = await api(`https://api.github.com/repos/${repository}/commits/${branch}`) as { sha?: string }
+        return typeof commit?.sha === 'string' && /^[0-9a-f]{40}$/.test(commit.sha) ? commit.sha : null
+      } catch (error) { console.error('head of', repository, String(error)); return null }
     },
   }
 }
