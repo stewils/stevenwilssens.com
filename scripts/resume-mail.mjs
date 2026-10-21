@@ -120,7 +120,7 @@ function diffKeyed(changes, { noun, sectionOf, keyOf, labels, lists = {}, before
   for (const [key, item] of beforeByKey) if (!afterByKey.has(key)) changes.push({ section: sectionOf(item), kind: 'removed', what: `The ${noun} was removed`, from: describe(item, labels) })
 }
 
-const profileLabels = { name: 'name', headline: 'headline on the site', resumeHeadline: 'headline on the resume', summary: 'summary', lookingFor: 'line about what Steven is looking for', location: 'location', workAuthorization: 'work authorization', availability: 'availability', teamSize: 'team size', email: 'email address', phone: 'phone number', linkedin: 'LinkedIn link', site: 'site address', resumeFileName: 'resume file name' }
+const profileLabels = { name: 'name', headline: 'headline on the site', resumeHeadline: 'headline on the resume', summary: 'summary', lookingFor: 'line about what Steven is looking for', location: 'location', workAuthorization: 'work authorization', workArrangement: 'work arrangement', availability: 'availability', teamSize: 'team size', email: 'email address', phone: 'phone number', linkedin: 'LinkedIn link', site: 'site address', resumeFileName: 'resume file name' }
 const roleLabels = { role: 'title', company: 'company', dates: 'dates', location: 'location', summary: 'one-line summary' }
 const workLabels = { title: 'title', period: 'period', context: 'context', work: 'description of the work', outcome: 'outcome', source: 'source' }
 const newsLabels = { title: 'title', publication: 'publication', url: 'link', summary: 'summary' }

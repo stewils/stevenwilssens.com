@@ -3,6 +3,7 @@ import type { Env } from '../env'
 import { escapeHtml, handleMcp, resolveMode } from './server'
 import { MemoryStore } from './store'
 import { publicToolNames, recruiterLens, searchTerms, sitePages } from './tools'
+import { profile } from '../../../src/resume'
 
 const env = { MCP_OWNER_KEY: 'owner-key-123' } as unknown as Env
 const url = 'https://steven.wilssens.com/mcp/owner-key-123'
@@ -99,6 +100,7 @@ describe('what is already there', () => {
     expect((about.roles as { key: string }[]).map((role) => role.key)).toContain('windows-devices-data')
     expect((about.contact as { email: string }).email).toBe('steven@wilssens.com')
     expect(about.sitePages).toEqual(sitePages)
+    expect(about.workArrangement).toBe(profile.workArrangement)
     const role = parse((await call(store, 'get_role', { role: 'spatial-audio-lead' })).text)
     expect(role.role).toContain('Principal Product Manager Lead')
     expect(role.entries).toEqual([])
@@ -203,6 +205,7 @@ describe('the résumé', () => {
     const current = roles.find((role) => role.key === 'spatial-audio-lead')!.points[1]
     expect(current).toContain('250%')
     expect((resume.pages as Record<string, string>)['building-wilssens']).toBeTruthy()
+    expect((resume.profile as { workArrangement: string }).workArrangement).toBe(profile.workArrangement)
 
     const missing = await call(store, 'propose_resume_change', { role: 'spatial-audio-lead', kind: 'replace', proposed_text: 'x', rationale: 'y' })
     expect(missing.text).toContain('current_text is required')
@@ -344,6 +347,7 @@ describe('the public server', () => {
     const about = parse((await publicCall(store, 'about_steven')).text)
     expect(about.dossier).toEqual({ publicNotes: 1 })
     expect(about.waitingFromTheSite).toBeUndefined()
+    expect(about.workArrangement).toBe(profile.workArrangement)
     expect(about.howToUse).toContain('check_fit')
     const write = await publicCall(store, 'save_entry', { role: 'csx-data', topic: 'scope', title: 't', body: 'b' })
     expect(write.body.error?.code).toBe(-32602)

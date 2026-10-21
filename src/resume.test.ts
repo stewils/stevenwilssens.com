@@ -3,7 +3,7 @@
 // fails when the two drift, so a content change never ships without a new resume.
 import { describe, expect, it } from 'vitest'
 import { analyzeResume, atsScore, compareScores, dataQuestions, extractPdf, formatComparison, lenses, readBaseline, resumePath } from '../scripts/resume-check.mjs'
-import { experiences } from './resume'
+import { experiences, profile, selectedWork } from './resume'
 
 const pointsOf = (key: string) => experiences.find((item) => item.key === key)!.points
 // The PDF's text the way resume-check reads it: one line, straight quotes and hyphens, lower case.
@@ -92,11 +92,49 @@ describe('the Windows Data roles', () => {
       'Owned strategy and roadmap for the data platform and insights products Windows engineers and PMs use to ship higher-quality releases.',
       'Built the quality measurement framework that underpinned Windows K2, Microsoft’s high-profile push to improve Windows reliability and performance.',
       'Ran the weekly ship-readiness quality review where Windows VPs made release decisions based on my team’s data on ship-blocking issues.',
-      'Scaled experimentation adoption across Windows, significantly reducing the number of features pulled back after release.',
+      'Scaled experimentation across Windows to hundreds of concurrent experiments, significantly reducing the number of features pulled back after release.',
       'Owned the multi-million-dollar Windows data infrastructure budget; shut down a low-adoption on-device model platform and reinvested in platform modernization, cutting costs 30% over two years.',
       'Shifted the team to AI-driven analytics and launched the first version, letting people ask business questions in natural language across every source in the data platform instead of relying on fixed queries.',
       'Partnered with engineering, data science, and research leadership across telemetry from more than 1.6 billion Windows devices.',
     ])
     expect(points[0]).toContain('Microsoft’s')
+  })
+
+  it('prints the experimentation bullet in full', async () => {
+    expect(await pdfText()).toContain(normalize(pointsOf('windows-devices-data')[4]))
+  }, 30_000)
+})
+
+// Steven's approved wording for the work arrangement, the Cosmos hire and four stories.
+describe('the work arrangement and the sharper stories', () => {
+  const story = (key: string) => selectedWork.find((item) => item.key === key)!
+
+  it('says where Steven works, next to the unchanged location, on the PDF too', async () => {
+    expect(profile.workArrangement).toBe('Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.')
+    expect(profile.location).toBe('Seattle, Washington')
+    expect(await pdfText()).toContain(normalize(profile.workArrangement))
+  }, 30_000)
+
+  it('explains the Cosmos overlap with Info Support, dates unchanged, in the PDF', async () => {
+    const cosmos = experiences.find((item) => item.key === 'cosmos')!
+    expect(cosmos.summary).toBe('Built and supported software components across C# client and Java server systems using CORBA middleware. Joined as a consultant from Info Support, then hired full-time.')
+    expect(cosmos.dates).toBe('Jan 2004 - Dec 2005')
+    expect(await pdfText()).toContain(normalize('Joined as a consultant from Info Support, then hired full-time.'))
+  }, 30_000)
+
+  it('gives windows-quality its adoption and the 30% drop, source unchanged', () => {
+    expect(story('windows-quality').outcome).toBe('Adopted by every Windows team, and behind the roughly 30% drop in issue days across Perfect Day scenarios.')
+    expect(story('windows-quality').source).toBe('Amit Gupte')
+  })
+
+  it('says what okr-tool replaced and how fast, with a curly apostrophe', () => {
+    const okr = story('okr-tool')
+    expect(okr.work).toBe('With a member of my team, ideated and stood up a working replacement from scratch using AI coding tools, rather than waiting for a procurement cycle. Built in six months to replace Viva Goals, Microsoft’s acquired OKR product, after it was retired.')
+    expect(okr.outcome).toBe('The gap was closed with a functional replacement, and the project became the team’s working example of a modern AI development lifecycle.')
+    expect(okr.source).toBe('Amit Gupte')
+  })
+
+  it('counts the wilssens.com mailboxes', () => {
+    expect(story('wilssens-com').outcome).toMatch(/^Live with five sites and about eight family mailboxes, each site on its own isolated Worker and database;/)
   })
 })

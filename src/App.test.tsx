@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { profile } from './resume'
 
 const setPath = (path: string) => {
   window.history.pushState({}, '', path)
@@ -31,6 +32,7 @@ describe('resume site', () => {
 
     expect(screen.getByText(/led 10 to 20 product managers/)).toBeInTheDocument()
     expect(screen.getByText('Seattle, Washington · US permanent resident (green card)')).toBeInTheDocument()
+    expect(screen.getByText(profile.workArrangement)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Hiring a product leader for data, experimentation or AI?' })).toBeInTheDocument()
     expect(screen.getByText(/Available now, based in Seattle, Washington, a US permanent resident/)).toBeInTheDocument()
     expect(screen.getAllByText(/choosing my next/).length).toBeLessThanOrEqual(1)
@@ -53,6 +55,7 @@ describe('resume site', () => {
 
     expect(screen.getByText('US permanent resident (green card)')).toBeInTheDocument()
     expect(screen.getByText('Seattle, Washington')).toBeInTheDocument()
+    expect(within(screen.getByRole('complementary')).getByText(profile.workArrangement)).toBeInTheDocument()
     expect(within(screen.getByRole('list', { name: 'Honors and awards' })).getAllByRole('listitem')).toHaveLength(4)
   })
 

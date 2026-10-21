@@ -59,6 +59,7 @@ describe('WebMCP', () => {
     expect(about.headline).toBe(profile.headline)
     expect(about.lookingFor).toBe(profile.lookingFor)
     expect(about.workAuthorization).toBe(profile.workAuthorization)
+    expect(about.workArrangement).toBe(profile.workArrangement)
     expect(about.contact).toEqual({ email: profile.email, linkedin: profile.linkedin, site: profile.site, resumePdf: `https://steven.wilssens.com${profile.resumePdf}` })
     expect(about.roles.map((role: { key: string }) => role.key)).toEqual(experiences.map((item) => item.key))
     expect(about.keyNumbers[0]).toEqual({ value: '250%+', label: 'growth in monthly active spatial-audio devices', backedByRole: 'spatial-audio-lead' })
