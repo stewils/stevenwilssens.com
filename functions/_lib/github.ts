@@ -18,13 +18,15 @@ export type WorkflowRun = { id: number; number: number | null; event: string | n
 // of the update job, whether it is the no-change step, and that step's reason (its error
 // annotation without the fixed sentence; null when it is not there or cannot be read), and
 // whether GitHub refused the annotations (403: the token lacks Checks: read).
-export type RunFailure = { step: string; noChange: boolean; reason: string | null; refused?: boolean }
+export type RunFailure = { step: string; noChange: boolean; reason: string | null; refused?: boolean; job?: string }
 // The Site update workflow's step that fails a run Claude made no change in
 // (scripts/site-update-outcome.mjs), and the sentence its error annotation starts with.
 // Keep both in step with .github/workflows/site-update.yml (github.test.ts reads it).
 export const noChangeStep = 'Stop when no change was made'
 export const noChangeSentence = 'Claude made no change to the site for this request.'
 export const updateJob = 'update'
+// The Site update workflow's jobs a run can fail in, in their order (the brief only skips).
+export const runJobs = ['preflight', updateJob, 'publish']
 // The Site update workflow writes the resume score before and after its change into the
 // pull request body (a hidden `<!-- resume-score before=90 after=85 -->` marker), so the
 // MCP server can warn Steven before he merges something that lowers it.
@@ -206,8 +208,10 @@ const shapePull = (pull: Record<string, unknown>): PullRequest => {
 const shapeRun = (run: Record<string, unknown>): WorkflowRun => ({ id: run.id as number, number: typeof run.run_number === 'number' ? run.run_number : null, event: typeof run.event === 'string' ? run.event : null, status: run.status as string, conclusion: (run.conclusion as string | null) ?? null, createdAt: run.created_at as string, url: run.html_url as string, branch: run.head_branch as string, title: (run.display_title as string) ?? (run.name as string) })
 
 export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetch = fetch): GitHub => {
-  // A path under this repository (/pulls/1), or an absolute API address (another repository, GraphQL).
+  // A path under this repository (/pulls/1), or an absolute address on GitHub's API (another repository, GraphQL):
+  // the token goes to api.github.com and nowhere else.
   const api = async (path: string, init: RequestInit = {}) => {
+    if (!path.startsWith('/') && !path.startsWith('https://api.github.com/')) throw new GitHubError(`refused to send the token to ${path.slice(0, 80)}`, 400)
     const response = await fetchImpl(path.startsWith('https://') ? path : `https://api.github.com/repos/${repo}${path}`, {
       ...init,
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'steven-wilssens-mcp', ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...(init.headers ?? {}) },
@@ -233,22 +237,30 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
     run: async (id) => { try { return shapeRun((await api(`/actions/runs/${id}`)) as Record<string, unknown>) } catch (error) { if (notFound(error)) return null; throw error } },
     runFailure: async (runId) => {
       const body = await api(`/actions/runs/${runId}/jobs?per_page=100`) as { jobs?: { id: number; name: string; steps?: { name: string; conclusion: string | null }[] }[] }
-      const job = (body.jobs ?? []).find((item) => item.name === updateJob)
-      const failed = job?.steps?.find((step) => step.conclusion === 'failure')
+      // The first job, in the workflow's order, with a failed step: the bot not set up (preflight), the change
+      // itself (update), or the push and the pull request (publish).
+      let job: { id: number; name: string } | null = null
+      let failed: { name: string } | null = null
+      for (const name of runJobs) {
+        const item = (body.jobs ?? []).find((candidate) => candidate.name === name)
+        const step = item?.steps?.find((candidate) => candidate.conclusion === 'failure')
+        if (item && step) { job = item; failed = step; break }
+      }
       if (!job || !failed) return null
-      if (failed.name !== noChangeStep) return { step: failed.name, noChange: false, reason: null }
+      const noChange = job.name === updateJob && failed.name === noChangeStep
       // A job is a check run: its annotations carry the step's ::error:: line. Checks: read is needed for them.
       let reason: string | null = null
       let refused = false
       try {
         const annotations = await api(`/check-runs/${job.id}/annotations?per_page=50`) as unknown as { message?: string; annotation_level?: string }[]
-        const line = annotations.find((item) => item.annotation_level === 'failure' && typeof item.message === 'string' && item.message.startsWith(noChangeSentence))
-        if (line) reason = line.message!.slice(noChangeSentence.length).trim() || null
+        const errors = annotations.filter((item) => item.annotation_level === 'failure' && typeof item.message === 'string')
+        const line = noChange ? errors.find((item) => item.message!.startsWith(noChangeSentence)) : errors[0]
+        if (line) reason = (noChange ? line.message!.slice(noChangeSentence.length) : line.message!).trim() || null
       } catch (error) {
         if (!(error instanceof GitHubError) || (error.status !== 403 && error.status !== 404)) throw error
         refused = error.status === 403
       }
-      return { step: failed.name, noChange: true, reason, refused }
+      return { step: failed.name, noChange, reason, refused, job: job.name }
     },
     pulls: async (state = 'open', limit = 20) => ((await api(`/pulls?state=${state}&per_page=${Math.min(Math.max(limit, 1), 100)}&sort=created&direction=desc`)) as unknown as Record<string, unknown>[]).map(shapePull),
     pull: async (number) => { try { return shapePull((await api(`/pulls/${number}`)) as Record<string, unknown>) } catch (error) { if (notFound(error)) return null; throw error } },
@@ -280,14 +292,18 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
       if (!pull) throw new GitHubError(`GitHub could not read #${number}: ${answer?.errors?.[0]?.message ?? 'no pull request'}`, 404)
       const headSha = pull.headRefOid
       const contexts = (pull.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? []).filter((node) => node.__typename === 'CheckRun')
-      // Each required check as the pull request counts it: its newest run on the head commit.
+      // Each required check as the pull request counts it: its newest run on the head commit. A queued run has not
+      // started yet, so it is newer than any run that has; only the first failed check is asked where it stopped
+      // (one request more, not one per check: the MCP server counts its requests).
       const checks: CheckState[] = []
+      let stepRead = false
       for (const check of requiredChecks) {
-        const newest = contexts.filter((node) => node.name === check).sort((a, b) => String(b.startedAt ?? '').localeCompare(String(a.startedAt ?? '')))[0]
+        const newest = contexts.filter((node) => node.name === check).sort((a, b) => String(b.startedAt ?? '9999').localeCompare(String(a.startedAt ?? '9999')))[0]
         if (!newest) continue
         const state: CheckState = { name: check, status: String(newest.status ?? '').toLowerCase(), conclusion: newest.conclusion ? newest.conclusion.toLowerCase() : null, startedAt: newest.startedAt ?? null, url: newest.detailsUrl ?? null }
         // Where a failed check stopped: an Actions check run is its job, whose steps say which failed.
-        if (state.conclusion && failedConclusions.includes(state.conclusion) && newest.databaseId) {
+        if (state.conclusion && failedConclusions.includes(state.conclusion) && newest.databaseId && !stepRead) {
+          stepRead = true
           try {
             const job = await api(`/actions/jobs/${newest.databaseId}`) as { steps?: { name: string; conclusion: string | null }[] }
             state.step = job.steps?.find((step) => step.conclusion === 'failure')?.name ?? null
@@ -295,8 +311,11 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
         }
         checks.push(state)
       }
-      const runs = await api(`/actions/runs?head_sha=${headSha}&status=action_required&per_page=20`) as { workflow_runs?: { name?: string }[] }
-      const waiting = [...new Set((runs?.workflow_runs ?? []).flatMap((run) => checksOfWorkflow[run.name ?? ''] ?? (run.name ? [run.name] : [])))]
+      // A check waits for approval only when no run of it exists on the head commit: a run held at action_required
+      // puts no check run there, and an old held run stays held after a recheck started a new one.
+      const absent = requiredChecks.filter((check) => !checks.some((state) => state.name === check))
+      const runs = absent.length ? await api(`/actions/runs?head_sha=${headSha}&status=action_required&per_page=20`) as { workflow_runs?: { name?: string }[] } : null
+      const waiting = [...new Set((runs?.workflow_runs ?? []).flatMap((run) => checksOfWorkflow[run.name ?? ''] ?? (run.name ? [run.name] : [])))].filter((name) => !checks.some((state) => state.name === name))
       const prefix = `https://github.com/${repo}/pull/${number}`.toLowerCase()
       const comments = (pull.comments?.nodes ?? []).map((node) => ({ author: node.author?.login ?? null, url: typeof node.url === 'string' && node.url.toLowerCase().startsWith(prefix) ? node.url : null, body: node.body ?? '' }))
       return { headSha, mergeState: pull.mergeStateStatus ? pull.mergeStateStatus.toLowerCase() : null, checks, waiting, labels: (pull.labels?.nodes ?? []).map((label) => label.name), verdicts: teamVerdictsFrom(comments, headSha) }

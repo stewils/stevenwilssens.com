@@ -127,12 +127,25 @@ describe('the steps around the team step (AC-3, AC-4, T-3, C-2, C-5)', () => {
     expect(commit).not.toMatch(/made no changes/)
   })
 
-  it('the workflow uploads no execution file: only the change, from its own folder', () => {
+  it('the workflow uploads no execution file: only the change and the résumé data, each from its own folder', () => {
     const uploads = [...workflow.matchAll(/uses: actions\/upload-artifact@v\d+\n {8}with:\n((?: {10}.+\n)+)/g)].map((match) => match[1])
-    expect(uploads).toHaveLength(1)
+    expect(uploads).toHaveLength(2)
     expect(uploads[0]).toContain('name: site-update-change')
     expect(uploads[0]).toContain('path: ${{ runner.temp }}/change\n')
+    expect(uploads[1]).toContain('name: resume-data')
+    expect(uploads[1]).toContain('path: ${{ runner.temp }}/resume-data\n')
     expect(workflow.match(/execution_file/g)).toHaveLength(1)
+  })
+
+  it('the bundle names the commit of main it grew from, which goes on as the base', () => {
+    const handover = step('Hand the change on')
+    expect(runOf(handover)).toContain('base=$(git rev-parse origin/main)')
+    expect(runOf(handover)).toContain('git bundle create "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "^$base"')
+    expect(update).toContain('base: ${{ steps.handover.outputs.base }}')
+  })
+
+  it('tells Claude that a change under .github/ is never pushed from here', () => {
+    expect(team).toContain('A change under .github/ is never pushed from this workflow (the site bot cannot, and the workflow refuses it after your run)')
   })
 })
 
@@ -234,9 +247,22 @@ describe('the bot token never shares a job with code Claude or the branch wrote 
     expect(workflow.match(/SITE_BOT_PRIVATE_KEY/g)).toHaveLength(publish.match(/SITE_BOT_PRIVATE_KEY/g).length + preflight.match(/SITE_BOT_PRIVATE_KEY/g).length + workflow.slice(0, workflow.indexOf('\njobs:')).match(/SITE_BOT_PRIVATE_KEY/g).length)
   })
 
-  it('re-validates the branch name before the fetch and before the push and the pull request', () => {
-    expect(runOf(publishStep('Take the change from the update job'))).toBe('node scripts/site-update-bundle.mjs "$RUNNER_TEMP/change/change.bundle" "$BRANCH" origin/main')
+  it("re-validates the branch name before the fetch and before the push and the pull request, and checks the bundle against the update job's base (main may have moved on)", () => {
+    for (const job of [publish, jobOf('resume-data'), email]) {
+      const take = cutStep(job, 'Take the change from the update job')
+      expect(runOf(take)).toBe('node scripts/site-update-bundle.mjs "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "$BASE" origin/main')
+      expect(envOf(take)).toContain('BASE: ${{ needs.update.outputs.base }}')
+    }
     for (const name of ['Push the branch', 'Open the pull request']) expect(runOf(publishStep(name)), name).toContain('[[ "$BRANCH" =~ ^update/[a-z0-9-]+-[0-9]+$ ]] ||')
+  })
+
+  it('closes the pull request a run supersedes only when it is an open Site update pull request of this repository, by the site bot or the built-in bot', () => {
+    const open = runOf(publishStep('Open the pull request'))
+    expect(open).toContain('old=$(gh pr view "$SUPERSEDES" --json state,isCrossRepository,headRefName,author')
+    expect(open).toContain('if [ "$old_state" = OPEN ] && [ "$old_cross" = false ] && [[ "$old_branch" =~ ^update/[a-z0-9-]+-[0-9]+$ ]] && { [ "$old_author" = "app/$SLUG" ] || [ "$old_author" = app/github-actions ]; }; then')
+    expect(open.indexOf('if [ "$old_state" = OPEN ]')).toBeLessThan(open.indexOf('gh pr close "$SUPERSEDES"'))
+    expect(open).toContain('it is left as it is.')
+    expect(envOf(publishStep('Open the pull request'))).toContain('SLUG: ${{ vars.SITE_BOT_SLUG }}')
   })
 
   it('checks the numbers from the update job again before use', () => {
@@ -257,12 +283,36 @@ describe('the bot token never shares a job with code Claude or the branch wrote 
     expect(publish).not.toMatch(/github\.token/)
   })
 
-  it('the email runs in its own job from main\'s scripts/resume-mail.mjs, and MAIL_APP_PASSWORD is in no other job', () => {
+  it("the email runs in its own job from main's scripts/resume-mail.mjs, reads the résumé as JSON only, and MAIL_APP_PASSWORD is in no other job", () => {
     expect(email).toMatch(/ref: main\n/)
-    expect(runOf(cutStep(email, 'Email Steven that the resume is ready to review'))).toMatch(/^node scripts\/resume-mail\.mjs review --before origin\/main --after "refs\/heads\/\$BRANCH"/)
+    const send = runOf(cutStep(email, 'Email Steven that the resume is ready to review'))
+    expect(send).toMatch(/^node scripts\/resume-mail\.mjs review --before "\$BASE" --after "refs\/heads\/\$BRANCH" --resume-json "\$BASE=\$RUNNER_TEMP\/resume-data\/before\.json" --resume-json "refs\/heads\/\$BRANCH=\$RUNNER_TEMP\/resume-data\/after\.json" --no-import /)
+    expect(email).toMatch(/^ {4}needs: \[brief, update, publish, resume-data\]$/m)
     expect(workflow.match(/MAIL_APP_PASSWORD: /g)).toHaveLength(1)
     expect(email).toContain('MAIL_APP_PASSWORD: ${{ secrets.MAIL_APP_PASSWORD }}')
     expect(email).not.toMatch(/steps\.app\.outputs\.token|SITE_BOT_PRIVATE_KEY/)
+  })
+
+  it('the résumé becomes data in a job with no secret, from main\'s scripts/resume-data.mjs', () => {
+    const data = jobOf('resume-data')
+    expect(data).not.toMatch(/secrets\.|\bnpm\b|\bnpx\b/)
+    expect(data).toMatch(/^ {4}permissions:\n {6}contents: read$/m)
+    expect(data).toMatch(/ref: main\n/)
+    expect(runOf(cutStep(data, 'The résumé as data'))).toContain('node scripts/resume-data.mjs "$BASE" "$RUNNER_TEMP/resume-data/before.json"')
+    expect(runOf(cutStep(data, 'The résumé as data'))).toContain('node scripts/resume-data.mjs "refs/heads/$BRANCH" "$RUNNER_TEMP/resume-data/after.json"')
+  })
+
+  it('no step that holds a secret runs a script that imports a file from the branch', () => {
+    // The scripts that import a file of the branch they are given: resume-data.mjs, and resume-mail.mjs unless --no-import.
+    const importsBranch = (run) => /resume-data\.mjs/.test(run) || (/resume-mail\.mjs/.test(run) && !/--no-import/.test(run)) || /\bnpm (run|test)|\bnpx\b|node (?!scripts\/|"\$RUNNER_TEMP\/site-update\/)/.test(run)
+    const steps = [...workflow.matchAll(/^ {6}- (?:name: .+|uses: .+|run: .+)\n(?: {8}.*\n| *\n)*/gm)].map((match) => match[0])
+    expect(steps.length).toBeGreaterThan(20)
+    const secretSteps = steps.filter((block) => /secrets\.(?!SITE_BOT_PRIVATE_KEY|ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|BUILDING_TOKEN)/.test(block) || /MAIL_APP_PASSWORD/.test(block))
+    expect(secretSteps.length).toBeGreaterThan(0)
+    for (const block of secretSteps) expect(importsBranch(runOf(block)), block.split('\n')[0]).toBe(false)
+    // The model key reaches only Claude's own step and the email (which reads data only).
+    const keySteps = steps.filter((block) => /secrets\.ANTHROPIC_API_KEY/.test(block))
+    expect(keySteps.map((block) => block.split('\n')[0].trim())).toEqual(['- name: Let Claude make the change', '- name: Email Steven that the resume is ready to review'])
   })
 })
 

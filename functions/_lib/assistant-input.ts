@@ -6,8 +6,8 @@
 // no secret), then handed as data to main's harness (scripts/assistant-check.mjs, job B).
 // Nothing here writes anywhere: the notes come from the live site's read-only /api/notes.
 import { profile } from '../../src/resume'
-import { contextFor, MODEL } from './ask/agent'
-import { jdPrefix, loadArticles, systemPrompt } from './ask/prompt'
+import { answerSources, answerTokens, contextFor, liveRequest, MODEL, words } from './ask/agent'
+import { jdPrefix, loadArticles, sources, systemPrompt } from './ask/prompt'
 import type { DossierEntry } from './mcp/store'
 
 export const SCHEMA = 'assistant-input/1'
@@ -22,6 +22,10 @@ export type AssistantInput = {
   profile: { location: string; workAuthorization: string; availability: string; teamSize: string }
   notes: number
   articles: number
+  // How the live assistant asks (the answer budget per kind, thinking, effort, the fallback beta) and shows an
+  // answer (the sources its hidden first line names, by title; the fixed text for an out-of-scope one).
+  request: typeof liveRequest & { maxTokens: typeof answerTokens }
+  render: { sources: Record<string, string>; maxSources: typeof answerSources; offTopic: string; notAPosting: string }
 }
 
 /** The check did not run: the input cannot be built as the live assistant has it. */
@@ -57,5 +61,7 @@ export const assistantInput = async ({ readPage, notesUrl = NOTES_URL, fetchImpl
     profile: { location: profile.location, workAuthorization: profile.workAuthorization, availability: profile.availability, teamSize: profile.teamSize },
     notes: entries.length,
     articles: Object.keys(articles).length,
+    request: { ...liveRequest, maxTokens: answerTokens },
+    render: { sources: Object.fromEntries([...sources()].map(([id, source]) => [id, source.title])), maxSources: answerSources, offTopic: words.offTopic, notAPosting: words.notAPosting },
   }
 }

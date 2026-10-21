@@ -98,21 +98,30 @@ Priority 1 (must): the checks start on the pull request, and nothing in CI acts 
   is dispatched with the built-in token any more). The Dependabot test keys on
   `dependabot[bot]` exactly, so the App's pull requests get the full team.
 - AC-6: The App token never shares a job with code Claude or the branch wrote.
-  `site-update.yml` is split into two jobs:
+  `site-update.yml` is split into these jobs (reworded after the build, round 1):
   - `update`: the brief, Claude, lint, tests, build, the score, the commit, as today; its
     built-in token is `contents: read` only (plus `id-token: write` only if
     claude-code-action will not start without it, confirmed in the build and said in the
-    pull request); no App token; it hands the commit on as a `git bundle` artifact and
-    the scores as outputs validated against `^[0-9]+$|^unknown$`.
+    pull request); no App token; it hands the commit on as a `git bundle` artifact, with
+    the commit of main it grew from (the base, 40 hex), and the scores as outputs
+    validated against `^[0-9]+$|^unknown$`.
   - `publish`: a fresh runner in the environment `site-update-app` (deployment branches:
     `main` only, which holds the App's private key); checks out main with
-    `persist-credentials: false`; verifies the bundle, refuses it unless `origin/main` is
-    an ancestor and no changed path is under `.github/`; then mints the token with
-    `actions/create-github-app-token` pinned to a commit SHA, `repositories` this one,
-    `permission-contents: write` and `permission-pull-requests: write` only; pushes and
-    opens the pull request. It runs no `npm run`, `npx` or script from the branch; the
-    résumé email moves here and runs main's `scripts/resume-mail.mjs` (an `npm ci` here
-    installs main's lockfile only).
+    `persist-credentials: false`; verifies the bundle with main's
+    `scripts/site-update-bundle.mjs`, refusing it unless the base is in main's history
+    (main may have moved on while Claude ran), the branch grows from the base, holds no
+    merge commit, and no commit or the change as a whole touches `.github/`; then mints
+    the token with `actions/create-github-app-token` pinned to a commit SHA,
+    `repositories` this one, `permission-contents: write` and
+    `permission-pull-requests: write` only; pushes and opens the pull request; closes a
+    superseded pull request only when it is an open Site update pull request of the site
+    bot (or the built-in token's bot). It runs no `npm`, `npx` or script from the branch.
+  - `resume-data`: no secret; main's `scripts/resume-data.mjs` turns the résumé at the
+    base and on the branch into JSON.
+  - `email`: its own job from main's checkout (`npm ci --ignore-scripts` on main's
+    lockfile), never beside the App token; main's `scripts/resume-mail.mjs` reads the
+    résumé as that JSON only (`--resume-json`, `--no-import`) and never imports a branch
+    file beside `MAIL_APP_PASSWORD`.
   - A missing App secret fails the run before Claude starts, with one line saying the
     site bot is not set up; it never falls back to `github.token`.
 - AC-7: Re-triggering and redoing, by one MCP call. `merge_site_update` gains
@@ -148,13 +157,19 @@ Priority 2 (in): no pull request waits on an assistant check that cannot run.
 
 - AC-9: The Review workflow runs the assistant check itself on every pull request from
   this repository whose diff touches `functions/api/ask*`, `functions/_lib/ask/**`,
-  `src/resume.ts` or `src/articles/**` (the write-ups' text and feeds), which is what Site
-  update pull requests change and what the assistant reads.
-  - Job A, with no secret, builds the assistant's input from the branch's real code (its
-    `systemPrompt`, `MODEL` and articles, imported, never a copy of the prompt), with
-    Steven's public dossier notes read over the site's public read-only endpoint (no D1
-    binding, nothing written anywhere, so no public number on the site moves), and the
-    same input from main; it uploads both, with the branch's `profile`, as an artifact.
+  `src/resume.ts`, `src/patents.ts` or `src/articles/**` (the write-ups' text and feeds),
+  which is what Site update pull requests change and what the assistant reads.
+  - Job A (`assistant-input`, `permissions: {}`), with no secret, builds the assistant's
+    input from the branch's real code (`functions/_lib/assistant-input.ts` imports its
+    `systemPrompt`, `MODEL`, `contextFor`, how it asks and how it shows an answer, never a
+    copy of the prompt; `scripts/assistant-export.ts` writes it), with Steven's public
+    dossier notes read over `GET /api/notes`, added here (`functions/api/notes.ts`: public
+    entries only, no tags or dates, no log row, so no public number on the site moves),
+    and the same input from main with main's own export; it uploads both, with the
+    branch's `profile`, as an artifact. Until main has the export and the harness (the
+    pull request that adds them), the check is "not set up on main yet": the recruiter
+    reads that as not applicable for the assistant part, never for a model error or a
+    missing key.
   - Job B checks out main only and holds `ANTHROPIC_API_KEY`; main's harness reads the
     artifact as data and asks five fixed questions on the branch's input and on main's,
     at most 10 model calls, bounded `max_tokens` and a time limit, with no
@@ -235,13 +250,18 @@ The bars, unchanged:
 
 ### Files to change (for the developer to confirm)
 
-- `.github/workflows/site-update.yml` (`update` / `publish`; the App token; drop the three
-  dispatches; the email in `publish`; the bot identity; the marker's `project` and
-  `sourceSha`; the header comment on secrets)
+- `.github/workflows/site-update.yml` (`preflight` / `update` / `publish` /
+  `resume-data` / `email`; the App token; drop the three dispatches; the bot identity;
+  the marker's `project` and `sourceSha`; the header comment on secrets)
 - `.github/workflows/review.yml` (`allowed_bots`; the assistant jobs A and B; the
   preview's limits in the brief; the `team-verdicts` marker in the sign-off comment)
-- a script that verifies the bundle, the assistant export (job A) and the harness (job
-  B), each with tests
+- `scripts/site-update-bundle.mjs` (the bundle check), `scripts/resume-data.mjs` (the
+  résumé as JSON), `scripts/assistant-export.ts` (job A) and `scripts/assistant-check.mjs`
+  (job B), each with tests; `scripts/resume-mail.mjs` (`--resume-json`, `--no-import`);
+  `scripts/building-brief.mjs` (`supersedes` from the input or the payload)
+- `functions/_lib/assistant-input.ts` (the assistant's input from its own code),
+  `functions/api/notes.ts` (`GET /api/notes`), `functions/_lib/ask/agent.ts`
+  (`contextFor`, `liveRequest`), each with tests
 - `functions/_lib/github.ts`, `functions/_lib/mcp/tools.ts` and their tests (AC-7, AC-8)
 - `scripts/site-update-workflow.test.mjs`, new `scripts/review-workflow.test.mjs`
 - `.claude/team.md`, `.claude/agents/senior-recruiter.md`, `CLAUDE.md` ("## The team",
@@ -1131,25 +1151,42 @@ Where the build differs from the text above, and why:
   secret stops the run before Claude (the tester's minor). `update` has
   `permissions: contents: read` and no `id-token`: with `github_token` given,
   claude-code-action does not need OIDC (to confirm on the first run).
-- **The résumé email is its own job (`email`)**, not a step of `publish`: main's
-  `scripts/resume-mail.mjs` imports the branch's `src/resume.ts` (plain data, but it is
-  executed), so it never runs beside the bot's token. It checks out main, runs
-  `npm ci --ignore-scripts` from main's lockfile and takes the bundle the same way.
+- **The résumé email is its own job (`email`)**, not a step of `publish`, and it imports
+  nothing from the branch (round 1): a `resume-data` job with no secret runs main's
+  `scripts/resume-data.mjs` on the base and on the branch and writes JSON; `email` runs
+  main's `scripts/resume-mail.mjs` with `--resume-json <ref>=<file>` for both and
+  `--no-import`, so a top-level statement in a branch's `src/resume.ts` never runs beside
+  `MAIL_APP_PASSWORD`. It checks out main and runs `npm ci --ignore-scripts` from main's
+  lockfile.
 - **`publish`** re-validates the branch name (`^update/[a-z0-9-]+-[0-9]+$`) in the bundle
   script before the fetch and again before the push and the pull request (security's
-  minor). The bundle script (`scripts/site-update-bundle.mjs`) refuses a branch that does
-  not grow from main, adds nothing, or has any commit touching `.github/`.
+  minor). The bundle script (`scripts/site-update-bundle.mjs`) checks against the update
+  job's **base** (the commit of main the branch grew from, passed as an output), not main
+  at publish time: main may have moved on while Claude ran (round 1, B1). It refuses a
+  base outside main's history, a branch that does not grow from it or adds nothing, a
+  merge commit, and any commit or the change as a whole touching `.github/` (round 1).
+  Before closing the pull request a run supersedes, `publish` checks that it is open, of
+  this repository, on an `update/…-<n>` branch and opened by the site bot or the built-in
+  token's bot; otherwise it leaves it and warns (round 1).
 - **The public notes come from a new read-only `GET /api/notes`** (`functions/api/notes.ts`):
   the public MCP server logs every call, which would move a number on `/admin`. It serves
-  the public entries only, without tags or dates, cacheable for 5 minutes. Until it is
-  live (it ships with this pull request), job A reports "did not run" (the recruiter's
-  minor), so this pull request's own assistant check does not run.
+  the public entries only, without tags or dates, cacheable for 5 minutes.
 - **Job A** (`assistant-input`) has `permissions: {}` and builds both inputs with
   `npm run build` and `vite build --ssr scripts/assistant-export.ts` (the repository's
-  imports have no extensions); for main, the branch's export is copied in while main has
-  none. `agent.ts` exports `contextFor`, so the second system block is the real one.
-  **Job B** (`assistant`) checks out main with `ref: main`, no npm, caps each input at
-  2 MB before parsing (security's minor) and the system prompt at 1,000,000 characters.
+  imports have no extensions), main's with main's own export. That is two more builds on
+  every pull request that touches the assistant, the résumé or a write-up: a few minutes
+  of CI, no change to any public page (round 1, m7: accepted; reusing `gates`' `dist/`
+  would tie the jobs together for little gain). Until main has the export and the
+  harness, the result is "not set up on main yet" (this pull request only), which the
+  prompt and `senior-recruiter.md` treat as not applicable for the assistant part; the
+  copy-from-the-branch fallback is gone (round 1, M2). `agent.ts` exports `contextFor`,
+  `liveRequest` and the answer budgets, so the input carries how the live assistant asks
+  and shows an answer. **Job B** (`assistant`) checks out main with `ref: main`, no npm,
+  caps each input at 2 MB before parsing, asks both sides with main's model and settings
+  (thinking, effort, the fallback beta, the cached system block, the budget per kind),
+  refuses a branch system prompt over `max(4 × main's, 200,000)` characters, shows each
+  answer as the site does (sources by title, the fixed out-of-scope text) and holds the
+  authorization and availability answers to every word of the profile fact (round 1).
 - **`recheck: true` needs no `confirm`** (it merges nothing); `merge_site_update` still
   needs `confirm: true` to merge.
 
@@ -1179,7 +1216,7 @@ no `tools.test.ts`; the Technical approach names one).
 | AC-3 | `site-update-workflow.test.mjs` "starts none of deploy.yml, site-check.yml, review.yml": no `gh workflow run` line names them. "the three workflows keep workflow_dispatch" (reads each file's `on:`). "deploy.yml deploys every branch but dependabot on push" (`on.push.branches`). Live: `curl -sI https://<branch>.stevenwilssens.pages.dev` answers 200 after the run | Workflow + Live |
 | AC-4 | `tools-branches.test.ts` "merges a clean pull request in one call, with no wait and no retry" (fake GitHub `mergeableState: 'clean'`: exactly one `merge` call, no second `single` read, no timer advanced) and "never merges without confirm: true" (zero `merge` calls). `site-update-workflow.test.mjs` and `review-workflow.test.mjs` "no workflow merges a pull request" (no `gh pr merge`, no `--auto`, no `enablePullRequestAutoMerge` in any file under `.github/workflows/`; this test moves to the follow-up's merge workflow when that ships). Live: `gh pr view <n> --json mergeStateStatus` is `CLEAN` when the three pass, then one `merge_site_update` call merges it | Unit + Workflow + Live |
 | AC-5 | `site-update-workflow.test.mjs` "no workflow uses a personal token": no `GH_PAT` or `secrets.*PAT*` in any file under `.github/workflows/`. "commits as the App's bot": the commit identity is `<slug>[bot]` / `<id>+<slug>[bot]@users.noreply.github.com` from `vars.SITE_BOT_SLUG` (or the `/users/<slug>[bot]` lookup); the text "Steven Wilssens (via Claude)" and his address appear nowhere. "no workflow adds or removes accept-lower-score" (no `--add-label`/`--remove-label` or labels API call naming it, in any workflow). `review-workflow.test.mjs` "the label counts only when the repository owner added it" (the `labeled` event's `.actor.login` compared with `$GITHUB_REPOSITORY_OWNER`); "only comments whose author and last editor are the owner are Steven's replies" (the jq filter); "allowed_bots names vars.SITE_BOT_SLUG only: never '*', no github-actions"; "a pull request by another bot is not Dependabot's" (`steps.who` compares `dependabot[bot]` exactly, on author, actor, triggering actor and branch). Live: on the first pull request, `gh pr view <n> --json author,commits -q '.author.login, .commits[].authors[].login'` gives the App's bot only | Workflow + Live |
-| AC-6 | `site-update-workflow.test.mjs` "update has a read-only token and no App token": job `update` has `permissions: contents: read` (plus `id-token: write` at most), no `create-github-app-token`, no `SITE_BOT_PRIVATE_KEY`, no `environment:`; the existing "the team step's powers do not grow" stays. "publish runs only main's code": `needs: update`, `environment: site-update-app`, `actions/checkout` with `ref: main` and `persist-credentials: false`, no checkout of the branch, no `npm run`, no `npx`, no `node` of a path other than main's `scripts/`; `npm ci` only after the main checkout. "the token is minted after the bundle is verified, pinned, and as small as it works": `actions/create-github-app-token@<40 hex>`, `repositories:` this repository only, `permission-contents: write` and `permission-pull-requests: write` and no other `permission-*`; the verify step comes before the token step. "the scores pass between jobs validated" (`^[0-9]+$\|^unknown$` on each output before use). "a missing App secret fails before Claude": the check runs in a job that can read the `site-update-app` environment (an environment secret is not visible to `update`), and `update` `needs` it; its line says the site bot is not set up; no step falls back to `github.token` for the push. Bundle verifier unit tests (fixture repository): accepts a bundle whose commit descends from main; refuses one that does not, one that touches `.github/` (also a rename into `.github/`), a corrupt bundle and an empty one; each with its exit code and one line. The résumé email: `site-update-workflow.test.mjs` "the email runs in publish, from main's scripts/resume-mail.mjs" (`MAIL_APP_PASSWORD` in no `update` step) | Workflow + Unit |
+| AC-6 | `site-update-workflow.test.mjs` "update has a read-only token and no App token": job `update` has `permissions: contents: read` (plus `id-token: write` at most), no `create-github-app-token`, no `SITE_BOT_PRIVATE_KEY`, no `environment:`; the existing "the team step's powers do not grow" stays. "publish runs only main's code": `needs: update`, `environment: site-update-app`, `actions/checkout` with `ref: main` and `persist-credentials: false`, no checkout of the branch, no `npm run`, no `npx`, no `node` of a path other than main's `scripts/`; `npm ci` only after the main checkout. "the token is minted after the bundle is verified, pinned, and as small as it works": `actions/create-github-app-token@<40 hex>`, `repositories:` this repository only, `permission-contents: write` and `permission-pull-requests: write` and no other `permission-*`; the verify step comes before the token step. "the scores pass between jobs validated" (`^[0-9]+$\|^unknown$` on each output before use). "a missing App secret fails before Claude": the check runs in a job that can read the `site-update-app` environment (an environment secret is not visible to `update`), and `update` `needs` it; its line says the site bot is not set up; no step falls back to `github.token` for the push. Bundle verifier unit tests (fixture repository): accepts a bundle whose commit descends from main; refuses one that does not, one that touches `.github/` (also a rename into `.github/`), a corrupt bundle and an empty one; each with its exit code and one line. The résumé email (reworded, round 1): `site-update-workflow.test.mjs` "the email runs in its own job from main's scripts/resume-mail.mjs, reads the résumé as JSON only", "the résumé becomes data in a job with no secret" and "no step that holds a secret runs a script that imports a file from the branch"; bundle tests also take a bundle after main moved on, and refuse a base outside main and a merge commit (the evil merge) | Workflow + Unit |
 | AC-7 | `tools-branches.test.ts` "recheck closes and reopens the pull request with the MCP's token" (fake GitHub records close then reopen, no new commit, no workflow dispatch) and its refusals, each with zero close calls: closed, merged, a branch outside `update/`, a fork's head. "site_update_status offers recheck when a required check is missing or at action_required" (and not when all three are present and green). "the redo of a Building refresh sends repository_dispatch building-source-changed with the project, its repository and the project's current main SHA" (fake GitHub: one `POST /dispatches`, zero `workflow_dispatch`); "the redo of a change request still uses workflow_dispatch with title, instruction, proposals and supersedes" (existing, kept). `github.test.ts` "the update request marker carries project and sourceSha" (round trip, a marker without them still reads as before, a non-hex `sourceSha` or unknown project is dropped). `site-update-workflow.test.mjs` "the jq in Open the pull request writes the same keys as UpdateRequest" (reads the jq, compares with the keys `updateRequestFromBody` returns, so the two stay in step). Live: Steven's close and reopen of #59 and #60 on 2026-10-20 recorded with their `statusCheckRollup` after; #61 and #62 redone with `redo: true` after #59 and #60 merge, recorded with the new pull request numbers | Unit + Workflow + Live |
 | AC-8 | `github.test.ts`: "status() reads mergeStateStatus, draft, labels and the head's check runs in one query" (fakeFetch on GraphQL), "reads the runs at action_required for the head SHA", "reads the team-verdicts marker only from comments by github-actions[bot], the last match" (the same marker in a comment by the owner or by the App is ignored; malformed base64 or JSON gives none; a marker for another SHA is reported as stale). `tools-branches.test.ts`, one test per cause, each on `site_update_status` and on `merge_site_update`: a required check not started (offers `recheck: true`); runs waiting for approval (offers `recheck: true`); a check running (name and start time); a check failed (name, first failed step, run link); changes requested (role, finding cut to 160 characters, comment link); waiting for Steven (role, question, comment link, reply then `recheck: true`); a lower résumé score (`acceptLowerScore: true` only after his label); a conflict (offers `redo: true`). Plus "at most three causes, most decisive first" (five causes in, three out, in order), "a hostile review comment does not change the message" (instructions and a foreign link in the summary are quoted as text; the only link is GitHub's comment URL), "falls back to one plain sentence when GitHub's data cannot be read". Every test asserts the text has no "to see which", no "merges by itself" and no "fix run" (those are the follow-up's texts) | Unit |
 | AC-9 | `review-workflow.test.mjs`: "the assistant jobs run only for this repository's pull requests whose diff touches functions/api/ask*, functions/_lib/ask/**, src/resume.ts or src/articles/**" (and not for a change under `src/ask/` alone); "job A has no secret" (no `secrets.` in the job, `permissions: contents: read`); "job B holds ANTHROPIC_API_KEY and checks out main only" (`ref: main` explicitly, since the `pull_request` default is the merge ref; no checkout of the head; no `CLOUDFLARE_API_TOKEN`, no D1 binding, Turnstile test keys only, a `timeout-minutes`); "ANTHROPIC_API_KEY is in job B and in no other job of review.yml than the existing team step"; "team still runs when job B failed, and reads did not run" (`if: !cancelled()` on the gates' success, the downloaded report). Export (job A) unit tests: "the input is built from the branch's own systemPrompt, MODEL and articles" (deep-equal with calling `systemPrompt` directly, so a copy of the prompt fails); "the public notes are read over the public endpoint, GET only" (fetch stub records one GET, no other method, no D1 in the signature); "main's input is built the same way". `assistant-check.test.mjs` (harness, Anthropic stubbed by a fetch fake, fake timers): five questions on each input, at most 10 calls, bounded `max_tokens`; the time limit aborts and reports "did not run"; a model id not matching `^claude-[a-z0-9.-]+$` and an oversized system are refused; the three mechanical checks pass on matching answers and fail (exit non-zero) on a wrong location, work authorization, availability or a rounded-up team size; a missing key and a model error each exit non-zero with "did not run", never a pass; transcripts are fenced and labelled untrusted, and an answer containing a fence or "ignore previous instructions" stays inside its fence. The harness goes into the coverage `include`. `team-safety.test.mjs` (or a text test next to it) "senior-recruiter.md: a check that did not run is CHANGES_REQUESTED, never NEEDS_STEVEN or APPROVE; CI answers replace the preview". `src/ask/` keeps its component tests with a stubbed answer; the designer's 390px screenshot is the visual evidence. Live: a pull request touching `src/resume.ts` shows the ten transcripts in the recruiter's report and the recruiter's verdict is not `NEEDS_STEVEN` on the assistant | Workflow + Unit + Live |

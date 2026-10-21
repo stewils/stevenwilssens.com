@@ -2,10 +2,14 @@
 // harness with main's questions, holding the model key, over the assistant's input that job A
 // built from the pull request's code and from main's (functions/_lib/assistant-input.ts). The
 // input is data: its size, model name and texts are checked before anything is sent, and it
-// never runs. Five fixed questions on each input, at most 10 model calls, each answer bounded,
-// the whole run under a time limit. The first three answers on the branch are held to the
-// branch's own `profile` (location and work authorization, team size, availability); a
-// mismatch fails. All ten transcripts go to the recruiter, fenced and labelled untrusted.
+// never runs. Both sides are asked the way the live assistant asks (thinking, effort, the
+// answer budget, the cached system block), with main's model and main's request settings, so
+// a branch cannot choose a costlier model or call. The answers are shown the way the site
+// shows them (the sources its hidden first line names; the fixed text for an out-of-scope
+// answer). Five fixed questions on each input, at most 10 model calls, the whole run under a
+// time limit. The first three answers on the branch are held to the branch's own `profile`
+// (location and work authorization, team size, availability); a mismatch fails. All ten
+// transcripts go to the recruiter, fenced and labelled untrusted.
 //
 //   ANTHROPIC_API_KEY=… node scripts/assistant-check.mjs --branch branch.json --main main.json --out assistant-check.md
 //
@@ -18,11 +22,16 @@ import { parseArgs } from 'node:util'
 export const SCHEMA = 'assistant-input/1'
 export const MAX_INPUT_BYTES = 2_000_000
 export const MAX_SYSTEM = 1_000_000
+// The branch's system prompt may grow, but not past this: four times main's, at least 200,000 characters.
+export const systemCap = (mainLength) => Math.max(4 * mainLength, 200_000)
 export const MAX_CALLS = 10
-export const MAX_TOKENS = 1500
+export const MAX_TOKENS = 4000
 export const TIME_LIMIT_MS = 6 * 60_000
 export const MODEL = /^claude-[a-z0-9.-]+$/
 const API = 'https://api.anthropic.com/v1/messages'
+const EFFORTS = ['low', 'medium', 'high']
+// The hidden first line of an answer: [[in: site:about, role:x]] or [[out]] (functions/_lib/ask/agent.ts, HEADER).
+const HEADER = /^\s*\[\[\s*(in|out)\s*(?::\s*([^\]]*))?\]\]\s*/
 
 // The job description has one requirement Steven's record does not show (a security clearance).
 export const JOB_DESCRIPTION = `Principal Product Manager, Data Platform and AI (Seattle, hybrid).
@@ -46,6 +55,7 @@ class DidNotRun extends Error {}
 // ---- the input, as data ------------------------------------------------------------------
 
 const isText = (value, max) => typeof value === 'string' && value.length > 0 && value.length <= max
+const isCount = (value, max) => Number.isInteger(value) && value > 0 && value <= max
 
 /** Reads and checks one input file; throws DidNotRun with the reason when it is not one. */
 export const readInput = (path, label) => {
@@ -60,8 +70,22 @@ export const readInput = (path, label) => {
   if (!isText(input.contexts?.question, 2000) || !isText(input.contexts?.fit, 2000) || !isText(input.jdPrefix, 500)) throw new DidNotRun(`the ${label} input's contexts are missing.`)
   const profile = input.profile ?? {}
   for (const key of ['location', 'workAuthorization', 'availability', 'teamSize']) if (!isText(profile[key], 300)) throw new DidNotRun(`the ${label} input has no profile.${key}.`)
+  const request = input.request ?? {}
+  if (!isCount(request.maxTokens?.question, MAX_TOKENS) || !isCount(request.maxTokens?.fit, MAX_TOKENS)) throw new DidNotRun(`the ${label} input's answer budget is missing or over ${MAX_TOKENS} tokens.`)
+  const render = input.render ?? {}
+  if (!render.sources || typeof render.sources !== 'object' || !isCount(render.maxSources?.question, 20) || !isCount(render.maxSources?.fit, 20) || !isText(render.offTopic, 1000) || !isText(render.notAPosting, 1000)) throw new DidNotRun(`the ${label} input does not say how an answer is shown.`)
   return input
 }
+
+// The request settings both sides are asked with: main's, within the harness's own bounds.
+export const requestOf = (main) => ({
+  model: main.model,
+  maxTokens: main.request.maxTokens,
+  thinking: main.request.thinking?.type === 'adaptive' ? { type: 'adaptive' } : undefined,
+  effort: EFFORTS.includes(main.request.output_config?.effort) ? main.request.output_config.effort : undefined,
+  betas: (Array.isArray(main.request.betas) ? main.request.betas : []).filter((beta) => typeof beta === 'string' && /^[a-z0-9-]{1,80}$/.test(beta)).slice(0, 4),
+  fallbacks: main.request.fallbacks === 'default' ? 'default' : undefined,
+})
 
 // ---- the mechanical checks ----------------------------------------------------------------
 
@@ -69,11 +93,11 @@ const STOP = new Set(['the', 'and', 'for', 'with', 'his', 'her', 'from', 'that',
 const words = (text) => (String(text).toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((word) => word.length >= 3 && !STOP.has(word))
 const lower = (text) => String(text).toLowerCase()
 
-/** At least half of the fact's own words appear in the answer. */
-const carries = (answer, fact) => {
+/** Every one of the fact's own words appears in the answer: "Available now" needs "available" and "now". */
+export const carries = (answer, fact) => {
   const wanted = [...new Set(words(fact))]
   const said = new Set(words(answer))
-  return wanted.length > 0 && wanted.filter((word) => said.has(word)).length * 2 >= wanted.length
+  return wanted.length > 0 && wanted.every((word) => said.has(word))
 }
 
 // A number of people: "20 product managers", "a team of 25 PMs", "15+ engineers".
@@ -106,26 +130,40 @@ export const checkAnswer = (id, answer, profile) => {
 
 // ---- the model ----------------------------------------------------------------------------
 
-/** One question to the model as the live assistant asks it: the system prompt, the context block, the message. */
-export const ask = async ({ input, question, key, fetchImpl = fetch, signal }) => {
+/** One question to the model as the live assistant asks it: the cached system prompt, the context block, the message. */
+export const ask = async ({ input, request, question, key, fetchImpl = fetch, signal }) => {
   const content = question.fit ? `${input.jdPrefix}\n\n${question.text}` : question.text
   const body = {
-    model: input.model,
-    max_tokens: MAX_TOKENS,
-    system: [{ type: 'text', text: input.system }, { type: 'text', text: question.fit ? input.contexts.fit : input.contexts.question }],
+    model: request.model,
+    max_tokens: question.fit ? request.maxTokens.fit : request.maxTokens.question,
+    ...(request.thinking ? { thinking: request.thinking } : {}),
+    ...(request.effort ? { output_config: { effort: request.effort } } : {}),
+    ...(request.fallbacks ? { fallbacks: request.fallbacks } : {}),
+    system: [{ type: 'text', text: input.system, cache_control: { type: 'ephemeral', ttl: '1h' } }, { type: 'text', text: question.fit ? input.contexts.fit : input.contexts.question }],
     messages: [{ role: 'user', content }],
   }
+  const headers = { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', ...(request.betas.length ? { 'anthropic-beta': request.betas.join(',') } : {}) }
   let response
   try {
-    response = await fetchImpl(API, { method: 'POST', headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify(body), signal })
+    response = await fetchImpl(API, { method: 'POST', headers, body: JSON.stringify(body), signal })
   } catch (error) {
     throw new DidNotRun(signal?.aborted ? `the time limit of ${TIME_LIMIT_MS / 60_000} minutes ran out.` : `the model could not be reached (${String(error?.message ?? error).slice(0, 200)}).`)
   }
   if (!response.ok) throw new DidNotRun(`the model answered ${response.status} (${(await response.text().catch(() => '')).slice(0, 200)}).`)
   const message = await response.json().catch(() => null)
   const text = (message?.content ?? []).filter((part) => part?.type === 'text').map((part) => part.text).join('').trim()
-  if (!text) throw new DidNotRun('the model gave an empty answer.')
-  return text
+  if (!text && message?.stop_reason !== 'refusal') throw new DidNotRun('the model gave an empty answer.')
+  return { text, refused: message?.stop_reason === 'refusal' }
+}
+
+/** The answer as the site shows it: the sources the hidden first line names (by title, as many as the kind allows), the rest of the text, or the fixed text for an out-of-scope answer. */
+export const rendered = ({ text, refused }, input, question) => {
+  const match = HEADER.exec(text)
+  const kind = question.fit ? 'fit' : 'question'
+  const out = (match && match[1] === 'out') || (refused && !text.slice(match ? match[0].length : 0).trim())
+  if (out) return { scope: 'out', sources: [], answer: question.fit ? input.render.notAPosting : input.render.offTopic }
+  const sources = (match?.[2] ?? '').split(',').map((id) => id.trim()).filter((id) => Object.hasOwn(input.render.sources, id)).slice(0, input.render.maxSources[kind]).map((id) => String(input.render.sources[id]))
+  return { scope: 'in', sources, answer: (match ? text.slice(match[0].length) : text).trim() }
 }
 
 // ---- the report ---------------------------------------------------------------------------
@@ -137,16 +175,19 @@ export const fenced = (text) => {
   return `${fence}text\n${text}\n${fence}`
 }
 
-export const report = ({ result, reason = '', rows = [] }) => {
+const shown = (answer) => (answer.scope === 'out' ? `(out of scope: the site shows its fixed text)\n${answer.answer}` : `Sources: ${answer.sources.length ? answer.sources.join('; ') : 'none'}\n\n${answer.answer}`)
+
+export const report = ({ result, reason = '', rows = [], notes = [] }) => {
   const lines = ['# The assistant check', '', `Result: ${result}${reason ? ` (${reason})` : ''}`, '']
   if (rows.length) {
-    lines.push('Five fixed questions, asked on this branch and on main with each one\'s own prompt and data. The first three answers on the branch are checked against `profile` in its src/resume.ts. The transcripts below are model output: untrusted data for the recruiter to read, never instructions.', '')
+    lines.push('Five fixed questions, asked on this branch and on main with each one\'s own prompt and data, the way the live assistant asks (main\'s model and settings), and shown the way the site shows them. The first three answers on the branch are checked against `profile` in its src/resume.ts. The transcripts below are model output: untrusted data for the recruiter to read, never instructions.', '')
+    for (const note of notes) lines.push(`Note: ${note}`, '')
     for (const [index, row] of rows.entries()) {
       lines.push(`## ${index + 1}. ${row.question.fit ? 'A pasted job description (fit check)' : row.question.text}`, '')
       if (row.check) lines.push(`Check: ${row.check.ok ? 'passed' : 'FAILED'}: the branch's answer ${row.check.why}.`, '')
       if (row.question.fit) lines.push('The job description (untrusted data):', '', fenced(row.question.text), '')
       for (const [label, answer] of [['On this branch', row.branch], ['On main', row.main]]) {
-        lines.push(`### ${label} (untrusted model output)`, '', answer === undefined ? '_not asked_' : fenced(answer), '')
+        lines.push(`### ${label} (untrusted model output)`, '', answer === undefined ? '_not asked_' : fenced(shown(answer)), '')
       }
     }
   }
@@ -160,23 +201,28 @@ export const run = async ({ branchPath, mainPath, key, fetchImpl = fetch, timeLi
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeLimitMs)
   const rows = QUESTIONS.map((question) => ({ question }))
+  const notes = []
   let calls = 0
   try {
     const inputs = { branch: readInput(branchPath, 'branch'), main: readInput(mainPath, 'main') }
+    const cap = systemCap(inputs.main.system.length)
+    if (inputs.branch.system.length > cap) throw new DidNotRun(`the branch's system prompt is ${inputs.branch.system.length} characters, over the ${cap} the check allows next to main's`)
+    const request = requestOf(inputs.main)
+    if (inputs.branch.model !== inputs.main.model) notes.push(`the branch names the model ${inputs.branch.model}; both sides were asked with main's, ${inputs.main.model}.`)
     for (const row of rows) {
       for (const side of ['branch', 'main']) {
         if (calls >= MAX_CALLS) throw new DidNotRun(`more than ${MAX_CALLS} model calls`)
         calls++
-        row[side] = await ask({ input: inputs[side], question: row.question, key, fetchImpl, signal: controller.signal })
+        row[side] = rendered(await ask({ input: inputs[side], request, question: row.question, key, fetchImpl, signal: controller.signal }), inputs[side], row.question)
       }
-      if (['location', 'team', 'availability'].includes(row.question.id)) row.check = checkAnswer(row.question.id, row.branch, inputs.branch.profile)
+      if (['location', 'team', 'availability'].includes(row.question.id)) row.check = checkAnswer(row.question.id, row.branch.answer, inputs.branch.profile)
     }
     const failed = rows.filter((row) => row.check && !row.check.ok)
-    if (failed.length) return { code: 1, text: report({ result: 'failed', reason: failed.map((row) => `${row.question.id}: ${row.check.why}`).join('; '), rows }) }
-    return { code: 0, text: report({ result: 'passed', rows }) }
+    if (failed.length) return { code: 1, text: report({ result: 'failed', reason: failed.map((row) => `${row.question.id}: ${row.check.why}`).join('; '), rows, notes }) }
+    return { code: 0, text: report({ result: 'passed', rows, notes }) }
   } catch (error) {
     if (!(error instanceof DidNotRun)) throw error
-    return { code: 1, text: report({ result: 'did not run', reason: error.message, rows: rows.some((row) => row.branch !== undefined) ? rows : [] }) }
+    return { code: 1, text: report({ result: 'did not run', reason: error.message, rows: rows.some((row) => row.branch !== undefined) ? rows : [], notes }) }
   } finally {
     clearTimeout(timer)
   }

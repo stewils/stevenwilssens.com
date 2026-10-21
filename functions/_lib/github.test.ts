@@ -238,23 +238,29 @@ describe('where a failed run stopped (AC-5, C-4)', () => {
         { annotation_level: 'failure', message: `${noChangeSentence} I could not find the section.` },
       ] },
     })
-    expect(await client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: 'I could not find the section.', refused: false })
+    expect(await client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: 'I could not find the section.', refused: false, job: 'update' })
     expect(calls.map((call) => call.url.split('/stewils/site')[1])).toEqual(['/actions/runs/7/jobs?per_page=100', '/check-runs/901/annotations?per_page=50'])
   })
 
-  it('reads no annotation when the run failed at another step', async () => {
-    const { calls, client } = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([['Check and commit', 'failure']])) })
-    expect(await client.runFailure(7)).toEqual({ step: 'Check and commit', noChange: false, reason: null })
-    expect(calls).toHaveLength(1)
+  it('reads the error line of another failed step, in preflight, update or publish, the first job in order', async () => {
+    const { client } = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([['Check and commit', 'failure']])), 'GET /check-runs/901/annotations': { body: [{ annotation_level: 'warning', message: 'w' }, { annotation_level: 'failure', message: 'Process completed with exit code 1.' }] } })
+    expect(await client.runFailure(7)).toEqual({ step: 'Check and commit', noChange: false, reason: 'Process completed with exit code 1.', refused: false, job: 'update' })
+    const preflight = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([['The site bot is set up', 'failure']], 'preflight'), job([['x', 'failure']])), 'GET /check-runs/901/annotations': { body: [{ annotation_level: 'failure', message: 'The site bot is not set up: the environment site-update-app needs…' }] } })
+    expect(await preflight.client.runFailure(7)).toEqual({ step: 'The site bot is set up', noChange: false, reason: 'The site bot is not set up: the environment site-update-app needs…', refused: false, job: 'preflight' })
+    const publish = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([['Check and commit', 'success']]), job([['Take the change from the update job', 'failure']], 'publish')), 'GET /check-runs/901/annotations': { body: [] } })
+    expect(await publish.client.runFailure(7)).toEqual({ step: 'Take the change from the update job', noChange: false, reason: null, refused: false, job: 'publish' })
+    // The no-change step's name in another job is not the no-change step.
+    const elsewhere = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([[noChangeStep, 'failure']], 'publish')), 'GET /check-runs/901/annotations': { body: [{ annotation_level: 'failure', message: `${noChangeSentence} x` }] } })
+    expect(await elsewhere.client.runFailure(7)).toMatchObject({ noChange: false, job: 'publish' })
   })
 
   it('still names the no-change step when the token may not read annotations, or the line is not there', async () => {
     const refused = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([[noChangeStep, 'failure']])), 'GET /check-runs/901/annotations': { status: 403, body: { message: 'Resource not accessible by personal access token' } } })
-    expect(await refused.client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: null, refused: true })
+    expect(await refused.client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: null, refused: true, job: 'update' })
     const empty = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([[noChangeStep, 'failure']])), 'GET /check-runs/901/annotations': { body: [{ annotation_level: 'failure', message: noChangeSentence }] } })
-    expect(await empty.client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: null, refused: false })
+    expect(await empty.client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: null, refused: false, job: 'update' })
     const gone = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([[noChangeStep, 'failure']])), 'GET /check-runs/901/annotations': { status: 404, body: { message: 'Not Found' } } })
-    expect(await gone.client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: null, refused: false })
+    expect(await gone.client.runFailure(7)).toEqual({ step: noChangeStep, noChange: true, reason: null, refused: false, job: 'update' })
     const broken = fakeFetch({ 'GET /actions/runs/7/jobs': jobs(job([[noChangeStep, 'failure']])), 'GET /check-runs/901/annotations': { status: 500, body: { message: 'boom' } } })
     await expect(broken.client.runFailure(7)).rejects.toMatchObject({ status: 500 })
   })
@@ -336,13 +342,37 @@ describe("a pull request's status", () => {
         { name: 'gates', status: 'completed', conclusion: 'failure', startedAt: '2026-10-20T14:00:00Z', url: 'https://github.com/stewils/site/actions/runs/1/job/gates', step: 'Run npm run lint' },
         { name: 'check', status: 'in_progress', conclusion: null, startedAt: '2026-10-20T14:30:00Z', url: 'https://github.com/stewils/site/actions/runs/1/job/check' },
       ],
-      waiting: ['gates', 'team', 'Other'],
+      // gates and check have runs on the head commit: only team, which has none, can be waiting.
+      waiting: ['team', 'Other'],
     })
     const graphql = calls[0]
     expect(graphql.method).toBe('POST')
     expect(graphql.body).toMatchObject({ variables: { owner: 'stewils', name: 'site', number: 12 } })
     expect((graphql.body as { query: string }).query).toMatch(/statusCheckRollup/)
     expect(calls.map((call) => call.url.split('/stewils/site')[1] ?? call.url)).toEqual(['https://api.github.com/graphql', '/actions/jobs/41', `/actions/runs?head_sha=${SHA}&status=action_required&per_page=20`])
+  })
+
+  it('takes a queued run (not started yet) as newer than a finished one, and asks where only the first failed check stopped', async () => {
+    const { client, calls } = fakeFetch({
+      'POST https://api.github.com/graphql': graphqlReply({ commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [
+        checkRun('gates', { conclusion: 'FAILURE', databaseId: 1 }),
+        checkRun('team', { conclusion: 'FAILURE', databaseId: 2 }),
+        checkRun('check', { conclusion: 'FAILURE', startedAt: '2026-10-20T13:00:00Z' }),
+        checkRun('check', { status: 'QUEUED', conclusion: null, startedAt: null }),
+      ] } } } }] } }),
+      'GET /actions/jobs/1': { body: { steps: [{ name: 'Lint', conclusion: 'failure' }] } },
+    })
+    const status = await client.status(12)
+    expect(status.checks.map((check) => [check.name, check.status, check.step])).toEqual([['gates', 'completed', 'Lint'], ['team', 'completed', undefined], ['check', 'queued', undefined]])
+    // Every required check has a run on the head commit: nothing can wait for approval, so no runs are asked for.
+    expect(status.waiting).toEqual([])
+    expect(calls.map((call) => call.url.split('/stewils/site')[1] ?? call.url)).toEqual(['https://api.github.com/graphql', '/actions/jobs/1'])
+  })
+
+  it('never sends the token outside api.github.com', async () => {
+    const { client, calls } = fakeFetch({})
+    await expect(client.headOf('evil.example/x', 'main')).resolves.toBeNull()
+    expect(calls).toHaveLength(0)
   })
 
   it('names no step when the job cannot be read, and reads a pull request without checks or labels', async () => {

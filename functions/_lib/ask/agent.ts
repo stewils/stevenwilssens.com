@@ -177,15 +177,21 @@ export type AnswerStream = { [Symbol.asyncIterator](): AsyncIterator<{ type: str
 export type StreamOptions = { maxTokens: number }
 export type StreamFactory = (system: string, context: string, messages: Anthropic.Beta.BetaMessageParam[], options: StreamOptions) => AnswerStream
 
+// How the live assistant asks the model, besides the model, the prompt and the answer budget. The CI
+// assistant check (functions/_lib/assistant-input.ts, scripts/assistant-check.mjs) asks the same way.
+export const liveRequest = { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', thinking: { type: 'adaptive' }, output_config: { effort: 'low' } } as const
+export const answerTokens = { question: MAX_TOKENS, fit: MAX_TOKENS_FIT }
+export const answerSources = { question: MAX_SOURCES, fit: MAX_SOURCES_FIT }
+
 const claudeStream = (env: Env): StreamFactory => (system, context, messages, options) => {
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, maxRetries: 1, defaultHeaders: env.ANTHROPIC_WORKSPACE_ID ? { 'anthropic-workspace-id': env.ANTHROPIC_WORKSPACE_ID } : undefined })
   return client.beta.messages.stream({
     model: MODEL,
     max_tokens: options.maxTokens,
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
-    thinking: { type: 'adaptive' },
-    output_config: { effort: 'low' },
+    betas: [...liveRequest.betas],
+    fallbacks: liveRequest.fallbacks,
+    thinking: liveRequest.thinking,
+    output_config: liveRequest.output_config,
     system: [
       { type: 'text', text: system, cache_control: { type: 'ephemeral', ttl: '1h' } },
       { type: 'text', text: context },

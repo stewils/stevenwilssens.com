@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import { profile } from '../../src/resume'
 import { assistantInput, NOTES_URL, NotReady, readNotes, SCHEMA } from './assistant-input'
-import { contextFor, MODEL } from './ask/agent'
+import { answerSources, answerTokens, contextFor, liveRequest, MODEL, words } from './ask/agent'
 import { articlePages, jdPrefix, loadArticles, systemPrompt } from './ask/prompt'
 
 const note = { id: 7, role: 'general', topic: 'now', title: 'Looking for', body: 'A product leadership role in Seattle.' }
@@ -29,6 +29,10 @@ describe('the assistant input', () => {
     expect(input.contexts.fit).toMatch(/fit-check format/)
     expect(input.profile).toEqual({ location: profile.location, workAuthorization: profile.workAuthorization, availability: profile.availability, teamSize: profile.teamSize })
     expect(calls).toEqual([{ url: NOTES_URL, method: 'GET' }])
+    // The live request and how the site shows an answer, from the same code the assistant runs.
+    expect(input.request).toEqual({ ...liveRequest, maxTokens: answerTokens })
+    expect(input.render).toMatchObject({ maxSources: answerSources, offTopic: words.offTopic, notAPosting: words.notAPosting })
+    expect(input.render.sources['site:about']).toBeTruthy()
   })
 
   it('reads the notes from the given address, and keeps only well-formed notes, as public entries', async () => {

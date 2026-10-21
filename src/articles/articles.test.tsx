@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WilssensArticle from './wilssens/WilssensArticle'
 import AIBreakerArticle from './aibreaker/AIBreakerArticle'
 import SiteArticle, { ReportCard } from './site/SiteArticle'
-import { TeamFlowDiagram } from './site/Diagrams'
+import { LoopDiagram, TeamFlowDiagram } from './site/Diagrams'
 import JuniorTrackCyclingArticle from './juniortrackcycling/JuniorTrackCyclingArticle'
 import LeoArticle from './leo/LeoArticle'
 import { Stats } from './wilssens/Stats'
@@ -155,6 +155,18 @@ describe('the assistant\'s report card on /building-this-site', () => {
 })
 
 describe('the team diagram on /building-this-site', () => {
+  it('still says the merge is mine: "I read the preview and merge", the loop diagram and the assistant\'s line about it (specs/mcp-prs-flow.md, AC-12)', async () => {
+    render(<SiteArticle />)
+    expect(document.getElementById('loop')!.closest('section')!.textContent).toContain('I read the preview and merge, from the same conversation if I like.')
+    expect(screen.getByText(/the required checks on the pull request; I answer the questions and decide the merge\./)).toBeInTheDocument()
+    cleanup()
+    render(<LoopDiagram />)
+    const loop = screen.getByRole('img', { name: /after Steven merges it, a change on the site/ })
+    for (const label of ['I merge the pull request', 'after the preview', 'Claude Code edits', 'on a branch, under checks']) expect(within(loop).getByText(label)).toBeInTheDocument()
+    const prompt = Object.values(import.meta.glob<string>('../../functions/_lib/ask/prompt.ts', { query: '?raw', import: 'default', eager: true }))[0]
+    expect(prompt).toContain('through the same scored gate and tests he works under, and he reads the preview and merges.')
+  })
+
   it('draws the flow across and stacked, each an image with its name and a description of every step', () => {
     render(<TeamFlowDiagram />)
     const images = screen.getAllByRole('img', { name: 'How a change reaches the site: a team of AI agents, and Steven deciding' })
