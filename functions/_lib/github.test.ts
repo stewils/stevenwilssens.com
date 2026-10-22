@@ -27,7 +27,7 @@ const fakeFetch = (replies: Record<string, Reply | Reply[]>) => {
 }
 
 const pullJson = (overrides: Record<string, unknown> = {}) => ({
-  number: 12, title: 'Add the patents', html_url: 'https://github.com/stewils/site/pull/12', head: { ref: 'update/Add_Patents', repo: { full_name: 'stewils/site' } }, draft: false,
+  number: 12, title: 'Add the patents', html_url: 'https://github.com/stewils/site/pull/12', head: { ref: 'update/Add_Patents', sha: 'f00d', repo: { full_name: 'stewils/site' } }, draft: false,
   state: 'open', merged: false, merged_at: null, created_at: '2026-10-18T10:00:00Z', mergeable: true, mergeable_state: 'clean',
   body: `Done.\n<!-- resume-score before=90 after=85 -->\n${encodeUpdateRequest({ title: '', instruction: 'Add the patents', proposals: [3], supersedes: null })}`,
   ...overrides,
@@ -146,11 +146,11 @@ describe('the GitHub client', () => {
     const pulls = await client.pulls()
     expect(calls[0].url).toContain('/pulls?state=open&per_page=20')
     expect(pulls[0]).toEqual({
-      number: 12, title: 'Add the patents', url: 'https://github.com/stewils/site/pull/12', branch: 'update/Add_Patents', headRepo: 'stewils/site', draft: false, state: 'open', merged: false,
+      number: 12, title: 'Add the patents', url: 'https://github.com/stewils/site/pull/12', branch: 'update/Add_Patents', headRepo: 'stewils/site', headSha: 'f00d', draft: false, state: 'open', merged: false,
       createdAt: '2026-10-18T10:00:00Z', previewUrl: 'https://update-add-patents.stevenwilssens.pages.dev', mergeable: true, mergeableState: 'clean',
       resumeScore: { before: 90, after: 85, lower: true }, request: { title: 'Add the patents', instruction: 'Add the patents', proposals: [3], supersedes: null },
     })
-    expect(pulls[1]).toMatchObject({ number: 13, headRepo: null, state: 'closed', merged: true, draft: true, mergeable: null, mergeableState: null, resumeScore: null, request: null })
+    expect(pulls[1]).toMatchObject({ number: 13, headRepo: null, headSha: null, state: 'closed', merged: true, draft: true, mergeable: null, mergeableState: null, resumeScore: null, request: null })
     await client.pulls('all', 100)
     expect(calls[1].url).toContain('state=all&per_page=100&')
     await client.pulls('all', 500)
@@ -177,6 +177,8 @@ describe('the GitHub client', () => {
     const { calls, client } = fakeFetch({ 'PUT /pulls/12/merge': { body: { merged: true, message: 'Pull Request successfully merged', sha: 'abc' } } })
     expect(await client.merge(12)).toEqual({ merged: true, message: 'Pull Request successfully merged', sha: 'abc' })
     expect(calls[0].body).toEqual({ merge_method: 'merge' })
+    await client.merge(12, 'f00d')
+    expect(calls[1].body).toEqual({ merge_method: 'merge', sha: 'f00d' })
   })
 
   it('passes a refused merge on with GitHub\'s message', async () => {

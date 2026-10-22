@@ -36,7 +36,9 @@ export type UpdateRequest = { title: string; instruction: string; proposals: num
 // protection), dirty (conflicts with main), unknown (still being computed), or null
 // when it was not asked for (the list endpoint does not compute it). headRepo is the
 // repository the branch lives in (owner/name): a fork's pull request can carry any branch name.
-export type PullRequest = { number: number; title: string; url: string; branch: string; headRepo: string | null; draft: boolean; state: 'open' | 'closed'; merged: boolean; createdAt: string; previewUrl: string; mergeable: boolean | null; mergeableState: string | null; resumeScore: ResumeScore | null; request: UpdateRequest | null }
+// headSha is the commit the preview was built from: a merge is pinned to it, so a push after
+// Steven looked never goes live unseen.
+export type PullRequest = { number: number; title: string; url: string; branch: string; headRepo: string | null; headSha?: string | null; draft: boolean; state: 'open' | 'closed'; merged: boolean; createdAt: string; previewUrl: string; mergeable: boolean | null; mergeableState: string | null; resumeScore: ResumeScore | null; request: UpdateRequest | null }
 export type MergeResult = { merged: boolean; message: string; sha?: string }
 
 export class GitHubError extends Error { constructor(message: string, public status: number) { super(message) } }
@@ -53,7 +55,8 @@ export type GitHub = {
   pull(number: number): Promise<PullRequest | null>
   // How many closed pull requests from branches with this prefix were merged (the site's own Building feed).
   mergedPulls(branchPrefix: string): Promise<number>
-  merge(number: number): Promise<MergeResult>
+  // With sha, GitHub merges only when the branch still points at that commit (else 409).
+  merge(number: number, sha?: string | null): Promise<MergeResult>
   // Closes a pull request with a comment saying why; the branch is deleted when the token may (best effort).
   close(number: number, comment: string): Promise<{ closed: boolean; branchDeleted: boolean }>
 }
@@ -104,11 +107,11 @@ export const updateRequestFromBody = (body: string | null | undefined): UpdateRe
 }
 
 const shapePull = (pull: Record<string, unknown>): PullRequest => {
-  const head = pull.head as { ref: string; repo?: { full_name?: string } | null }
+  const head = pull.head as { ref: string; sha?: string; repo?: { full_name?: string } | null }
   const body = pull.body as string | null
   const request = updateRequestFromBody(body)
   return {
-    number: pull.number as number, title: pull.title as string, url: pull.html_url as string, branch: head.ref, headRepo: typeof head.repo?.full_name === 'string' ? head.repo.full_name : null, draft: Boolean(pull.draft),
+    number: pull.number as number, title: pull.title as string, url: pull.html_url as string, branch: head.ref, headRepo: typeof head.repo?.full_name === 'string' ? head.repo.full_name : null, headSha: typeof head.sha === 'string' ? head.sha : null, draft: Boolean(pull.draft),
     state: pull.state === 'closed' ? 'closed' : 'open', merged: Boolean(pull.merged ?? pull.merged_at), createdAt: pull.created_at as string, previewUrl: previewUrl(head.ref),
     mergeable: typeof pull.mergeable === 'boolean' ? pull.mergeable : null, mergeableState: typeof pull.mergeable_state === 'string' ? pull.mergeable_state : null,
     resumeScore: resumeScoreFromBody(body), request: request ? { ...request, title: request.title || (pull.title as string) } : null,
@@ -166,8 +169,8 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
       const closed = (await api(`/pulls?state=closed&per_page=100&sort=created&direction=desc`)) as unknown as Record<string, unknown>[]
       return closed.filter((pull) => pull.merged_at && String((pull.head as Record<string, unknown>)?.ref ?? '').startsWith(branchPrefix)).length
     },
-    merge: async (number) => {
-      const body = await api(`/pulls/${number}/merge`, { method: 'PUT', body: JSON.stringify({ merge_method: 'merge' }) }) as { merged: boolean; message: string; sha?: string }
+    merge: async (number, sha) => {
+      const body = await api(`/pulls/${number}/merge`, { method: 'PUT', body: JSON.stringify({ merge_method: 'merge', ...(sha ? { sha } : {}) }) }) as { merged: boolean; message: string; sha?: string }
       return { merged: body.merged, message: body.message, sha: body.sha }
     },
     close: async (number, comment) => {

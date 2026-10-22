@@ -135,7 +135,7 @@ describe('site updates', () => {
     expect((started.json!.run as { id: number; title: string }).title).toBe('Team size on the Group PM role')
     expect(started.json!.next).toMatch(/wait_for_site_update \(run_id 2\)/)
     expect(started.json!.next).toMatch(/Nothing goes live until he has seen the preview and says yes/)
-    expect(started.json).toMatchObject({ name: 'Team size on the Group PM role', say: "I've started on your Team size on the Group PM role. It takes about 10 minutes; I'll tell you when it's ready to check." })
+    expect(started.json).toMatchObject({ name: 'Team size on the Group PM role update', say: "I've started on your Team size on the Group PM role update. It takes about 10 minutes; I'll tell you when it's ready to check." })
     expect(started.json!.say).not.toMatch(/pull request|branch|run|merge|workflow|#/i)
 
     const status = await call(store, 'site_update_status', {}, github)
@@ -145,7 +145,7 @@ describe('site updates', () => {
     expect(pulls[2]).toMatchObject({ number: 11, proposals: [1, 2] })
     expect(pulls[2].mergeTrouble).toMatch(/conflicts with main/)
     expect(status.json!.warning).toMatch(/Shorter bullets update lowers the résumé's ATS score from 90 to 80/)
-    expect(status.json!.say).toBe('3 updates are ready to check: Team size update, Shorter bullets update and Two bullets update. Your Team size on the Group PM role is still being made. Your Shorter bullets update would make your résumé score lower with job-application software.')
+    expect(status.json!.say).toBe("2 updates are ready to check: Team size update and Shorter bullets update. Your Team size on the Group PM role update is still being made. Your Two bullets update needs making again before going live. Your Shorter bullets update would make your résumé score lower with job-application software.")
     expect(pulls.map((p) => (p as unknown as { name: string }).name)).toEqual(['Team size update', 'Shorter bullets update', 'Two bullets update'])
     expect(status.json!.tip).toMatch(/regenerates the same résumé file/)
     expect(status.json!.tip).toMatch(/redoes a clashing one by itself/)
@@ -159,7 +159,7 @@ describe('site updates', () => {
     expect(merged.isError).toBe(false)
     expect(calls.merged).toEqual([7])
     expect(merged.json!.merged).toBe(true)
-    expect(merged.json!.say).toBe('Your Team size update is live on your site; it shows within a few minutes.')
+    expect(merged.json!.say).toBe('Your Team size update is going live on your site; it shows within a few minutes.')
   })
 
   it('warns before merging a pull request that lowers the resume score, and merges once Steven accepts', async () => {
@@ -206,7 +206,7 @@ describe('site updates', () => {
     expect(merged.isError).toBe(false)
     expect(merged.json!.proposalsApplied).toEqual([1, 2])
     expect(merged.json!.next).toMatch(/Proposals #1, #2 are now applied/)
-    expect(merged.json!.say).toBe('Your Batch update is live on your site; it shows within a few minutes. The 2 changes you approved are now marked done.')
+    expect(merged.json!.say).toBe('Your Batch update is going live on your site; it shows within a few minutes. The 2 changes you approved are now marked done.')
     expect(store.proposals.map((p) => [p.id, p.status, p.decisionNote])).toEqual([[1, 'applied', 'Keep "organization". · merged in #12'], [2, 'applied', 'merged in #12'], [3, 'proposed', null]])
     expect((await call(store, 'request_site_update', { title: 'Again', proposals: [1] }, github)).text).toMatch(/already applied/)
   })
@@ -218,15 +218,16 @@ describe('site updates', () => {
     expect(redone.isError).toBe(false)
     expect(calls.merged).toEqual([])
     expect(redone.json).toMatchObject({ merged: false, redone: true, name: 'Two bullets update', why: expect.stringMatching(/#11 conflicts with main.*merged first/) })
-    expect(redone.json!.say).toBe("That update clashed with one that just went live, so I'm redoing your Two bullets update on top of it. About 10 minutes.")
+    expect(redone.json!.say).toBe("Your Two bullets update clashed with an update that just went live, so I'm redoing it on top of that one. About 10 minutes; I'll tell you when it's ready to check.")
     expect(calls.dispatched).toEqual([{ workflow: 'site-update.yml', ref: 'main', inputs: { title: 'Two bullets', instruction: 'Apply the proposals.', proposals: '1,2', supersedes: '11' } }])
     expect((redone.json!.run as { id: number }).id).toBe(2)
     expect(redone.json!.next).toMatch(/nothing about conflicts or numbers.*wait_for_site_update \(run_id 2\)/)
 
-    // GitHub refusing the merge outright as not mergeable is a conflict too, and is redone the same way.
+    // GitHub refusing the merge as not mergeable while the pull request, asked again, has no conflict is no clash: it is said as it is and nothing is redone.
     const refusing = fakeGitHub({ mergeError: 'GitHub 405 on /pulls/7/merge: Pull Request is not mergeable' })
     const refused = await call(store, 'merge_site_update', { number: 7, confirm: true }, refusing.github)
-    expect(refused.json).toMatchObject({ redone: true, why: expect.stringMatching(/#7 conflicts with main/), say: expect.stringMatching(/^That update clashed/) })
+    expect(refused.text).toBe('GitHub refused the merge: GitHub 405 on /pulls/7/merge: Pull Request is not mergeable')
+    expect(refusing.calls.dispatched).toEqual([])
 
     // request_site_update can redo as well, and a pull request from before the marker says what to do instead.
     const viaRequest = await call(store, 'request_site_update', { redo: 11 }, github)
@@ -262,7 +263,7 @@ describe('site updates', () => {
     expect(done.json!.done).toBe(true)
     expect((done.json!.pullRequest as { number: number }).number).toBe(7)
     expect(done.json!.next).toMatch(/^Tell Steven the say line with the preview link.*merge_site_update with number 7 and confirm: true/)
-    expect(done.json!.say).toBe('Your Team size update is ready to check: https://update-team-size-1.stevenwilssens.pages.dev. Want it live?')
+    expect(done.json!.say).toBe('Your Team size update is ready to check. Want it live? Preview: https://update-team-size-1.stevenwilssens.pages.dev')
 
     runs.unshift({ id: 5, number: 5, event: 'workflow_dispatch', status: 'in_progress', conclusion: null, createdAt: '2026-10-17T02:00:00Z', url: 'https://github.com/x/runs/5', branch: 'main', title: 'Slow one' })
     const waiting = await call(store, 'wait_for_site_update', { seconds: 5 }, github)
