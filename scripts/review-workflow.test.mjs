@@ -120,6 +120,22 @@ describe('the assistant check (AC-9)', () => {
     expect(uses.every((at) => (at > inCheck && at < inCheck + check.length) || (at > inPrompt && at < inPrompt + prompt.length))).toBe(true)
   })
 
+  it('says "scope not decided", not "did not run", when the input job stopped before it read the diff', () => {
+    const notRun = stepOf(team, 'Say when the assistant check did not run')
+    expect(notRun).toContain('elif [ "$INPUT" != success ] && [ -z "$SCOPE" ]; then')
+    expect(notRun).toContain('Result: scope not decided (its input job ended with "%s" before it read the diff; see the run)')
+    expect(notRun.indexOf('scope not decided')).toBeLessThan(notRun.indexOf('Result: did not run (its input job ended with'))
+    const said = prompt.replace(/\s+/g, ' ')
+    expect(said).toContain('"Result: scope not decided" means the input job stopped before it read the diff: when the diff touches none of the assistant\'s files')
+    expect(said).toContain('the assistant part is not applicable; when it does, it counts as "did not run".')
+  })
+
+  it("keeps the model's comment from opening or closing an HTML comment before the team-verdicts marker", () => {
+    const post = stepOf(team, 'Post the sign-offs and pass or fail')
+    expect(post).toContain("jq -r '.comment' .review/result.json | sed 's/<!--/\\&lt;!--/g; s/-->/--\\&gt;/g' > \"$RUNNER_TEMP/comment.md\"")
+    expect(post.indexOf("jq -r '.comment'")).toBeLessThan(post.indexOf('<!-- team-verdicts %s -->'))
+  })
+
   it('takes the report only when it is the one the check job wrote (its digest is that job\'s output; job A ran branch code and could upload one too)', () => {
     expect(check).toContain('digest: ${{ steps.ask.outputs.digest }}')
     expect(stepOf(check, 'Ask the assistant on the branch and on main')).toContain('if [ -f "$out" ]; then echo "digest=$(sha256sum "$out" | cut -d\' \' -f1)" >> "$GITHUB_OUTPUT"; fi')
@@ -175,6 +191,7 @@ describe("the recruiter's rule for the assistant check (AC-9)", () => {
   it('a failed mechanical check is a blocker, CHANGES_REQUESTED; not set up on main is not applicable', () => {
     expect(recruiter).toContain('"Result: failed" (an answer that does not match `profile`) is a `blocker`: your verdict is `CHANGES_REQUESTED`.')
     expect(recruiter).toContain('"Result: not set up on main yet" happens only on the pull request that adds the check: the assistant part is then not applicable')
+    expect(recruiter).toContain('"Result: scope not decided" (the input job stopped before it read the diff) is not applicable when the diff touches none of the assistant\'s files, and "did not run" when it does.')
   })
 })
 

@@ -275,14 +275,16 @@ export async function summarize(input, { apiKey = process.env.ANTHROPIC_API_KEY,
 const esc = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
 /** The score, from the report the build wrote, with its baseline (the live site or main). */
+// The report can come from a Site update's branch (its build wrote it): only whole numbers reach the email's HTML.
+const whole = (value) => (Number.isInteger(value) ? value : null)
 export function scoreOf(report) {
-  if (!report || typeof report.score !== 'number') return null
+  if (!report || !Number.isInteger(report.score)) return null
   const baseline = report.baseline ?? null
-  const before = baseline && typeof baseline.score === 'number' ? baseline.score : null
+  const before = baseline ? whole(baseline.score) : null
   const verdict = before == null ? 'unknown' : baseline.lower ? 'lower' : report.score > before ? 'higher' : 'unchanged'
-  const count = (severity) => report.findings?.filter((finding) => finding.severity === severity).length ?? null
+  const count = (severity) => (Array.isArray(report.findings) ? report.findings.filter((finding) => finding?.severity === severity).length : null)
   // The score is the ATS score; the counts beside it are the findings that make it.
-  return { score: report.score, before, verdict, lower: verdict === 'lower', pages: report.pages ?? null, warnings: report.ats?.warnings ?? report.warnings ?? count('warn'), errors: report.ats?.errors ?? report.errors ?? count('error') }
+  return { score: report.score, before, verdict, lower: verdict === 'lower', pages: whole(report.pages), warnings: whole(report.ats?.warnings) ?? whole(report.warnings) ?? count('warn'), errors: whole(report.ats?.errors) ?? whole(report.errors) ?? count('error') }
 }
 
 const palette = { paper: '#f4f6f1', card: '#ffffff', ink: '#172121', body: '#3c4847', muted: '#6a7473', green: '#096b50', deep: '#0f4a38', halo: '#dbeae5', line: '#d7dfd8', yellow: '#e8b84a', warnBg: '#fff8e5', warnInk: '#6b4e00', red: '#b4382c' }

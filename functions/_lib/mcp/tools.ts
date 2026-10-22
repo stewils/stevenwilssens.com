@@ -195,11 +195,14 @@ const clock = (iso: string | null) => (iso && /^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(
 export const blockedCauses = (pull: PullRequest, status: PullStatus): Blocked => {
   const n = pull.number
   const ranked: [number, string][] = []
-  // The team's verdicts count only once its check on this head has finished: after a recheck the old verdicts
-  // for the same head stay in the comment while the new review runs, and reading them would offer a recheck that
-  // cancels the review reading Steven's reply. Until then the check is "running" (or "not run").
+  // The team's verdicts count only once its check on this head has finished, and only when it is not older than
+  // gates (the same Review run or a later one): after a recheck the old verdicts for the same head stay in the
+  // comment while the new review runs, and reading them would offer a recheck that cancels the review reading
+  // Steven's reply. Until then the check is "running" (or "not run").
   const team = status.checks.find((check) => check.name === 'team')
-  const verdicts = status.verdicts && !status.verdicts.stale && team?.status === 'completed' ? status.verdicts : null
+  const gates = status.checks.find((check) => check.name === 'gates')
+  const teamCurrent = team?.status === 'completed' && !(gates && String(gates.startedAt ?? '9999') > String(team.startedAt ?? ''))
+  const verdicts = status.verdicts && !status.verdicts.stale && teamCurrent ? status.verdicts : null
   const link = verdicts?.url ?? pull.url
   const objections = verdicts ? verdicts.roles.filter((role) => role.verdict === 'CHANGES_REQUESTED' || role.verdict === 'NEEDS_STEVEN') : []
   for (const role of objections) {
@@ -214,12 +217,15 @@ export const blockedCauses = (pull: PullRequest, status: PullStatus): Blocked =>
   }
   if (pull.resumeScore?.lower && !status.labels.includes('accept-lower-score')) ranked.push([4, `#${n} lowers the résumé score from ${pull.resumeScore.before} to ${pull.resumeScore.after}; only Steven's accept-lower-score label on GitHub lets it merge, and then merge_site_update with acceptLowerScore: true.`])
   const present = new Set(status.checks.map((check) => check.name))
+  // A required check with no run yet while another job of its workflow runs on the head (team waits for gates):
+  // coming, so "running", never "not run" and never a recheck, which would cancel that run.
+  const pending = (status.pending ?? []).filter((name) => !present.has(name))
   // Waiting for approval only when no run of the check is on the head commit (an old held run stays held after a recheck).
-  const waiting = status.waiting.filter((name) => !present.has(name))
+  const waiting = status.waiting.filter((name) => !present.has(name) && !pending.includes(name))
   if (waiting.length) ranked.push([5, `#${n}: ${names(waiting)} ${waiting.length > 1 ? 'wait' : 'waits'} for approval on GitHub (a run started by a bot). Call merge_site_update with recheck: true to start ${waiting.length > 1 ? 'them' : 'it'} as Steven.`])
-  const missing = requiredChecks.filter((name) => !present.has(name) && !waiting.includes(name))
+  const missing = requiredChecks.filter((name) => !present.has(name) && !waiting.includes(name) && !pending.includes(name))
   if (missing.length) ranked.push([6, `#${n} cannot merge yet: ${names(missing)} ${missing.length > 1 ? 'have' : 'has'} not run on its latest commit. Call merge_site_update with recheck: true to start ${missing.length > 1 ? 'them' : 'it'}.`])
-  const running = status.checks.filter((check) => check.status !== 'completed')
+  const running = [...status.checks.filter((check) => check.status !== 'completed'), ...pending.map((name) => ({ name, startedAt: null }))]
   if (running.length) {
     const started = clock([...running.map((check) => check.startedAt)].filter(Boolean).sort()[0] ?? null)
     ranked.push([7, `#${n} is not ready yet: ${names(running.map((check) => check.name))} ${running.length > 1 ? 'are' : 'is'} still running${started ? ` (started ${started})` : ''}. Merge it once ${running.length > 1 ? 'they pass' : 'it passes'}; wait_for_site_update does not follow checks, so ask again in a few minutes.`])

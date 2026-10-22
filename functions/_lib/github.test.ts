@@ -342,14 +342,36 @@ describe("a pull request's status", () => {
         { name: 'gates', status: 'completed', conclusion: 'failure', startedAt: '2026-10-20T14:00:00Z', url: 'https://github.com/stewils/site/actions/runs/1/job/gates', step: 'Run npm run lint' },
         { name: 'check', status: 'in_progress', conclusion: null, startedAt: '2026-10-20T14:30:00Z', url: 'https://github.com/stewils/site/actions/runs/1/job/check' },
       ],
-      // gates and check have runs on the head commit: only team, which has none, can be waiting.
-      waiting: ['team', 'Other'],
+      // gates and check have runs on the head commit: only team, which has none, can be waiting; a held run of
+      // another workflow ("Other", Deploy say) is no required check.
+      waiting: ['team'],
+      pending: [],
     })
     const graphql = calls[0]
     expect(graphql.method).toBe('POST')
     expect(graphql.body).toMatchObject({ variables: { owner: 'stewils', name: 'site', number: 12 } })
     expect((graphql.body as { query: string }).query).toMatch(/statusCheckRollup/)
     expect(calls.map((call) => call.url.split('/stewils/site')[1] ?? call.url)).toEqual(['https://api.github.com/graphql', '/actions/jobs/41', `/actions/runs?head_sha=${SHA}&status=action_required&per_page=20`])
+  })
+
+  it('names a required check pending while another job of its workflow runs on the head (team behind gates and the assistant jobs)', async () => {
+    const review = { checkSuite: { workflowRun: { workflow: { name: 'Review' } } } }
+    const { client } = fakeFetch({
+      'POST https://api.github.com/graphql': graphqlReply({ commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [
+        checkRun('gates', review),
+        checkRun('assistant-input', { ...review, status: 'IN_PROGRESS', conclusion: null }),
+        checkRun('check', { checkSuite: { workflowRun: { workflow: { name: 'Site checks' } } } }),
+      ] } } } }] } }),
+      'GET /actions/runs?head_sha=': { body: { workflow_runs: [{ name: 'Deploy' }] } },
+    })
+    const status = await client.status(12)
+    expect(status.pending).toEqual(['team'])
+    expect(status.waiting).toEqual([])
+    const done = fakeFetch({
+      'POST https://api.github.com/graphql': graphqlReply({ commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [checkRun('gates', review), checkRun('assistant-input', review), checkRun('check')] } } } }] } }),
+      'GET /actions/runs?head_sha=': { body: { workflow_runs: [] } },
+    })
+    expect((await done.client.status(12)).pending).toEqual([])
   })
 
   it('takes a queued run (not started yet) as newer than a finished one, and asks where only the first failed check stopped', async () => {

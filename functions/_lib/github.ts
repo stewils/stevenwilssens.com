@@ -58,6 +58,9 @@ export type PullStatus = {
   mergeState: string | null
   checks: CheckState[]
   waiting: string[]
+  // Required checks with no run on the head yet while another job of their workflow runs there (the Review
+  // workflow's team waits for gates and the assistant jobs): coming, not missing.
+  pending?: string[]
   labels: string[]
   verdicts: { sha: string; url: string | null; roles: TeamVerdict[]; stale: boolean } | null
 }
@@ -180,11 +183,11 @@ const statusQuery = `query($owner: String!, $name: String!, $number: Int!) {
       mergeStateStatus
       labels(first: 50) { nodes { name } }
       comments(last: 100) { nodes { author { login } url body } }
-      commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes { __typename ... on CheckRun { name status conclusion startedAt detailsUrl databaseId } } } } } } }
+      commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes { __typename ... on CheckRun { name status conclusion startedAt detailsUrl databaseId checkSuite { workflowRun { workflow { name } } } } } } } } } }
     }
   }
 }`
-type CheckRunNode = { __typename?: string; name?: string; status?: string; conclusion?: string | null; startedAt?: string | null; detailsUrl?: string | null; databaseId?: number | null }
+type CheckRunNode = { __typename?: string; name?: string; status?: string; conclusion?: string | null; startedAt?: string | null; detailsUrl?: string | null; databaseId?: number | null; checkSuite?: { workflowRun?: { workflow?: { name?: string } | null } | null } | null }
 type StatusData = { repository?: { pullRequest?: {
   headRefOid: string
   mergeStateStatus?: string | null
@@ -320,10 +323,13 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
       // puts no check run there, and an old held run stays held after a recheck started a new one.
       const absent = requiredChecks.filter((check) => !checks.some((state) => state.name === check))
       const runs = absent.length ? await api(`/actions/runs?head_sha=${headSha}&status=action_required&per_page=20`) as { workflow_runs?: { name?: string }[] } : null
-      const waiting = [...new Set((runs?.workflow_runs ?? []).flatMap((run) => checksOfWorkflow[run.name ?? ''] ?? (run.name ? [run.name] : [])))].filter((name) => !checks.some((state) => state.name === name))
+      // Only the required checks' workflows count: a held Deploy run holds nothing branch protection reads.
+      const waiting = [...new Set((runs?.workflow_runs ?? []).flatMap((run) => checksOfWorkflow[run.name ?? ''] ?? []))].filter((name) => !checks.some((state) => state.name === name))
+      const workflowOf = (check: string) => Object.keys(checksOfWorkflow).find((name) => checksOfWorkflow[name].includes(check))
+      const pending = absent.filter((check) => contexts.some((node) => node.checkSuite?.workflowRun?.workflow?.name === workflowOf(check) && String(node.status ?? '').toUpperCase() !== 'COMPLETED'))
       const prefix = `https://github.com/${repo}/pull/${number}`.toLowerCase()
       const comments = (pull.comments?.nodes ?? []).map((node) => ({ author: node.author?.login ?? null, url: typeof node.url === 'string' && node.url.toLowerCase().startsWith(prefix) ? node.url : null, body: node.body ?? '' }))
-      return { headSha, mergeState: pull.mergeStateStatus ? pull.mergeStateStatus.toLowerCase() : null, checks, waiting, labels: (pull.labels?.nodes ?? []).map((label) => label.name), verdicts: teamVerdictsFrom(comments, headSha) }
+      return { headSha, mergeState: pull.mergeStateStatus ? pull.mergeStateStatus.toLowerCase() : null, checks, waiting, pending, labels: (pull.labels?.nodes ?? []).map((label) => label.name), verdicts: teamVerdictsFrom(comments, headSha) }
     },
     reopen: async (number) => {
       await api(`/pulls/${number}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed' }) })

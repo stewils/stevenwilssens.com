@@ -74,7 +74,9 @@ races the others).
      not run" is never a pass and never a question for Steven: your verdict is then
      `CHANGES_REQUESTED` (re-run the job), never `APPROVE` and never `NEEDS_STEVEN`.
      "Result: not set up on main yet" happens only on the pull request that adds the check:
-     the assistant part is then not applicable; say so in the evidence. Outside
+     the assistant part is then not applicable; say so in the evidence. "Result: scope not
+     decided" (the input job stopped before it read the diff) is not applicable when the
+     diff touches none of the assistant's files, and "did not run" when it does. Outside
      CI (a session), ask the same questions where the assistant runs (production, or
      `npm run dev` with a key), and say so in the evidence. A change to the panel alone
      (`src/ask/`) is covered by its component tests and the designer's screenshot.

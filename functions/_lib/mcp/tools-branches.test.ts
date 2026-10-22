@@ -428,6 +428,25 @@ describe('what holds a blocked Site update pull request (AC-8)', () => {
     expect(fake.calls.status).toEqual([])
   })
 
+  it('while the new Review run is still on gates or the assistant jobs, team has no run yet: "running", never "not run", and no recheck', async () => {
+    const old = { sha: HEAD, url: commentUrl, stale: false, roles: [{ role: 'security-engineer', verdict: 'NEEDS_STEVEN', summary: 'x' }] }
+    const result = await causesOf(statusOf({ checks: [{ ...green('gates'), status: 'in_progress', conclusion: null }, green('check')], pending: ['team'], waiting: ['team'], verdicts: old }))
+    expect(result.text).toBe('#60 is not ready yet: "gates" and "team" are still running (started 14:02 UTC). Merge it once they pass; wait_for_site_update does not follow checks, so ask again in a few minutes.')
+    expect(result.recheck).toBe(false)
+    // With no run of its workflow on the head at all, it is not run: then a recheck starts it.
+    const none = await causesOf(statusOf({ checks: [green('gates'), green('check')].slice(1), pending: [] }))
+    expect(none.text).toMatch(/"gates" and "team" have not run on its latest commit/)
+  })
+
+  it("reads no verdicts from a team run older than the head's gates (the new run's team has not reported yet)", async () => {
+    const old = { sha: HEAD, url: commentUrl, stale: false, roles: [{ role: 'senior-recruiter', verdict: 'CHANGES_REQUESTED', summary: 'Old finding.' }] }
+    const result = await causesOf(statusOf({ checks: [{ ...green('gates'), startedAt: '2026-10-20T15:00:00Z' }, { ...green('team'), conclusion: 'failure', startedAt: '2026-10-20T14:02:00Z' }, green('check')], verdicts: old }))
+    expect(result.text).not.toContain('Old finding.')
+    expect(result.text).toMatch(/^#60: "team" failed/)
+    const current = await causesOf(statusOf({ checks: [{ ...green('gates'), startedAt: '2026-10-20T14:00:00Z' }, { ...green('team'), conclusion: 'failure', startedAt: '2026-10-20T14:20:00Z' }, green('check')], verdicts: old }))
+    expect(current.text).toContain('Old finding.')
+  })
+
   it('after a recheck, reads the old verdicts for the same head as nothing while the new team review runs: "running", and no recheck', async () => {
     const old = { sha: HEAD, url: commentUrl, stale: false, roles: [{ role: 'security-engineer', verdict: 'NEEDS_STEVEN', summary: 'Should the CI key have a spend limit?' }, { role: 'senior-recruiter', verdict: 'CHANGES_REQUESTED', summary: 'x' }] }
     for (const status of ['queued', 'in_progress']) {

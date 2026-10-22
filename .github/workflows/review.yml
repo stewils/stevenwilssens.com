@@ -424,6 +424,10 @@ jobs:
           if [ "$INPUT" = success ] && [ "$SCOPE" = true ] && [ "$SETUP" != true ]; then
             mkdir -p .review/assistant
             printf '# The assistant check\n\nResult: not set up on main yet (main has no scripts/assistant-check.mjs and scripts/assistant-export.ts: the pull request that adds the check).\n' > "$report"
+          elif [ "$INPUT" != success ] && [ -z "$SCOPE" ]; then
+            # The input job stopped before it decided whether the change reaches the assistant: not a "did not run".
+            mkdir -p .review/assistant
+            printf '# The assistant check\n\nResult: scope not decided (its input job ended with "%s" before it read the diff; see the run).\n' "$INPUT" > "$report"
           elif [ "$INPUT" != success ]; then
             mkdir -p .review/assistant
             printf '# The assistant check\n\nResult: did not run (its input job ended with "%s"; see the run).\n' "$INPUT" > "$report"
@@ -473,7 +477,11 @@ jobs:
               match profile) is CHANGES_REQUESTED. "Result: did not run" is never a pass, and never a question for
               Steven: the recruiter's verdict is then CHANGES_REQUESTED (re-run the job). "Result: not set up on main
               yet" is only the pull request that adds the check: for the recruiter the assistant part is then not
-              applicable (say so in the report; the verdict still covers the rest of the merge check).
+              applicable (say so in the report; the verdict still covers the rest of the merge check). "Result: scope
+              not decided" means the input job stopped before it read the diff: when the diff touches none of the
+              assistant's files (functions/api/ask*, functions/_lib/ask/, functions/_lib/assistant-input.ts,
+              scripts/assistant-export.ts, src/resume.ts, src/patents.ts, src/articles/) the assistant part is not
+              applicable; when it does, it counts as "did not run".
             Start the six reviewers in one message with the Agent tool, each with run_in_background: false, so
             they run in parallel and you get every verdict back before you go on. Never end your turn while a
             reviewer is still running. Tell every reviewer: the shell here allows only listed commands, one per
@@ -497,7 +505,9 @@ jobs:
             exit 1
           fi
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          jq -r '.comment' .review/result.json > "$RUNNER_TEMP/comment.md"
+          # The model's text cannot open or close an HTML comment: a marker planted in it stays visible text, and
+          # the workflow's own team-verdicts marker below is the last one (functions/_lib/github.ts reads the last).
+          jq -r '.comment' .review/result.json | sed 's/<!--/\&lt;!--/g; s/-->/--\&gt;/g' > "$RUNNER_TEMP/comment.md"
           shots=$(find .review/screenshots -name '*.png' 2>/dev/null | wc -l)
           if [ "$shots" -gt 0 ]; then
             printf '\n\n**Screenshots** (%s files, branch and main): the `screenshots` artifact of [this run](%s#artifacts); the pairs to look at are named above.\n' "$shots" "$run_url" >> "$RUNNER_TEMP/comment.md"
