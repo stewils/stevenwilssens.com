@@ -185,7 +185,11 @@ describe('the dossier', () => {
     const roles = status.roles as { key: string; recruiterFlags: string[]; recruiterAngles: string[] }[]
     expect(roles.find((role) => role.key === 'azure-devops')!.recruiterFlags).toEqual(['Short stint: 6 months.'])
     expect(roles.find((role) => role.key === 'spatial-audio-senior')!.recruiterFlags).toContain('9 years in one role without a visible promotion.')
-    expect(roles.find((role) => role.key === 'cosmos')!.recruiterFlags.some((flag) => flag.startsWith('Overlaps with'))).toBe(true)
+    // Cosmos starts the month after Info Support ends: no overlap, no gap, no short stint.
+    const cosmos = roles.find((role) => role.key === 'cosmos')!
+    expect(cosmos.recruiterFlags).toEqual(['Company change from Info Support.'])
+    expect(cosmos.recruiterAngles.some((angle) => /overlap/i.test(angle))).toBe(false)
+    expect(roles.find((role) => role.key === 'info-support')!.recruiterFlags.some((flag) => /Overlaps|unaccounted/.test(flag))).toBe(false)
     expect(roles.find((role) => role.key === 'devdiv')!.recruiterFlags.some((flag) => flag.startsWith('Company change'))).toBe(true)
     expect(roles.find((role) => role.key === 'windows-devices-data')!.recruiterAngles.length).toBeGreaterThan(2)
     expect(roles.find((role) => role.key === 'general')!.recruiterAngles.some((angle) => angle.includes('Why leave Microsoft'))).toBe(true)

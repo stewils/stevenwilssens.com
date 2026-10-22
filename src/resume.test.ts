@@ -1,7 +1,7 @@
 // @vitest-environment node
 // The resume PDF is generated from src/resume.ts (npm run resume:build). This test
 // fails when the two drift, so a content change never ships without a new resume.
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import appSource from './App.tsx?raw'
 import { analyzeResume, atsScore, compareScores, dataQuestions, extractPdf, formatComparison, lenses, readBaseline, resumePath } from '../scripts/resume-check.mjs'
 import { about, experiences } from './resume'
@@ -29,6 +29,12 @@ describe('the resume PDF', () => {
     for (const item of experiences.slice(2).filter((role) => role.company === 'Microsoft')) expect(text, item.role).toContain(normalize(item.points[0]).slice(0, 60))
   }, 30_000)
 
+  it('prints Cosmos from Jan 2005, the month after Info Support ends', async () => {
+    const text = await pdfText()
+    expect(text).toContain('jan 2005 - dec 2005')
+    expect(text).not.toContain('jan 2004')
+  }, 30_000)
+
   it('prints the full new Group PM bullet and Perfect Day first under the Lead role', async () => {
     const text = await pdfText()
     expect(text).toContain(normalize(pointsOf('windows-devices-data')[0]))
@@ -49,11 +55,39 @@ describe('the resume PDF', () => {
     expect(atsScore(Array.from({ length: 6 }, () => ({ severity: 'error', lens: 'ats' })))).toBe(0)
   })
 
-  it('raises the questions the dates and numbers leave open', () => {
+  // Cosmos starts the month after Info Support ends: Steven's timeline has no gap or overlap left.
+  it('raises no date question on Steven\'s timeline', () => {
     const questions = dataQuestions(new Date('2026-10-17'))
-    expect(questions.some((q: { question: string }) => /Compuware.*Microsoft|months in between|overlaps with/.test(q.question))).toBe(true)
+    expect(questions.some((q: { about: string }) => q.about === 'cosmos' || q.about === 'info-support')).toBe(false)
+    expect(questions.some((q: { question: string }) => /overlaps with|months in between/.test(q.question))).toBe(false)
     // Every key number has a role behind it, so none is asked about.
     expect(questions.some((q: { about: string }) => q.about === 'impact')).toBe(false)
+  })
+
+  // The rules on made-up roles, so they stay tested now that Steven's own dates no longer trip them.
+  it('asks about an overlap, a gap, the time since the last role and an unbacked number', async () => {
+    vi.resetModules()
+    vi.doMock('./resume', async (importOriginal) => ({
+      ...await importOriginal<typeof import('./resume')>(),
+      experiences: [
+        { key: 'latest', role: 'Lead', company: 'Contoso', dates: 'Jan 2020 - Dec 2024', location: '', summary: '', points: [] },
+        { key: 'middle', role: 'Engineer', company: 'Fabrikam', dates: 'Jan 2010 - Jun 2019', location: '', summary: '', points: [] },
+        { key: 'early', role: 'Developer', company: 'Northwind', dates: 'Jan 2004 - Dec 2010', location: '', summary: '', points: [] },
+      ],
+      impact: [{ value: '40%', label: 'faster decisions' }],
+    }))
+    try {
+      const { dataQuestions: fixtureQuestions } = await import('../scripts/resume-check.mjs')
+      const questions = fixtureQuestions(new Date('2026-10-17')) as { about: string; question: string }[]
+      expect(questions.find((q) => q.about === 'latest' && /months in between/.test(q.question))?.question).toMatch(/Jun 2019 .* Jan 2020: 6 months in between/)
+      expect(questions.find((q) => q.about === 'middle')?.question).toMatch(/overlaps with Developer at Northwind \(Jan 2004 - Dec 2010\)/)
+      expect(questions.find((q) => q.about === 'latest' && /last role ended/.test(q.question))?.question).toMatch(/ended Dec 2024, 22 months ago/)
+      expect(questions.find((q) => q.about === 'impact')?.question).toContain('"40% faster decisions"')
+      expect(questions.some((q) => q.about === 'early')).toBe(false)
+    } finally {
+      vi.doUnmock('./resume')
+      vi.resetModules()
+    }
   })
 
   // The workflows compare a new resume with the one on main or on the live site and
