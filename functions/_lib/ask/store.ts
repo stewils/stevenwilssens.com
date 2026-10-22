@@ -1,22 +1,37 @@
-// Storage for the site assistant: the hourly limit, what it cost, votes, and the
-// questions it could not answer. D1 in production, memory in tests.
+// Storage for the site assistant: the hourly limit, what it cost, votes, the
+// questions it could not answer, the log of every question and Steven's ratings of
+// the answers. D1 in production, memory in tests.
+import { isRateable, type Criterion, type Scores } from './rating'
+
+export { isRateable }
+export type { Criterion, Scores }
 
 export type Outcome = 'answered' | 'gap' | 'off' | 'limited' | 'failed'
 export type Usage = { input: number; output: number; cacheRead: number; cacheWrite: number }
 export type DailyRow = { day: string; outcome: Outcome; questions: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; costMicro: number; msFirst: number; msTotal: number }
 export type VoteRow = { day: string; helpful: number; unhelpful: number }
 // Why a question was kept: the dossier did not cover it (gap), a job description
-// named a requirement the record does not show (fit), or the answer was voted down.
-export type QuestionReason = 'gap' | 'unhelpful' | 'fit'
+// named a requirement the record does not show (fit), the answer was voted down
+// (unhelpful), or Steven rated the answer poor and added it to his questions (rated).
+export type QuestionReason = 'gap' | 'unhelpful' | 'fit' | 'rated'
 // How Steven closed it in an MCP session: with a dossier entry (answered) or by
 // setting it aside (dismissed). Open questions have no resolution.
 export type Resolution = 'answered' | 'dismissed'
 export type SavedQuestion = { id: number; ts: number; reason: QuestionReason; page: string | null; question: string; answer: string | null; country: string | null; asOrg: string | null; resolvedAt?: number | null; resolution?: Resolution | null; entryId?: number | null }
 export type QuestionInput = Omit<SavedQuestion, 'id' | 'resolvedAt' | 'resolution' | 'entryId'>
 
-// One question as it was asked, for the people who used the assistant on /admin.
-export type LogEntry = { id: number; ts: number; visitor: string; kind: 'question' | 'fit'; page: string | null; question: string; answer: string | null; outcome: Outcome; country: string | null; asOrg: string | null }
-export type LogInput = Omit<LogEntry, 'id'>
+// One question as it was asked, for the people who used the assistant on /admin, with
+// what produced the answer: the model that served it, whether a fallback did, the
+// instruction and knowledge versions, and the source ids it cited (null before 0014).
+export type LogEntry = { id: number; ts: number; visitor: string; kind: 'question' | 'fit'; page: string | null; question: string; answer: string | null; outcome: Outcome; country: string | null; asOrg: string | null; model: string | null; fallback: boolean | null; promptVersion: string | null; knowledgeVersion: string | null; sources: string[] | null }
+type Produced = 'model' | 'fallback' | 'promptVersion' | 'knowledgeVersion' | 'sources'
+export type LogInput = Omit<LogEntry, 'id' | Produced> & Partial<Pick<LogEntry, Produced>>
+
+// Steven's rating of one logged answer (the rubric in specs/ask-ratings.md). Once the
+// answer is pruned, logId, note and questionId are null and the rest stays.
+export type Rating = Scores & { id: number; logId: number | null; day: string; model: string | null; fallback: boolean | null; promptVersion: string | null; knowledgeVersion: string | null; kind: LogEntry['kind']; outcome: Outcome; note: string | null; questionId: number | null; ratedAt: number }
+export type RatingInput = Scores & { logId: number; note: string | null; ratedAt: number }
+
 
 // The public report card: everything since the assistant went live.
 export type ReportTotals = { since: string | null; questions: number; answered: number; gap: number; off: number; limited: number; costMicro: number; msFirst: number }
@@ -38,20 +53,48 @@ export interface AskStore {
   resolvedCounts(since: number): Promise<{ answered: number; dismissed: number }>
   // Totals over the assistant's whole life, for the public report card.
   totals(): Promise<ReportTotals>
-  allVotes(): Promise<{ helpful: number; unhelpful: number }>
   // Every question with the visitor who asked it; entries older than keepMs go.
   logQuestion(entry: LogInput, keepMs: number): Promise<void>
   // What /privacy promises for everything older than `before`: the log and open questions
-  // deleted, closed questions stripped to the question. Run on every save and periodically.
+  // deleted, closed questions stripped to the question, ratings stripped to their scores.
+  // Run on every save and periodically.
   prune(before: number): Promise<void>
   // The log since `since`, newest first.
   log(since: number, limit: number): Promise<LogEntry[]>
+  // One logged answer, whole, or null when it is not kept.
+  entry(id: number): Promise<LogEntry | null>
+  // Every rating whose answer's day is `sinceDay` or later, pruned ones included.
+  ratings(sinceDay: string): Promise<Rating[]>
+  ratingFor(logId: number): Promise<Rating | null>
+  // Saves or replaces the rating of one rateable answer, copying the model, versions, kind,
+  // outcome and day from the log row; null when the row is not kept, cannot be rated, or
+  // does not allow an n/a it was given.
+  saveRating(input: RatingInput): Promise<Rating | null>
+  // The question "Add to my questions" made from a rating.
+  linkRatingQuestion(ratingId: number, questionId: number): Promise<void>
+  // The rateable answers since `since` that have no rating, newest first.
+  unrated(since: number): Promise<number[]>
 }
 
 export const dayOf = (ts: number) => new Date(ts).toISOString().slice(0, 10)
 export const monthStart = (ts: number) => `${dayOf(ts).slice(0, 7)}-01`
 
-type LogDb = { id: number; ts: number; visitor: string; kind: LogEntry['kind']; page: string | null; question: string; answer: string | null; outcome: Outcome; country: string | null; as_org: string | null }
+type LogDb = { id: number; ts: number; visitor: string; kind: LogEntry['kind']; page: string | null; question: string; answer: string | null; outcome: Outcome; country: string | null; as_org: string | null; model: string | null; fallback: number | null; prompt_version: string | null; knowledge_version: string | null; sources: string | null }
+type RatingDb = { id: number; log_id: number | null; day: string; model: string | null; fallback: number | null; prompt_version: string | null; knowledge_version: string | null; kind: LogEntry['kind']; outcome: Outcome; accurate: Criterion; supported: Criterion; answers: Criterion; tone: Criterion; overall: number; note: string | null; question_id: number | null; rated_at: number }
+
+const flag = (value: number | null) => (value === null ? null : value === 1)
+// The stored source ids, or null when there are none or the column is not a list.
+const sourceList = (text: string | null) => {
+  if (!text) return null
+  try {
+    const ids: unknown = JSON.parse(text)
+    return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : null
+  } catch {
+    return null
+  }
+}
+const logFromRow = (row: LogDb): LogEntry => ({ id: row.id, ts: row.ts, visitor: row.visitor, kind: row.kind, page: row.page, question: row.question, answer: row.answer, outcome: row.outcome, country: row.country, asOrg: row.as_org, model: row.model, fallback: flag(row.fallback), promptVersion: row.prompt_version, knowledgeVersion: row.knowledge_version, sources: sourceList(row.sources) })
+const ratingFromRow = (row: RatingDb): Rating => ({ id: row.id, logId: row.log_id, day: row.day, model: row.model, fallback: flag(row.fallback), promptVersion: row.prompt_version, knowledgeVersion: row.knowledge_version, kind: row.kind, outcome: row.outcome, accurate: row.accurate, supported: row.supported, answers: row.answers, tone: row.tone, overall: row.overall, note: row.note, questionId: row.question_id, ratedAt: row.rated_at })
 
 type DailyDb = { day: string; outcome: Outcome; questions: number; input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number; cost_micro: number; ms_first: number; ms_total: number }
 type QuestionDb = { id: number; ts: number; reason: QuestionReason; page: string | null; question: string; answer: string | null; country: string | null; as_org: string | null; resolved_at: number | null; resolution: Resolution | null; entry_id: number | null }
@@ -129,20 +172,22 @@ export class D1AskStore implements AskStore {
     return sumTotals(results.map((row) => ({ outcome: row.outcome, questions: row.questions, costMicro: row.cost_micro, msFirst: row.ms_first, since: row.since })))
   }
 
-  async allVotes() {
-    const row = await this.db.prepare('SELECT COALESCE(SUM(helpful), 0) AS helpful, COALESCE(SUM(unhelpful), 0) AS unhelpful FROM ask_votes').first<{ helpful: number; unhelpful: number }>()
-    return { helpful: row?.helpful ?? 0, unhelpful: row?.unhelpful ?? 0 }
-  }
-
   async logQuestion(e: LogInput, keepMs: number) {
-    await this.db.prepare('INSERT INTO ask_log (ts, visitor, kind, page, question, answer, outcome, country, as_org) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(e.ts, e.visitor, e.kind, e.page, e.question, e.answer, e.outcome, e.country, e.asOrg).run()
+    const fallback = e.fallback === undefined || e.fallback === null ? null : e.fallback ? 1 : 0
+    await this.db.prepare('INSERT INTO ask_log (ts, visitor, kind, page, question, answer, outcome, country, as_org, model, fallback, prompt_version, knowledge_version, sources) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(e.ts, e.visitor, e.kind, e.page, e.question, e.answer, e.outcome, e.country, e.asOrg, e.model ?? null, fallback, e.promptVersion ?? null, e.knowledgeVersion ?? null, e.sources ? JSON.stringify(e.sources) : null).run()
     await this.prune(e.ts - keepMs)
   }
 
   async prune(before: number) {
     // Open questions expire; closed ones stay, since the report card counts them, but only
     // the question is left: not the assistant's answer, the page or where it came from.
+    // A rating outlives its answer without anything the visitor wrote or a link back to it:
+    // stripped in the same batch, before the log rows go, plus a sweep (by the answer's day,
+    // which is all a rating keeps) for any whose row went another way.
     await this.db.batch([
+      this.db.prepare('UPDATE ask_ratings SET log_id = NULL, note = NULL, question_id = NULL WHERE log_id IN (SELECT id FROM ask_log WHERE ts < ?)').bind(before),
+      this.db.prepare('UPDATE ask_ratings SET log_id = NULL, note = NULL, question_id = NULL WHERE day < ? AND (log_id IS NOT NULL OR note IS NOT NULL OR question_id IS NOT NULL)').bind(dayOf(before)),
       this.db.prepare('DELETE FROM ask_log WHERE ts < ?').bind(before),
       this.db.prepare('DELETE FROM ask_questions WHERE ts < ? AND resolved_at IS NULL').bind(before),
       this.db.prepare('UPDATE ask_questions SET page = NULL, answer = NULL, country = NULL, as_org = NULL WHERE ts < ? AND resolved_at IS NOT NULL AND (page IS NOT NULL OR answer IS NOT NULL OR country IS NOT NULL OR as_org IS NOT NULL)').bind(before),
@@ -151,7 +196,43 @@ export class D1AskStore implements AskStore {
 
   async log(since: number, limit: number) {
     const { results } = await this.db.prepare('SELECT * FROM ask_log WHERE ts >= ? ORDER BY ts DESC LIMIT ?').bind(since, limit).all<LogDb>()
-    return results.map((row) => ({ id: row.id, ts: row.ts, visitor: row.visitor, kind: row.kind, page: row.page, question: row.question, answer: row.answer, outcome: row.outcome, country: row.country, asOrg: row.as_org }))
+    return results.map(logFromRow)
+  }
+
+  async entry(id: number) {
+    const row = await this.db.prepare('SELECT * FROM ask_log WHERE id = ?').bind(id).first<LogDb>()
+    return row ? logFromRow(row) : null
+  }
+
+  async ratings(sinceDay: string) {
+    const { results } = await this.db.prepare('SELECT * FROM ask_ratings WHERE day >= ? ORDER BY day, id').bind(sinceDay).all<RatingDb>()
+    return results.map(ratingFromRow)
+  }
+
+  async ratingFor(logId: number) {
+    const row = await this.db.prepare('SELECT * FROM ask_ratings WHERE log_id = ?').bind(logId).first<RatingDb>()
+    return row ? ratingFromRow(row) : null
+  }
+
+  async saveRating(r: RatingInput) {
+    // One statement checks that the answer is kept and rateable and writes the rating, so it
+    // cannot race with prune(); what the answer was comes from its row, never from the request.
+    const row = await this.db.prepare(`INSERT INTO ask_ratings (log_id, day, model, fallback, prompt_version, knowledge_version, kind, outcome, accurate, supported, answers, tone, overall, note, rated_at)
+      SELECT id, strftime('%Y-%m-%d', ts / 1000, 'unixepoch'), model, fallback, prompt_version, knowledge_version, kind, outcome, ?2, ?3, ?4, ?5, ?6, ?7, ?8
+      FROM ask_log WHERE id = ?1 AND outcome IN ('answered', 'gap', 'off') AND kind IN ('question', 'fit') AND (?3 <> 'na' OR outcome = 'off') AND (?5 <> 'na' OR outcome = 'off')
+      ON CONFLICT(log_id) DO UPDATE SET accurate = excluded.accurate, supported = excluded.supported, answers = excluded.answers, tone = excluded.tone, overall = excluded.overall, note = excluded.note, rated_at = excluded.rated_at
+      RETURNING *`).bind(r.logId, r.accurate, r.supported, r.answers, r.tone, r.overall, r.note, r.ratedAt).first<RatingDb>()
+    return row ? ratingFromRow(row) : null
+  }
+
+  async linkRatingQuestion(ratingId: number, questionId: number) {
+    await this.db.prepare('UPDATE ask_ratings SET question_id = ? WHERE id = ?').bind(questionId, ratingId).run()
+  }
+
+  async unrated(since: number) {
+    const { results } = await this.db.prepare(`SELECT l.id AS id FROM ask_log l LEFT JOIN ask_ratings r ON r.log_id = l.id
+      WHERE l.ts >= ? AND l.outcome IN ('answered', 'gap', 'off') AND l.kind IN ('question', 'fit') AND r.id IS NULL ORDER BY l.ts DESC LIMIT 2000`).bind(since).all<{ id: number }>()
+    return results.map((row) => row.id)
   }
 }
 
@@ -176,6 +257,9 @@ export class MemoryAskStore implements AskStore {
   voteRows: VoteRow[] = []
   saved: SavedQuestion[] = []
   entries: LogEntry[] = []
+  ratingRows: Rating[] = []
+  private logIds = 0
+  private ratingIds = 0
 
   async countHits(ipHash: string, since: number) { return this.hits.filter((hit) => hit.ipHash === ipHash && hit.ts >= since).length }
   async countAllHits(since: number) { return this.hits.filter((hit) => hit.ts >= since).length }
@@ -209,15 +293,36 @@ export class MemoryAskStore implements AskStore {
     return { answered: closed.filter((q) => q.resolution === 'answered').length, dismissed: closed.filter((q) => q.resolution === 'dismissed').length }
   }
   async totals() { return sumTotals(this.rows.map((row) => ({ outcome: row.outcome, questions: row.questions, costMicro: row.costMicro, msFirst: row.msFirst, since: row.day }))) }
-  async allVotes() { return this.voteRows.reduce((sum, row) => ({ helpful: sum.helpful + row.helpful, unhelpful: sum.unhelpful + row.unhelpful }), { helpful: 0, unhelpful: 0 }) }
   async logQuestion(e: LogInput, keepMs: number) {
-    this.entries.push({ id: this.entries.length + 1, ...e })
+    // Ids are never reused (AUTOINCREMENT in D1), so an old rating cannot attach to a newer answer.
+    this.entries.push({ ...e, id: ++this.logIds, model: e.model ?? null, fallback: e.fallback ?? null, promptVersion: e.promptVersion ?? null, knowledgeVersion: e.knowledgeVersion ?? null, sources: e.sources ?? null })
     await this.prune(e.ts - keepMs)
   }
   async prune(before: number) {
+    const gone = new Set(this.entries.filter((item) => item.ts < before).map((item) => item.id))
+    const cutoffDay = dayOf(before)
+    this.ratingRows = this.ratingRows.map((rating) => ((rating.logId !== null && gone.has(rating.logId)) || rating.day < cutoffDay ? { ...rating, logId: null, note: null, questionId: null } : rating))
     this.entries = this.entries.filter((item) => item.ts >= before)
     this.saved = this.saved.filter((item) => item.ts >= before || item.resolvedAt)
       .map((item) => item.ts < before ? { ...item, page: null, answer: null, country: null, asOrg: null } : item)
   }
   async log(since: number, limit: number) { return this.entries.filter((e) => e.ts >= since).sort((a, b) => b.ts - a.ts).slice(0, limit) }
+  async entry(id: number) { return this.entries.find((e) => e.id === id) ?? null }
+  async ratings(sinceDay: string) { return this.ratingRows.filter((r) => r.day >= sinceDay).sort((a, b) => a.day.localeCompare(b.day) || a.id - b.id) }
+  async ratingFor(logId: number) { return this.ratingRows.find((r) => r.logId === logId) ?? null }
+  async saveRating(r: RatingInput) {
+    const e = this.entries.find((item) => item.id === r.logId)
+    if (!e || !isRateable(e) || ((r.supported === 'na' || r.tone === 'na') && e.outcome !== 'off')) return null
+    const scores = { accurate: r.accurate, supported: r.supported, answers: r.answers, tone: r.tone, overall: r.overall, note: r.note, ratedAt: r.ratedAt }
+    const index = this.ratingRows.findIndex((item) => item.logId === r.logId)
+    if (index >= 0) return (this.ratingRows[index] = { ...this.ratingRows[index], ...scores })
+    const rating: Rating = { id: ++this.ratingIds, logId: e.id, day: dayOf(e.ts), model: e.model, fallback: e.fallback, promptVersion: e.promptVersion, knowledgeVersion: e.knowledgeVersion, kind: e.kind, outcome: e.outcome, questionId: null, ...scores }
+    this.ratingRows.push(rating)
+    return rating
+  }
+  async linkRatingQuestion(ratingId: number, questionId: number) { this.ratingRows = this.ratingRows.map((r) => (r.id === ratingId ? { ...r, questionId } : r)) }
+  async unrated(since: number) {
+    const rated = new Set(this.ratingRows.map((r) => r.logId))
+    return this.entries.filter((e) => e.ts >= since && isRateable(e) && !rated.has(e.id)).sort((a, b) => b.ts - a.ts).map((e) => e.id)
+  }
 }

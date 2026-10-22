@@ -533,7 +533,7 @@ describe('the report card', () => {
     await dossier.insert({ role: 'general', topic: 'now', title: 't', body: 'b', visibility: 'public', tags: null }, now)
     await dossier.insert({ role: 'general', topic: 'now', title: 't', body: 'b', visibility: 'private', tags: null }, now)
     const report = await assistantReport(store, dossier, now)
-    expect(report).toMatchObject({ since: '2026-10-01', questions: 4, answered: 2, gaps: 1, offTopic: 1, turnedAway: 1, gapsCovered: 1, gapsOpen: 1, helpful: 1, unhelpful: 1, costMicro: 8100, costPerAnswerMicro: 2700, msFirstAvg: 1000, publicNotes: 1, generatedAt: now })
+    expect(report).toMatchObject({ since: '2026-10-01', questions: 4, answered: 2, gaps: 1, offTopic: 1, turnedAway: 1, gapsCovered: 1, gapsOpen: 1, costMicro: 8100, costPerAnswerMicro: 2700, msFirstAvg: 1000, publicNotes: 1, generatedAt: now })
     expect(await store.questions(0, 10)).toHaveLength(2)
     expect(await store.resolvedCounts(0)).toEqual({ answered: 1, dismissed: 0 })
   })

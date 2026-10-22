@@ -1,6 +1,6 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { makeAsk, makeMcp, makeResume, makeStats, makeTeamManifest, makeTeamReads, NOW, sha } from '../test/admin-fixtures'
+import { makeAsk, makeMcp, makeRating, makeResume, makeStats, makeTeamManifest, makeTeamReads, NOW, sha } from '../test/admin-fixtures'
 import { computeNeeds, computeSummaries } from './needs'
 import { Overview } from './Overview'
 import type { AdminData, ResumeReport } from './types'
@@ -89,5 +89,13 @@ describe('Overview', () => {
     expect(within(kpi('Résumé ATS score')).getByText('80').className).toBe('kpi-value ')
     expect(kpi('Résumé ATS score')).toHaveTextContent('of 100 · 0 warnings')
     expect(kpi('Résumé ATS score')).not.toHaveTextContent('vs before')
+  })
+})
+
+describe('the assistant ratings on the overview', () => {
+  it('the need links to Ask about Steven with Marked wrong chosen', () => {
+    show(full({ ask: makeAsk({ log: [], ratings: [makeRating({ accurate: 'no' })], unratedWeek: [7] }) }))
+    expect(screen.getByRole('link', { name: /answer you marked wrong/ })).toHaveAttribute('href', '#assistant?rate=wrong')
+    expect(screen.getByRole('link', { name: /answer from the last 7 days waits for your rating/ })).toHaveAttribute('href', '#assistant?rate=unrated')
   })
 })

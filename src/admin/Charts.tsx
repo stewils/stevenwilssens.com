@@ -26,7 +26,7 @@ function useWidth<T extends HTMLElement>() {
 // A daily trend as a line: a light wash under it, a dot and the latest value at the
 // end, gridlines at zero, half and a round maximum, and a crosshair with that day's
 // numbers on hover or touch. `max` pins the axis (a score out of 100).
-export function TrendChart({ title, points, unit, max: fixedMax, format = formatNumber, readout }: { title: string; points: Point[]; unit: string; max?: number; format?: (value: number) => string; readout?: ReactNode }) {
+export function TrendChart({ title, points, unit, max: fixedMax, format = formatNumber, readout, per = 'day' }: { title: string; points: Point[]; unit: string; max?: number; format?: (value: number) => string; readout?: ReactNode; per?: string }) {
   const [host, width] = useWidth<HTMLDivElement>()
   const [hover, setHover] = useState<number | null>(null)
   const W = Math.max(width, 220)
@@ -53,7 +53,7 @@ export function TrendChart({ title, points, unit, max: fixedMax, format = format
       <figcaption><span>{title}</span><span className="chart-readout">{readout ?? (n ? `Total ${format(total)} · peak ${format(peak)}` : '')}</span></figcaption>
       {n === 0 ? <p className="empty">No data yet</p> : (
         <div className="trend-plot" ref={host} onPointerLeave={() => setHover(null)}>
-          <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${title}: ${unit} per day. Latest ${format(points[last].value)}, peak ${format(peak)}.`}>
+          <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${title}: ${unit} per ${per}. Latest ${format(points[last].value)}, peak ${format(peak)}.`}>
             {[0, max / 2, max].map((tick) => (
               <g key={tick}>
                 <line className="grid" x1={m.left} x2={W - m.right} y1={y(tick)} y2={y(tick)} />
@@ -114,9 +114,10 @@ export function BarChart({ title, bars, axisLabels, max: fixedMax }: { title: st
   )
 }
 
-// A ranked breakdown (countries, referrers, …) with a bar behind each name.
-export function RankedList({ title, rows, unit = 'visitors', empty = 'No data yet' }: { title: string; rows: Row[]; unit?: string; empty?: string }) {
-  const max = Math.max(1, ...rows.map((row) => row.visitors))
+// A ranked breakdown (countries, referrers, …) with a bar behind each name. `max` pins the
+// bars' scale and `format` writes the value (a share out of 100).
+export function RankedList({ title, rows, unit = 'visitors', empty = 'No data yet', format = formatNumber, max: fixedMax }: { title: string; rows: Row[]; unit?: string; empty?: string; format?: (value: number) => string; max?: number }) {
+  const max = fixedMax ?? Math.max(1, ...rows.map((row) => row.visitors))
   return (
     <div className="ranked-block">
       <h3>{title}</h3>
@@ -126,7 +127,7 @@ export function RankedList({ title, rows, unit = 'visitors', empty = 'No data ye
             <li key={row.name} title={row.pageviews ? `${formatNumber(row.visitors)} ${unit} · ${formatNumber(row.pageviews)} pageviews` : undefined}>
               <span className="ranked-bar" style={{ width: `${(row.visitors / max) * 100}%` }} />
               <span className="ranked-name">{row.name}{row.detail && <small> · {row.detail}</small>}</span>
-              <span className="ranked-value">{formatNumber(row.visitors)}</span>
+              <span className="ranked-value">{format(row.visitors)}</span>
             </li>
           ))}
         </ol>
@@ -140,4 +141,105 @@ export function Vs({ current, previous, days }: { current: number; previous: num
   const trend = trendOf(current, previous)
   if (!trend) return null
   return <><span className={`vs ${trend.dir}`}>{trend.text}</span> vs {periodBefore(days)}</>
+}
+
+// A share per week, one line per series (a version of the assistant), each with its 95% range
+// as a band: a week without a reading has no point and breaks the line, a thin week (few
+// readings) is a hollow dot reached by a 1px segment, and the series are told apart by line
+// style as well as colour (now solid, before dashed, others dotted). Under the plot, a strip
+// with the readings per week; under the figure, every value as a table.
+export type SharePoint = { n: number; good: number; share: number; range: { low: number; high: number }; thin: boolean }
+export type ShareSeries = { key: string; label: string; style: 'now' | 'before' | 'other'; points: (SharePoint | null)[] }
+const percent = (share: number) => `${Math.round(share * 100)}%`
+const shareLine = (series: ShareSeries, point: SharePoint) => point.thin
+  ? `${series.label}: ${percent(point.share)}, ${point.good} of ${point.n}, too few to read`
+  : `${series.label}: ${percent(point.share)} good, ${point.good} of ${point.n} rated · range ${Math.round(point.range.low * 100)} to ${percent(point.range.high)}`
+
+export function ShareChart({ title, weeks, labels, series, counts, readout, label, empty }: { title: string; weeks: string[]; labels: string[]; series: ShareSeries[]; counts: number[]; readout: string; label: string; empty: string }) {
+  const [host, width] = useWidth<HTMLDivElement>()
+  const [hover, setHover] = useState<number | null>(null)
+  const W = Math.max(width, 220)
+  const strip = 24
+  const H = 170 + strip
+  const m = { top: 10, right: 52, bottom: 22 + strip, left: 44 }
+  const iw = W - m.left - m.right
+  const ih = H - m.top - m.bottom
+  const n = weeks.length
+  const x = (index: number) => m.left + (n === 1 ? iw / 2 : (index / (n - 1)) * iw)
+  const y = (share: number) => m.top + ih - share * ih
+  const peak = Math.max(1, ...counts)
+  const drawn = series.filter((item) => item.points.some(Boolean))
+  const pick = (event: PointerEvent<SVGRectElement>) => {
+    const box = event.currentTarget.getBoundingClientRect()
+    const index = n === 1 ? 0 : Math.round(((event.clientX - box.left) / box.width) * (n - 1))
+    setHover(Math.min(Math.max(index, 0), n - 1))
+  }
+  // The runs of weeks with a point, each drawn as one band and its segments.
+  const runs = (points: (SharePoint | null)[]) => {
+    const found: { index: number; point: SharePoint }[][] = []
+    points.forEach((point, index) => {
+      if (!point) return
+      const last = found[found.length - 1]
+      if (last && last[last.length - 1].index === index - 1) last.push({ index, point })
+      else found.push([{ index, point }])
+    })
+    return found
+  }
+  const tip = hover === null ? [] : drawn.flatMap((item) => (item.points[hover] ? [shareLine(item, item.points[hover]!)] : []))
+  const now = drawn.find((item) => item.style === 'now')
+  const lastNow = now ? [...now.points.keys()].reverse().find((index) => now.points[index]) : undefined
+  return (
+    <figure className="trend share-chart">
+      <figcaption>
+        <span>{title}</span>
+        <span className="chart-legend">{drawn.map((item) => <span key={item.key} className="share-legend"><svg width="22" height="8" aria-hidden="true"><line className={`share-line ${item.style}`} x1="1" x2="21" y1="4" y2="4" /></svg>{item.label}</span>)}</span>
+        <span className="chart-readout">{readout}</span>
+      </figcaption>
+      {drawn.length === 0 ? <p className="empty">{empty}</p> : (
+        <div className="trend-plot" ref={host} onPointerLeave={() => setHover(null)}>
+          <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>
+            {[0, 0.5, 1].map((tick) => (
+              <g key={tick}>
+                <line className="grid" x1={m.left} x2={W - m.right} y1={y(tick)} y2={y(tick)} />
+                <text className="tick" x={m.left - 8} y={y(tick) + 4} textAnchor="end">{percent(tick)}</text>
+              </g>
+            ))}
+            {drawn.map((item) => runs(item.points).map((run) => (
+              <g key={`${item.key}-${run[0].index}`} className={`share-series ${item.style}`}>
+                <path className="share-band" d={`${run.map(({ index, point }, at) => `${at ? 'L' : 'M'}${x(index).toFixed(1)},${y(point.range.high).toFixed(1)}`).join('')}${[...run].reverse().map(({ index, point }) => `L${x(index).toFixed(1)},${y(point.range.low).toFixed(1)}`).join('')}Z`} />
+                {run.slice(1).map(({ index, point }, at) => <line key={index} className={`share-line ${item.style}${point.thin ? ' thin' : ''}`} x1={x(run[at].index)} y1={y(run[at].point.share)} x2={x(index)} y2={y(point.share)} />)}
+                {run.map(({ index, point }) => <circle key={index} className={`share-dot ${item.style}${point.thin ? ' thin' : ''}`} cx={x(index)} cy={y(point.share)} r={4} />)}
+              </g>
+            )))}
+            {now && lastNow !== undefined && <text className="value" x={x(lastNow) + 9} y={y(now.points[lastNow]!.share) + 4}>{percent(now.points[lastNow]!.share)}</text>}
+            {counts.map((count, index) => count > 0 && <rect key={index} className="share-strip" x={x(index) - 4} y={H - 22 - (count / peak) * 20} width={8} height={(count / peak) * 20} />)}
+            <text className="tick" x={W - m.right + 4} y={H - 26} textAnchor="start">rated per week</text>
+            <text className="tick" x={x(0)} y={H - 5} textAnchor="start">{labels[0]}</text>
+            {n > 1 && <text className="tick" x={x(n - 1)} y={H - 5} textAnchor="end">{labels[n - 1]}</text>}
+            {hover !== null && <line className="cross" x1={x(hover)} x2={x(hover)} y1={m.top} y2={m.top + ih} />}
+            <rect x={m.left} y={0} width={iw} height={H} fill="transparent" onPointerMove={pick} onPointerDown={pick} />
+          </svg>
+          {hover !== null && (
+            <div className={`chart-tip ${x(hover) > W / 2 ? 'left' : ''}`} style={{ left: x(hover), top: m.top + 20 }} role="status">
+              <strong>Week of {labels[hover]}</strong>{tip.length ? tip.map((line) => <span key={line}>{line}</span>) : <span>No ratings</span>}
+            </div>
+          )}
+        </div>
+      )}
+      {drawn.length > 0 && (
+        <details className="notes">
+          <summary>The weeks as a table</summary>
+          <table className="data">
+            <thead><tr><th>Week</th><th>Version</th><th className="num">Rated</th><th className="num">Good</th><th className="num">Range</th></tr></thead>
+            <tbody>
+              {weeks.flatMap((week, index) => drawn.flatMap((item) => {
+                const point = item.points[index]
+                return point ? [<tr key={`${week}-${item.key}`}><td>{labels[index]}</td><td>{item.label}</td><td className="num">{point.n}</td><td className="num">{percent(point.share)}{point.thin ? ' (too few)' : ''}</td><td className="num">{Math.round(point.range.low * 100)} to {percent(point.range.high)}</td></tr>] : []
+              }))}
+            </tbody>
+          </table>
+        </details>
+      )}
+    </figure>
+  )
 }

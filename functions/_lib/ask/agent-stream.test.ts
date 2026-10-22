@@ -5,9 +5,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Env } from '../env'
 import { MemoryStore } from '../mcp/store'
-import { answerIsOurs, ask, feedback, missingRequirements, MODEL, mockStream, parseBody, signAnswer, words, type AnswerStream, type StreamFactory } from './agent'
+import { answerIsOurs, ask, feedback, missingRequirements, MODEL, mockStream, parseBody, REQUEST, signAnswer, words, type AnswerStream, type StreamFactory } from './agent'
 import { assistantReport } from './report'
-import { jdPrefix } from './prompt'
+import { instructionVersion, jdPrefix } from './prompt'
 import { MemoryAskStore } from './store'
 
 const sdk = vi.hoisted(() => ({ options: [] as unknown[], requests: [] as Record<string, unknown>[] }))
@@ -73,6 +73,22 @@ describe('the request to Claude', () => {
     expect(request.max_tokens).toBe(2200)
     expect(request.system[1].text).toContain('fit check')
     expect(request.messages[0].content.startsWith(jdPrefix)).toBe(true)
+  })
+
+  it('the version it logs is the hash of the settings it sent', async () => {
+    const store = new MemoryAskStore()
+    await (await ask(post(question()), deps({ store }))).text()
+    const request = sdk.requests[0] as { max_tokens: number; fallbacks: string; thinking: { type: string }; output_config: { effort: string } }
+    const sent = { ...REQUEST, maxTokens: request.max_tokens, fallbacks: request.fallbacks, thinking: request.thinking.type, effort: request.output_config.effort }
+    expect(sent).toEqual(REQUEST)
+    expect(store.entries[0]).toMatchObject({ model: MODEL, fallback: false, promptVersion: await instructionVersion(sent, { offTopic: words.offTopic, notAPosting: words.notAPosting }) })
+  })
+
+  it('the done event has the same keys as on main: no model, no version', async () => {
+    const list = await events(await ask(post(question()), deps()))
+    const done = list.find((item) => item.event === 'done')!
+    expect(Object.keys(done.data).sort()).toEqual(['id', 'scope', 'sig', 'sources'])
+    expect(list.map((item) => item.event)).toEqual(['meta', 'delta', 'done'])
   })
 })
 

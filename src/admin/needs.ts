@@ -1,17 +1,19 @@
 // What needs Steven, per page, and a line per page for the overview's tiles. Both are
 // derived from the loaded data, so they are pure and tested in needs.test.ts.
+import { isWrong, tileText } from './askQuality'
 import { formatNumber, formatUsd, projectMonth } from './format'
 import type { PageId } from './pages'
 import { cutLine, tileLine, unreadUpdates } from './team-state'
 import type { AdminData } from './types'
 
-export type Need = { key: string; page: PageId; n: number; text: string }
+// `hash` is where the line links when it is more than the page (#assistant?rate=wrong).
+export type Need = { key: string; page: PageId; n: number; text: string; hash?: string }
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
 
 export const computeNeeds = ({ stats, mcp, ask, resume, team }: AdminData, now = new Date()): Need[] => {
   const needs: Need[] = []
-  const add = (key: string, page: PageId, n: number, text: string) => { if (n > 0) needs.push({ key, page, n, text }) }
+  const add = (key: string, page: PageId, n: number, text: string, hash?: string) => { if (n > 0) needs.push({ key, page, n, text, ...(hash ? { hash } : {}) }) }
 
   if (resume) {
     const report = resume.report
@@ -39,6 +41,14 @@ export const computeNeeds = ({ stats, mcp, ask, resume, team }: AdminData, now =
     if (ask.month.costMicro > budget * 0.8) add('ask-budget', 'assistant', 1, `the assistant has used ${formatUsd(ask.month.costMicro)} of its ${formatUsd(budget)} monthly budget`)
     // The pace only means something once a few days are in; day one would multiply a single question by thirty.
     else if (now.getUTCDate() >= 3 && projected > budget) add('ask-pace', 'assistant', 1, `at this pace the assistant's budget runs out before the month ends (about ${formatUsd(projected)} of ${formatUsd(budget)})`)
+    // Steven's ratings: the answers he marked wrong in the range, and every rateable answer of the
+    // last seven days (whatever the range) that he has not rated. Nothing when the log could not be read.
+    if (ask.log) {
+      const wrong = (ask.ratings ?? []).filter(isWrong).length
+      add('ask-wrong', 'assistant', wrong, plural(wrong, 'answer you marked wrong: check the facts it used', 'answers you marked wrong: check the facts they used'), 'assistant?rate=wrong')
+      const unrated = ask.unratedWeek?.length ?? 0
+      add('ask-unrated', 'assistant', unrated, plural(unrated, 'answer from the last 7 days waits for your rating', 'answers from the last 7 days wait for your rating'), 'assistant?rate=unrated')
+    }
   }
   if (team) {
     // Changes to the agent team Steven has not seen yet, like unread mail (the Team page).
@@ -84,7 +94,7 @@ export const computeSummaries = ({ stats, mcp, ask, resume, team, days }: AdminD
     const people = ask.log && new Set(ask.log.map((entry) => entry.visitor)).size
     // The log keeps 90 days, so a longer range counts the people of those 90.
     const logDays = ask.logDays ?? Math.min(days, 90)
-    summaries.assistant = `${formatUsd(ask.month.costMicro)} of ${formatUsd(ask.budgetUsd * 1_000_000)} this month · ${formatNumber(ask.month.questions)} questions · ${formatNumber(ask.month.gap)} gaps${people === undefined ? '' : ` · ${formatNumber(people)} ${people === 1 ? 'person' : 'people'} asked in ${plural(logDays, 'the last day', `${logDays} days`)}`}`
+    summaries.assistant = `${formatUsd(ask.month.costMicro)} of ${formatUsd(ask.budgetUsd * 1_000_000)} this month · ${formatNumber(ask.month.questions)} questions · ${formatNumber(ask.month.gap)} gaps${people === undefined ? '' : ` · ${formatNumber(people)} ${people === 1 ? 'person' : 'people'} asked in ${plural(logDays, 'the last day', `${logDays} days`)}`}${tileText(ask.ratings)}`
   }
   if (mcp) summaries.mcp = `${formatNumber(mcp.entries.total)} dossier entries across ${mcp.entries.roles} roles · ${formatNumber(mcp.entries.public)} public${mcp.publicCalls ? ` · ${formatNumber(mcp.publicCalls.total)} public ${plural(mcp.publicCalls.total, 'call', 'calls')}` : ''}`
   if (team) summaries.team = tileLine(team.manifest, unreadUpdates(team.manifest, team.reads).length)

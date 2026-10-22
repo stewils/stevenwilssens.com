@@ -161,3 +161,16 @@ A fit check. A message that starts with "${jdPrefix}" is a job posting a recruit
 Rules for a fit check: every requirement that matters goes in exactly one of the first three lists, a list with nothing in it gets the single line "- None". Be strict: "Covered" needs a fact that names it; a plausible guess is "Partly covered"; anything the dossier is silent on is "Not shown on the site", even when it is probably true. Never infer level, compensation, clearance or willingness to relocate, and never go beyond the work authorization the dossier states (a posting that asks for authorization to work in the US can be Covered by what the dossier states; sponsorship is not in the dossier); those are for him to answer. One sentence per line, at most four questions, and after the lists one closing sentence at most. The hidden first line lists up to six sections; use [[in: none]] when the dossier covers nothing in the posting, and [[out]] when the text is not a job posting at all.`
 
 export const systemPrompt = (entries: DossierEntry[], articles: Articles = {}) => `${rules}\n\n<dossier>\n${dossierText(entries, articles)}\n</dossier>`
+
+// What produced an answer, for Steven's ratings on /admin: two short, stable hashes.
+// The instruction version covers what is changed on purpose (the rules, the fit-check
+// prefix, the two fixed replies and the request settings agent.ts sends); the knowledge
+// version covers the rest of the system prompt (the record, the public dossier entries,
+// the write-ups), so a new fact does not start a new version of the assistant.
+export const shortHash = async (text: string) => {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return [...new Uint8Array(digest).slice(0, 4)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+export const instructionVersion = (settings: object, fixed: { offTopic: string; notAPosting: string }, parts: { rules: string; jdPrefix: string } = { rules, jdPrefix }) =>
+  shortHash(JSON.stringify([parts.rules, parts.jdPrefix, fixed.offTopic, fixed.notAPosting, settings]))
+export const knowledgeVersion = (entries: DossierEntry[], articles: Articles = {}) => shortHash(dossierText(entries, articles))

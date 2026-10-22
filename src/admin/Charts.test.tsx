@@ -129,3 +129,11 @@ describe('Vs', () => {
     expect(container).toBeEmptyDOMElement()
   })
 })
+
+describe('RankedList with a pinned scale', () => {
+  it('writes the value with the format given and scales the bars to the maximum', () => {
+    const { container } = render(<RankedList title="By criterion (share Yes)" format={(value) => `${value}%`} max={100} rows={[{ name: 'Accurate', visitors: 50, detail: '10% partly' }]} />)
+    expect(screen.getByText('50%')).toBeInTheDocument()
+    expect(container.querySelector<HTMLElement>('.ranked-bar')!.style.width).toBe('50%')
+  })
+})
