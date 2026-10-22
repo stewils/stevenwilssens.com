@@ -82,7 +82,6 @@ const recruiterAngles: Record<string, string[]> = {
     'The patents: which ones shipped in products people used, and which were defensive?',
   ],
   compuware: ['Lead of about 15 developers at 25: what did you actually decide, hire and ship? What from this period still shows in how you lead?'],
-  cosmos: ['The dates overlap with Info Support (2001 to 2004) and Compuware (2005): get the timeline straight before a recruiter does.'],
   'info-support': ['Developer and trainer: what did you teach, to whom, and does any of it matter for a product leadership role today?'],
   general: [
     'The one-line pitch: who you are, what you want, why now. Say it without the word "passionate".',

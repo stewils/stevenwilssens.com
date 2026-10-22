@@ -185,7 +185,13 @@ describe('the dossier', () => {
     const roles = status.roles as { key: string; recruiterFlags: string[]; recruiterAngles: string[] }[]
     expect(roles.find((role) => role.key === 'azure-devops')!.recruiterFlags).toEqual(['Short stint: 6 months.'])
     expect(roles.find((role) => role.key === 'spatial-audio-senior')!.recruiterFlags).toContain('9 years in one role without a visible promotion.')
-    expect(roles.find((role) => role.key === 'cosmos')!.recruiterFlags.some((flag) => flag.startsWith('Overlaps with'))).toBe(true)
+    // Cosmos starts the month after Info Support ends: no overlap, no gap, no short stint.
+    const cosmos = roles.find((role) => role.key === 'cosmos')!
+    expect(cosmos.recruiterFlags).toEqual(['Company change from Info Support.'])
+    expect(cosmos.recruiterAngles.some((angle) => /overlap/i.test(angle))).toBe(false)
+    expect(roles.find((role) => role.key === 'info-support')!.recruiterFlags.some((flag) => /Overlaps|unaccounted/.test(flag))).toBe(false)
+    // Only the Cosmos angle went; the Azure DevOps angles stay as they were.
+    expect(roles.find((role) => role.key === 'azure-devops')!.recruiterAngles).toHaveLength(2)
     expect(roles.find((role) => role.key === 'devdiv')!.recruiterFlags.some((flag) => flag.startsWith('Company change'))).toBe(true)
     expect(roles.find((role) => role.key === 'windows-devices-data')!.recruiterAngles.length).toBeGreaterThan(2)
     expect(roles.find((role) => role.key === 'general')!.recruiterAngles.some((angle) => angle.includes('Why leave Microsoft'))).toBe(true)
@@ -200,8 +206,8 @@ describe('the résumé', () => {
     const store = new MemoryStore()
     const resume = parse((await call(store, 'get_resume')).text)
     const roles = resume.roles as { key: string; points: string[] }[]
-    const current = roles.find((role) => role.key === 'spatial-audio-lead')!.points[1]
-    expect(current).toContain('250%')
+    const current = roles.find((role) => role.key === 'spatial-audio-lead')!.points.find((point) => point.includes('250%'))!
+    expect(current).toMatch(/^Grew monthly active devices/)
     expect((resume.pages as Record<string, string>)['building-wilssens']).toBeTruthy()
 
     const missing = await call(store, 'propose_resume_change', { role: 'spatial-audio-lead', kind: 'replace', proposed_text: 'x', rationale: 'y' })

@@ -1,7 +1,7 @@
 // @vitest-environment node
 // The resume PDF is generated from src/resume.ts (npm run resume:build). This test
 // fails when the two drift, so a content change never ships without a new resume.
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import appSource from './App.tsx?raw'
 import { analyzeResume, atsScore, compareScores, dataQuestions, extractPdf, formatComparison, lenses, readBaseline, resumePath } from '../scripts/resume-check.mjs'
 import { about, experiences } from './resume'
@@ -29,6 +29,12 @@ describe('the resume PDF', () => {
     for (const item of experiences.slice(2).filter((role) => role.company === 'Microsoft')) expect(text, item.role).toContain(normalize(item.points[0]).slice(0, 60))
   }, 30_000)
 
+  it('prints Cosmos from Jan 2005, the month after Info Support ends', async () => {
+    const text = await pdfText()
+    expect(text).toContain('jan 2005 - dec 2005')
+    expect(text).not.toContain('jan 2004')
+  }, 30_000)
+
   it('prints the full new Group PM bullet and Perfect Day first under the Lead role', async () => {
     const text = await pdfText()
     expect(text).toContain(normalize(pointsOf('windows-devices-data')[0]))
@@ -49,11 +55,39 @@ describe('the resume PDF', () => {
     expect(atsScore(Array.from({ length: 6 }, () => ({ severity: 'error', lens: 'ats' })))).toBe(0)
   })
 
-  it('raises the questions the dates and numbers leave open', () => {
+  // Cosmos starts the month after Info Support ends: Steven's timeline has no gap or overlap left.
+  it('raises no date question on Steven\'s timeline', () => {
     const questions = dataQuestions(new Date('2026-10-17'))
-    expect(questions.some((q: { question: string }) => /Compuware.*Microsoft|months in between|overlaps with/.test(q.question))).toBe(true)
+    expect(questions.some((q: { about: string }) => q.about === 'cosmos' || q.about === 'info-support')).toBe(false)
+    expect(questions.some((q: { question: string }) => /overlaps with|months in between/.test(q.question))).toBe(false)
     // Every key number has a role behind it, so none is asked about.
     expect(questions.some((q: { about: string }) => q.about === 'impact')).toBe(false)
+  })
+
+  // The rules on made-up roles, so they stay tested now that Steven's own dates no longer trip them.
+  it('asks about an overlap, a gap, the time since the last role and an unbacked number', async () => {
+    vi.resetModules()
+    vi.doMock('./resume', async (importOriginal) => ({
+      ...await importOriginal<typeof import('./resume')>(),
+      experiences: [
+        { key: 'latest', role: 'Lead', company: 'Contoso', dates: 'Jan 2020 - Dec 2024', location: '', summary: '', points: [] },
+        { key: 'middle', role: 'Engineer', company: 'Fabrikam', dates: 'Jan 2010 - Jun 2019', location: '', summary: '', points: [] },
+        { key: 'early', role: 'Developer', company: 'Northwind', dates: 'Jan 2004 - Dec 2010', location: '', summary: '', points: [] },
+      ],
+      impact: [{ value: '40%', label: 'faster decisions' }],
+    }))
+    try {
+      const { dataQuestions: fixtureQuestions } = await import('../scripts/resume-check.mjs')
+      const questions = fixtureQuestions(new Date('2026-10-17')) as { about: string; question: string }[]
+      expect(questions.find((q) => q.about === 'latest' && /months in between/.test(q.question))?.question).toMatch(/Jun 2019 .* Jan 2020: 6 months in between/)
+      expect(questions.find((q) => q.about === 'middle')?.question).toMatch(/overlaps with Developer at Northwind \(Jan 2004 - Dec 2010\)/)
+      expect(questions.find((q) => q.about === 'latest' && /last role ended/.test(q.question))?.question).toMatch(/ended Dec 2024, 22 months ago/)
+      expect(questions.find((q) => q.about === 'impact')?.question).toContain('"40% faster decisions"')
+      expect(questions.some((q) => q.about === 'early')).toBe(false)
+    } finally {
+      vi.doUnmock('./resume')
+      vi.resetModules()
+    }
   })
 
   // The workflows compare a new resume with the one on main or on the live site and
@@ -79,7 +113,7 @@ describe('the Windows Data roles', () => {
   it('csx-data keeps Perfect Day first and adds the team growth second', () => {
     expect(pointsOf('csx-data')).toEqual([
       'Redefined Windows quality measurement around end-to-end scenarios like gaming and the shell, creating the Perfect Day metric for issue-free user days.',
-      'Grew the team from one to five direct reports, leading to promotion to Principal Group Product Manager.',
+      'Grew the team from one to five PMs, working with about 20 developers, leading to promotion to Principal Group Product Manager.',
       'Drove measurable quality gains, with Perfect Day improving about 5% for gaming and 3–4% for the Windows shell.',
       'Provided the data behind Windows release decisions: whether a build was ready to move from internal audiences to Insider preview, which issues had to be fixed, and ultimately whether a release met the quality bar to ship.',
       'Built the alerting dashboards Windows teams used to catch customer-impacting issues, and ran the weekly Release Quality Review where area directors acted on them.',
@@ -89,7 +123,7 @@ describe('the Windows Data roles', () => {
   it('windows-devices-data says about 20, then about 12, with a curly apostrophe', () => {
     const points = pointsOf('windows-devices-data')
     expect(points).toEqual([
-      'Led a PM organization of about 20, initially through three people managers, then led its move to a flatter team of about 12 during Microsoft’s cost reductions; roughly half the team was promoted under my leadership.',
+      'Led a PM organization of about 20, working with more than 100 developers and data scientists, initially through three people managers, then led its move to a flatter team of about 12 during Microsoft’s cost reductions; roughly half the team was promoted under my leadership.',
       'Owned strategy and roadmap for the data platform and insights products Windows engineers and PMs use to ship higher-quality releases.',
       'Built the quality measurement framework that underpinned Windows K2, Microsoft’s high-profile push to improve Windows reliability and performance.',
       'Ran the weekly ship-readiness quality review where Windows VPs made release decisions based on my team’s data on ship-blocking issues.',
@@ -99,6 +133,45 @@ describe('the Windows Data roles', () => {
       'Partnered with engineering, data science, and research leadership across telemetry from more than 1.6 billion Windows devices.',
     ])
     expect(points[0]).toContain('Microsoft’s')
+  })
+})
+
+// Steven's approved team size and Azure DevOps context, word for word and in order: the PDF
+// prints the first bullet of an older role, so the team size prints and the choice does not.
+describe('the team sizes, the Azure DevOps choice and the Cosmos dates', () => {
+  it('spatial-audio-lead leads with the team size', () => {
+    expect(pointsOf('spatial-audio-lead')).toEqual([
+      'Led six PMs, working with about 20 developers.',
+      'Led the Microsoft Spatial Audio Platform across Windows, Xbox One, and new platforms.',
+      'Grew monthly active devices playing spatial audio by more than 250% over 1.5 years.',
+      'Worked with developers and data insights to identify and deliver essential spatial audio features.',
+      'Partnered with game studios to ship spatial audio in major franchises, including Halo, Forza Horizon, Gears of War and Call of Duty.',
+      'Shaped Xbox xCloud game streaming strategy, prioritizing low latency over 4K resolution and making it the platform\'s key differentiator.',
+    ])
+  })
+
+  it('azure-devops keeps the DataOps proposal first and adds the choice to stay', () => {
+    expect(pointsOf('azure-devops')).toEqual([
+      'Authored a DataOps product proposal compelling enough that the team building it was moved to GitHub, as the better home for the product.',
+      'Chose to stay at Microsoft rather than move to GitHub to lead the team building it.',
+    ])
+  })
+
+  it('Cosmos runs Jan 2005 - Dec 2005, the month after Info Support ends', () => {
+    const datesOf = (key: string) => experiences.find((item) => item.key === key)!.dates
+    expect(datesOf('cosmos')).toBe('Jan 2005 - Dec 2005')
+    expect(datesOf('info-support')).toBe('Jan 2001 - Dec 2004')
+    expect(JSON.stringify(experiences)).not.toContain('Jan 2004')
+    expect(experiences.some((item) => [item.summary, ...item.points].some((text) => text.includes('direct reports')))).toBe(false)
+  })
+
+  // Printable ASCII plus the curly apostrophe and the en dash already in "3–4%": no control,
+  // zero-width or bidi character slipped into the roles that changed.
+  it('keeps the changed roles free of hidden characters', () => {
+    for (const key of ['cosmos', 'csx-data', 'windows-devices-data', 'spatial-audio-lead', 'azure-devops']) {
+      const item = experiences.find((role) => role.key === key)!
+      for (const text of [item.dates, ...item.points]) expect(text, key).toMatch(/^[\x20-\x7e’–]*$/)
+    }
   })
 })
 

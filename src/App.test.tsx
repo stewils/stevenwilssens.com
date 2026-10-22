@@ -191,10 +191,32 @@ describe('resume site', () => {
     const bulletsOf = (role: string) => within(screen.getByRole('heading', { name: role }).closest('.timeline-item') as HTMLElement).getAllByRole('listitem')
     const lead = bulletsOf('Principal Product Manager Lead - Windows Data')
     expect(lead[0]).toHaveTextContent(/^Redefined Windows quality measurement .* Perfect Day metric/)
-    expect(lead[1]).toHaveTextContent('Grew the team from one to five direct reports, leading to promotion to Principal Group Product Manager.')
-    expect(bulletsOf('Principal Group Product Manager - Windows & Devices Data')[0]).toHaveTextContent('Led a PM organization of about 20, initially through three people managers, then led its move to a flatter team of about 12 during Microsoft’s cost reductions; roughly half the team was promoted under my leadership.')
+    expect(lead[1]).toHaveTextContent('Grew the team from one to five PMs, working with about 20 developers, leading to promotion to Principal Group Product Manager.')
+    expect(bulletsOf('Principal Group Product Manager - Windows & Devices Data')[0]).toHaveTextContent('Led a PM organization of about 20, working with more than 100 developers and data scientists, initially through three people managers, then led its move to a flatter team of about 12 during Microsoft’s cost reductions; roughly half the team was promoted under my leadership.')
+    expect(screen.queryByText(/five direct reports/)).toBeNull()
     expect(screen.queryByText(/Led a PM organization of 10 to 20/)).toBeNull()
     expect(screen.queryByText(/designed its move to a flatter structure/)).toBeNull()
+  })
+
+  it('shows the team sizes, the Azure DevOps choice and the Cosmos dates on the experience page', () => {
+    setPath('/experience')
+    const { container } = render(<App />)
+
+    const itemOf = (role: string) => screen.getByRole('heading', { name: role }).closest('.timeline-item') as HTMLElement
+    const spatial = within(itemOf('Principal Product Manager Lead - Silicon, Graphics, Media')).getAllByRole('listitem')
+    expect(spatial).toHaveLength(6)
+    expect(spatial[0]).toHaveTextContent('Led six PMs, working with about 20 developers.')
+    expect(spatial[1]).toHaveTextContent('Led the Microsoft Spatial Audio Platform across Windows, Xbox One, and new platforms.')
+    const azure = within(itemOf('Principal Product Manager Lead - Azure DevOps')).getAllByRole('listitem')
+    expect(azure.map((item) => item.textContent)).toEqual([
+      'Authored a DataOps product proposal compelling enough that the team building it was moved to GitHub, as the better home for the product.',
+      'Chose to stay at Microsoft rather than move to GitHub to lead the team building it.',
+    ])
+    const cosmos = itemOf('Software Developer')
+    expect(cosmos.querySelector('.timeline-date')).toHaveTextContent('Jan 2005 - Dec 2005')
+    expect(itemOf('Developer and Trainer').querySelector('.timeline-date')).toHaveTextContent('Jan 2001 - Dec 2004')
+    expect(screen.getByRole('button', { name: /^Go to.*Software DeveloperCosmos$/ }).querySelector('.graph-year')).toHaveTextContent('2005')
+    expect(container.textContent).not.toContain('Jan 2004')
   })
 
   it('shows a not-found page for unknown paths', () => {

@@ -119,14 +119,16 @@ describe('LinkedIn import', () => {
 describe('the recruiter review', () => {
   const pages = { home: '# Steven Wilssens\n\nPrincipal product leader for data and AI. Now building in AI while choosing my next leadership role. Hiring a product leader for data, experimentation or AI?', about: '# About', experience: '# Experience', work: '# Selected work', recommendations: '# Recommendations' }
 
-  it('flags the missing resume report and the missing LinkedIn import, and asks about gaps', () => {
+  it('flags the missing resume report and the missing LinkedIn import, and raises no date question on Steven\'s timeline', () => {
     const review = reviewForRecruiters({ pages, resumeReport: null, linkedin: null, now })
     const areas = review.findings.map((f) => f.area)
     expect(areas.filter((area) => area.startsWith('impact:'))).toEqual([])
     expect(areas).toContain('resume')
     expect(areas).toContain('linkedin')
     expect(areas).not.toContain('scope:windows-devices-data')
-    expect(review.questions.some((q) => /months in between|What were the|overlaps/.test(q.question))).toBe(true)
+    // Every role starts the month the one before ends (or the month after), so no gap or
+    // overlap is asked about; the rules keep their fixture test in recruiter-branches.test.ts.
+    expect(review.questions.some((q) => q.about === 'cosmos' || /overlaps|months in between/.test(q.question))).toBe(false)
     expect(review.score).toBeLessThan(100)
     expect(review.headline).toMatch(/recruiter's seat/)
     for (const finding of review.findings) { expect(finding.why.length).toBeGreaterThan(20); expect(finding.fix.length).toBeGreaterThan(10) }
