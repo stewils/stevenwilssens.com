@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import teamManifest from 'virtual:team-manifest'
 import { ignoreKey } from '../analytics'
 import { AssistantPage } from './AssistantPage'
@@ -19,7 +19,7 @@ import { TeamPage, type TeamAction } from './TeamPage'
 import type { TeamReads } from './team-types'
 import { TrafficPage } from './TrafficPage'
 import type { AdminData, AskInfo, AskLogEntry, AskRating, McpInfo, RatingDraft, ResumeInfo, Stats } from './types'
-import { withRatings } from './askQuality'
+import { newerRatings, withRatings } from './askQuality'
 import type { SaveResult } from './RatingForm'
 
 // The dashboard: a menu on the left (a tab bar on narrow screens) with one page per
@@ -125,13 +125,10 @@ export default function Admin() {
 
   // Steven's ratings of the assistant's answers: each saved one shows at once on top of the
   // loaded page (People, the queue, the scores, Needs you, the tile) without reloading a log of
-  // up to 2,000 rows; the next load of the page has them itself, so they apply to the data they
-  // were saved on only.
-  const [rated, setRated] = useState<{ base: AskInfo | null; saved: Map<number, AskRating> }>({ base: null, saved: new Map() })
-  const askLoaded = useRef<AskInfo | null>(null)
-  useEffect(() => { askLoaded.current = ask.data }, [ask.data])
+  // up to 2,000 rows. A load of the page that has the rating (or a later one) takes over; one
+  // that read the database before the save does not hide it.
+  const [saved, setSaved] = useState<Map<number, AskRating>>(() => new Map())
   const rateAnswer = useCallback(async (draft: RatingDraft): Promise<SaveResult> => {
-    const base = askLoaded.current
     try {
       const response = await fetch('/api/ask/rating', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(draft) })
       if (response.status === 401) { rejected(); return { ok: false, reason: 'the token was not accepted' } }
@@ -140,7 +137,7 @@ export default function Admin() {
         return { ok: false, reason: refusal?.field ? `the server refused ${refusal.field}` : `HTTP ${response.status}` }
       }
       const { rating } = (await response.json()) as { rating: AskRating }
-      setRated((current) => ({ base, saved: new Map(current.base === base ? current.saved : []).set(rating.logId!, rating) }))
+      setSaved((current) => new Map(current).set(rating.logId!, rating))
       return { ok: true, rating }
     } catch {
       return { ok: false, reason: 'no connection' }
@@ -151,7 +148,7 @@ export default function Admin() {
     if (response.status === 401) { rejected(); return null }
     return response.ok ? ((await response.json()) as { entry: AskLogEntry }).entry : null
   }, [token, rejected])
-  const askData = ask.data && rated.base === ask.data ? withRatings(ask.data, rated.saved) : ask.data
+  const askData = ask.data ? withRatings(ask.data, newerRatings(ask.data, saved)) : ask.data
 
   useEffect(() => {
     const onChange = () => setHash(readHash())
@@ -161,7 +158,9 @@ export default function Admin() {
   // A page and, after a question mark, what it was asked to show (#assistant?rate=wrong).
   const [pageHash, hashQuery = ''] = hash.split('?')
   const page: PageDef = pageById(pageHash) ?? pages[0]
-  useEffect(() => {
+  // A new page starts at the top. In a layout effect, so it runs before the page's own effects:
+  // a page that moves focus on arrival (Rate answers from a Needs you line) scrolls there after it.
+  useLayoutEffect(() => {
     document.title = `${page.title} · Admin · steven.wilssens.com`
     scroller.current?.scrollTo({ top: 0 })
   }, [page])

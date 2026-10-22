@@ -11,19 +11,17 @@ import { isAdmin } from '../../_lib/auth'
 import { KEEP_MS } from '../../_lib/ask/agent'
 import { isPoor, parseRating } from '../../_lib/ask/rating'
 import { D1AskStore, isRateable } from '../../_lib/ask/store'
-import { readCapped } from '../team'
+import { isJson, json, readCapped } from '../../_lib/http'
 
 const MAX_BODY = 16 * 1024
 
-const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })
 const invalid = (field: string) => json({ error: 'invalid', field }, 400)
 const tooLarge = () => json({ error: 'too large' }, 413)
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (!isAdmin(request, env)) return json({ error: 'unauthorized' }, 401)
-  if ((request.headers.get('Content-Type') ?? '').split(';')[0].trim().toLowerCase() !== 'application/json') return json({ error: 'unsupported media type' }, 415)
-  if (Number(request.headers.get('Content-Length') ?? 0) > MAX_BODY) return tooLarge()
-  const text = await readCapped(request)
+  if (!isJson(request)) return json({ error: 'unsupported media type' }, 415)
+  const text = await readCapped(request, MAX_BODY)
   if (text === null) return tooLarge()
   const parsed = parseRating(text)
   if (!parsed.ok) return invalid(parsed.field)
@@ -39,8 +37,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     // Pruned between the read and the write.
     if (!rating) return invalid('id')
     if (body.addToQuestions && isPoor(rating) && rating.questionId === null) {
-      const questionId = await store.saveQuestion({ ts: entry.ts, reason: 'rated', page: entry.page, question: entry.question, answer: entry.answer, country: null, asOrg: null }, KEEP_MS)
-      await store.linkRatingQuestion(rating.id, questionId)
+      const questionId = await store.addRatingQuestion(rating.id, { ts: entry.ts, reason: 'rated', page: entry.page, question: entry.question, answer: entry.answer, country: null, asOrg: null }, KEEP_MS)
       rating = { ...rating, questionId }
     }
     return json({ rating })

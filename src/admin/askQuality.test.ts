@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { earlierTurns, lineStyle, newcombe, pct, points, queueCounts, queueOf, rangeText, summarize, tileText, verdict, verdictText, versionKey, versionLabel, versions, weekList, weekOf, weeklyContext, weeklyShares, wilson, withRatings } from './askQuality'
+import { earlierTurns, lineStyle, newcombe, pct, points, queueCounts, queueOf, rangeText, summarize, tileText, verdict, verdictText, versionKey, versionLabel, versions, weekList, weekOf, weeklyContext, weeklyShares, wilson, withRatings, newerRatings } from './askQuality'
 import { makeAsk, makeLogEntry, makeRating } from '../test/admin-fixtures'
 import type { AskLogEntry, AskRating } from './types'
 
@@ -98,6 +98,8 @@ describe('versions', () => {
 
   it('a note on a pruned answer has no question', () => {
     expect(versions([], [makeRating({ logId: null, note: 'Kept' })])[0].notes).toEqual([{ ratedAt: makeRating().ratedAt, note: 'Kept', question: null }])
+    // A rating whose answer is not in the loaded log (the log stopped at its limit) has no question to show.
+    expect(versions([], [makeRating({ logId: 5, note: 'Beyond the limit' })])[0].notes).toEqual([{ ratedAt: makeRating().ratedAt, note: 'Beyond the limit', question: null }])
   })
 })
 
@@ -255,6 +257,19 @@ describe('saved ratings on top of the loaded page', () => {
     expect(merged.ratings!.map((rating) => rating.id)).toEqual([9, 1, 2])
     expect(merged.unratedWeek).toEqual([])
     expect(withRatings(makeAsk(), new Map([[3, after]]))).toMatchObject({ log: undefined, unratedWeek: undefined, ratings: [after] })
+  })
+
+  it('keeps a saved rating over a load that read the database before the save, until a load has it or a later one', () => {
+    const saved = makeRating({ id: 1, logId: 3, overall: 5, ratedAt: 200 })
+    const other = makeRating({ id: 5, logId: 99, overall: 1, ratedAt: 200 })
+    const map = new Map([[3, saved], [99, other]])
+    // Loaded before the save: the answer without a rating, or with an older one. An answer the page does not show is left out.
+    expect([...newerRatings(makeAsk({ log: [makeLogEntry({ id: 3 })] }), map).values()]).toEqual([saved])
+    expect([...newerRatings(makeAsk({ log: [makeLogEntry({ id: 3, rating: makeRating({ id: 1, logId: 3, overall: 2, ratedAt: 100 }) })] }), map).keys()]).toEqual([3])
+    // Loaded after: the page has it (or a newer one) itself.
+    expect(newerRatings(makeAsk({ log: [makeLogEntry({ id: 3, rating: saved })] }), map).size).toBe(0)
+    expect(newerRatings(makeAsk({ log: [makeLogEntry({ id: 3, rating: makeRating({ id: 1, logId: 3, ratedAt: 300 }) })] }), map).size).toBe(0)
+    expect(newerRatings(makeAsk(), map).size).toBe(0)
   })
 
   it('the overview tile adds the good share once there is a rating', () => {

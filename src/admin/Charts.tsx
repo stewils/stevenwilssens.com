@@ -25,8 +25,11 @@ function useWidth<T extends HTMLElement>() {
 
 // A daily trend as a line: a light wash under it, a dot and the latest value at the
 // end, gridlines at zero, half and a round maximum, and a crosshair with that day's
-// numbers on hover or touch. `max` pins the axis (a score out of 100).
-export function TrendChart({ title, points, unit, max: fixedMax, format = formatNumber, readout, per = 'day' }: { title: string; points: Point[]; unit: string; max?: number; format?: (value: number) => string; readout?: ReactNode; per?: string }) {
+// numbers on hover or touch. `max` pins the axis (a score out of 100). A point without a
+// value (a week with no reading) keeps its place on the axis and breaks the line there,
+// with no wash under a broken line.
+export type TrendPoint = Omit<Point, 'value'> & { value: number | null }
+export function TrendChart({ title, points, unit, max: fixedMax, format = formatNumber, readout, per = 'day' }: { title: string; points: TrendPoint[]; unit: string; max?: number; format?: (value: number) => string; readout?: ReactNode; per?: string }) {
   const [host, width] = useWidth<HTMLDivElement>()
   const [hover, setHover] = useState<number | null>(null)
   const W = Math.max(width, 220)
@@ -35,25 +38,27 @@ export function TrendChart({ title, points, unit, max: fixedMax, format = format
   const iw = W - m.left - m.right
   const ih = H - m.top - m.bottom
   const n = points.length
-  const last = n - 1
-  const peak = Math.max(0, ...points.map((point) => point.value))
-  const total = points.reduce((sum, point) => sum + point.value, 0)
+  const values = points.flatMap((point) => (point.value === null ? [] : [point.value]))
+  const known = [...points.keys()].filter((index) => points[index].value !== null)
+  const last = known[known.length - 1]
+  const peak = Math.max(0, ...values)
+  const total = values.reduce((sum, value) => sum + value, 0)
   const max = fixedMax ?? niceMax(Math.max(peak, 1))
   const x = (index: number) => m.left + (n === 1 ? iw / 2 : (index / (n - 1)) * iw)
   const y = (value: number) => m.top + ih - (Math.min(value, max) / max) * ih
-  const line = points.map((point, index) => `${index ? 'L' : 'M'}${x(index).toFixed(1)},${y(point.value).toFixed(1)}`).join('')
+  const line = known.map((index, at) => `${at && known[at - 1] === index - 1 ? 'L' : 'M'}${x(index).toFixed(1)},${y(points[index].value!).toFixed(1)}`).join('')
   const active = hover === null ? null : points[hover]
   const pick = (event: PointerEvent<SVGRectElement>) => {
     const box = event.currentTarget.getBoundingClientRect()
     const index = n === 1 ? 0 : Math.round(((event.clientX - box.left) / box.width) * (n - 1))
-    setHover(Math.min(Math.max(index, 0), last))
+    setHover(Math.min(Math.max(index, 0), n - 1))
   }
   return (
     <figure className="trend">
-      <figcaption><span>{title}</span><span className="chart-readout">{readout ?? (n ? `Total ${format(total)} · peak ${format(peak)}` : '')}</span></figcaption>
-      {n === 0 ? <p className="empty">No data yet</p> : (
+      <figcaption><span>{title}</span><span className="chart-readout">{readout ?? (known.length ? `Total ${format(total)} · peak ${format(peak)}` : '')}</span></figcaption>
+      {!known.length ? <p className="empty">No data yet</p> : (
         <div className="trend-plot" ref={host} onPointerLeave={() => setHover(null)}>
-          <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${title}: ${unit} per ${per}. Latest ${format(points[last].value)}, peak ${format(peak)}.`}>
+          <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${title}: ${unit} per ${per}. Latest ${format(points[last].value!)}, peak ${format(peak)}.`}>
             {[0, max / 2, max].map((tick) => (
               <g key={tick}>
                 <line className="grid" x1={m.left} x2={W - m.right} y1={y(tick)} y2={y(tick)} />
@@ -61,22 +66,23 @@ export function TrendChart({ title, points, unit, max: fixedMax, format = format
               </g>
             ))}
             <text className="tick" x={x(0)} y={H - 5} textAnchor="start">{points[0].label}</text>
-            {n > 1 && <text className="tick" x={x(last)} y={H - 5} textAnchor="end">{points[last].label}</text>}
-            {n > 1 && <path className="area" d={`${line}L${x(last).toFixed(1)},${y(0).toFixed(1)}L${x(0).toFixed(1)},${y(0).toFixed(1)}Z`} />}
+            {n > 1 && <text className="tick" x={x(n - 1)} y={H - 5} textAnchor="end">{points[n - 1].label}</text>}
+            {n > 1 && known.length === n && <path className="area" d={`${line}L${x(last).toFixed(1)},${y(0).toFixed(1)}L${x(0).toFixed(1)},${y(0).toFixed(1)}Z`} />}
             <path className="line" d={line} />
-            <circle className="dot" cx={x(last)} cy={y(points[last].value)} r={4} />
-            <text className="value" x={x(last) + 9} y={y(points[last].value) + 4}>{format(points[last].value)}</text>
+            {known.length < n && known.map((index) => <circle key={index} className="dot" cx={x(index)} cy={y(points[index].value!)} r={3} />)}
+            <circle className="dot" cx={x(last)} cy={y(points[last].value!)} r={4} />
+            <text className="value" x={x(last) + 9} y={y(points[last].value!) + 4}>{format(points[last].value!)}</text>
             {active && hover !== null && (
               <g>
                 <line className="cross" x1={x(hover)} x2={x(hover)} y1={m.top} y2={m.top + ih} />
-                <circle className="dot" cx={x(hover)} cy={y(active.value)} r={4} />
+                {active.value !== null && <circle className="dot" cx={x(hover)} cy={y(active.value)} r={4} />}
               </g>
             )}
             <rect x={m.left} y={0} width={iw} height={H} fill="transparent" onPointerMove={pick} onPointerDown={pick} />
           </svg>
           {active && hover !== null && (
-            <div className={`chart-tip ${x(hover) > W / 2 ? 'left' : ''}`} style={{ left: x(hover), top: y(active.value) }} role="status">
-              <strong>{active.label}</strong><span>{active.detail ?? `${format(active.value)} ${unit}`}</span>
+            <div className={`chart-tip ${x(hover) > W / 2 ? 'left' : ''}`} style={{ left: x(hover), top: active.value === null ? m.top + 20 : y(active.value) }} role="status">
+              <strong>{active.label}</strong><span>{active.detail ?? (active.value === null ? 'No data' : `${format(active.value)} ${unit}`)}</span>
             </div>
           )}
         </div>
@@ -192,7 +198,7 @@ export function ShareChart({ title, weeks, labels, series, counts, readout, labe
     <figure className="trend share-chart">
       <figcaption>
         <span>{title}</span>
-        <span className="chart-legend">{drawn.map((item) => <span key={item.key} className="share-legend"><svg width="22" height="8" aria-hidden="true"><line className={`share-line ${item.style}`} x1="1" x2="21" y1="4" y2="4" /></svg>{item.label}</span>)}</span>
+        <span className="share-legends">{drawn.map((item) => <span key={item.key} className="share-legend"><svg width="22" height="8" aria-hidden="true"><line className={`share-line ${item.style}`} x1="1" x2="21" y1="4" y2="4" /></svg>{item.label}</span>)}</span>
         <span className="chart-readout">{readout}</span>
       </figcaption>
       {drawn.length === 0 ? <p className="empty">{empty}</p> : (
@@ -206,6 +212,7 @@ export function ShareChart({ title, weeks, labels, series, counts, readout, labe
             ))}
             {drawn.map((item) => runs(item.points).map((run) => (
               <g key={`${item.key}-${run[0].index}`} className={`share-series ${item.style}`}>
+                {run.length === 1 && <line className="share-range" x1={x(run[0].index)} x2={x(run[0].index)} y1={y(run[0].point.range.high)} y2={y(run[0].point.range.low)} />}
                 <path className="share-band" d={`${run.map(({ index, point }, at) => `${at ? 'L' : 'M'}${x(index).toFixed(1)},${y(point.range.high).toFixed(1)}`).join('')}${[...run].reverse().map(({ index, point }) => `L${x(index).toFixed(1)},${y(point.range.low).toFixed(1)}`).join('')}Z`} />
                 {run.slice(1).map(({ index, point }, at) => <line key={index} className={`share-line ${item.style}${point.thin ? ' thin' : ''}`} x1={x(run[at].index)} y1={y(run[at].point.share)} x2={x(index)} y2={y(point.share)} />)}
                 {run.map(({ index, point }) => <circle key={index} className={`share-dot ${item.style}${point.thin ? ' thin' : ''}`} cx={x(index)} cy={y(point.share)} r={4} />)}
@@ -213,7 +220,6 @@ export function ShareChart({ title, weeks, labels, series, counts, readout, labe
             )))}
             {now && lastNow !== undefined && <text className="value" x={x(lastNow) + 9} y={y(now.points[lastNow]!.share) + 4}>{percent(now.points[lastNow]!.share)}</text>}
             {counts.map((count, index) => count > 0 && <rect key={index} className="share-strip" x={x(index) - 4} y={H - 22 - (count / peak) * 20} width={8} height={(count / peak) * 20} />)}
-            <text className="tick" x={W - m.right + 4} y={H - 26} textAnchor="start">rated per week</text>
             <text className="tick" x={x(0)} y={H - 5} textAnchor="start">{labels[0]}</text>
             {n > 1 && <text className="tick" x={x(n - 1)} y={H - 5} textAnchor="end">{labels[n - 1]}</text>}
             {hover !== null && <line className="cross" x1={x(hover)} x2={x(hover)} y1={m.top} y2={m.top + ih} />}
@@ -224,6 +230,7 @@ export function ShareChart({ title, weeks, labels, series, counts, readout, labe
               <strong>Week of {labels[hover]}</strong>{tip.length ? tip.map((line) => <span key={line}>{line}</span>) : <span>No ratings</span>}
             </div>
           )}
+          <p className="share-strip-key"><span aria-hidden="true" />Bars along the bottom: answers rated per week</p>
         </div>
       )}
       {drawn.length > 0 && (

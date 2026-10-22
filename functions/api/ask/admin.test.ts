@@ -149,4 +149,17 @@ describe('GET /api/ask/admin and the ratings', () => {
     }
     expect(unauthorized.headers.get('Cache-Control')).toBe('no-store')
   })
+
+  it('answers 503 for one entry when the database fails, logged as ask entry, no-store', async () => {
+    const db = fakeD1()
+    const id = await seed(db)
+    db.failOn = /FROM ask_log WHERE id/
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const response = await send(get(`?entry=${id}`), db)
+    expect(response.status).toBe(503)
+    expect(await response.json()).toEqual({ error: 'unavailable' })
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+    expect(logged).toHaveBeenCalledWith('ask entry', 'D1_ERROR: forced failure')
+    logged.mockRestore()
+  })
 })

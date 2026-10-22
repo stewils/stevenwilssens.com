@@ -51,8 +51,17 @@ describe('Answer quality', () => {
     expect(tile('Mean score')).toHaveTextContent('4.4 /51 to 5')
     expect(tile('Rated')).toHaveTextContent('25 of 2696% · 1 wait in Rate answers')
     const criteria = within(card()).getByRole('heading', { name: 'By criterion (share Yes)' }).parentElement!
-    expect(within(criteria).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Accurate · 0% partly96%', 'Supported · 0% partly100%', 'Answers the question · 0% partly100%', 'Tone and length · 0% partly100%'])
+    expect(within(criteria).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Accurate96%', 'Supported100%', 'Answers the question100%', 'Tone and length100%'])
     expect(card().textContent).not.toMatch(/NaN|Infinity|0 to 100%/)
+  })
+
+  it('past the 90-day log a stripped rating still counts in the scores, but Rated and Show them count only answers still kept', () => {
+    const kept = version('a1b2c3d4', '2026-10-14', 4, 4)
+    const stripped = makeRating({ id: 900, logId: null, day: '2026-06-01', model: MODEL, promptVersion: 'a1b2c3d4', fallback: false, accurate: 'no', overall: 2, note: null })
+    show(makeAsk({ model: MODEL, log: [...kept.log, makeLogEntry({ id: 901, ts: Date.parse('2026-10-15T10:00:00Z') })], ratings: [...kept.ratings, stripped], logDays: 90 }), 365)
+    expect(tile('Wrong answers')).toHaveTextContent(/^Wrong answers120% of rated$/)
+    expect(within(tile('Wrong answers')).queryByRole('button', { name: 'Show them' })).not.toBeInTheDocument()
+    expect(tile('Rated')).toHaveTextContent('Rated4 of 580% · 1 wait in Rate answers · answers of the last 90 days')
   })
 
   it('the verdict line names both versions, both shares with their counts and the difference with its range, the badge word first', () => {
@@ -148,11 +157,11 @@ describe('Answer quality', () => {
     expect(rows[1]).toHaveTextContent('mock, not in the verdict')
     expect(rows[2]).toHaveTextContent('knowledge changed 2 times')
     expect(rows[2].querySelector('.version-label')).toHaveAttribute('title', MODEL)
-    expect([...rows[2].querySelectorAll('td')].map((cell) => cell.textContent)).toEqual(['▸opus-5-5 · a1b2c3d4knowledge changed 2 times', '15 Oct – today', '22', '20', '90%range 70 to 97', '4.8', '0', '95%'])
-    expect([...rows[3].querySelectorAll('td')].map((cell) => cell.textContent)).toEqual(['▸opus-5-5 · 9f8e7d6c', '1 Oct – 1 Oct', '20', '20', '60%range 39 to 78', '4.2', '2', '100%'])
+    expect([...rows[2].querySelectorAll('td')].map((cell) => cell.textContent)).toEqual(['▸opus-5-5 · a1b2c3d4knowledge changed 2 times', 'Oct 15 – today', '22', '20', '90%range 70 to 97', '4.8', '0', '95%'])
+    expect([...rows[3].querySelectorAll('td')].map((cell) => cell.textContent)).toEqual(['▸opus-5-5 · 9f8e7d6c', 'Oct 1 – Oct 1', '20', '20', '60%range 39 to 78', '4.2', '2', '100%'])
     expect(rows[3].querySelector('.status-text.poor')).toHaveTextContent('2')
     expect(rows[0]).toHaveTextContent('too few')
-    expect([...rows[4].querySelectorAll('td')].map((cell) => cell.textContent)).toEqual(['▸Before versions', '25 Sept – 25 Sept', '1', '1', 'too few', '3.0', '0', '100%'])
+    expect([...rows[4].querySelectorAll('td')].map((cell) => cell.textContent)).toEqual(['▸Before versions', 'Sep 25 – Sep 25', '1', '1', 'too few', '3.0', '0', '100%'])
     await user.click(within(rows[3]).getByRole('button', { name: /Open details for opus-5-5 · 9f8e7d6c/ }))
     expect(within(table).getByText('Note on 9f8e7d6c')).toBeInTheDocument()
     expect(within(table).getByText(/“Has he led managers of managers\?”/)).toBeInTheDocument()
@@ -171,7 +180,7 @@ describe('Answer quality', () => {
     show(makeAsk({ model: MODEL, log: [...parts.log, quiet], ratings: parts.ratings }))
     const table = within(card()).getByRole('table', { name: 'Versions' })
     const rows = within(table).getAllByRole('row').slice(1)
-    expect([...rows[0].querySelectorAll('td')].map((cell) => cell.textContent)).toEqual(['▸opus-5-5 · 12345678', '16 Oct – 16 Oct', '1', '—', '—', '—', '—', '100%'])
+    expect([...rows[0].querySelectorAll('td')].map((cell) => cell.textContent)).toEqual(['▸opus-5-5 · 12345678', 'Oct 16 – Oct 16', '1', '—', '—', '—', '—', '100%'])
     await user.click(within(rows[0]).getByRole('button', { name: /Open details/ }))
     expect(within(table).getByText('No notes on this version’s answers.')).toBeInTheDocument()
     await user.click(within(rows[1]).getByRole('button', { name: /Open details/ }))
@@ -183,6 +192,10 @@ describe('Answer quality', () => {
     expect(screen.getByRole('img', { name: 'Answered with a source, by week: answered share per week. Latest 75%, peak 75%.' })).toBeInTheDocument()
     expect(screen.getByText('now 75%')).toBeInTheDocument()
     expect(screen.getByText('3 helpful of 4')).toBeInTheDocument()
+    // Both run over the same weeks as the score chart, whether or not a week has votes.
+    const axis = (name: RegExp) => [...screen.getByRole('img', { name }).querySelectorAll('text.tick')].map((tick) => tick.textContent).filter((text) => !text!.endsWith('%'))
+    expect(axis(/^Reader votes, by week/)).toEqual(axis(/^Answered with a source/))
+    expect(axis(/^Reader votes, by week/)).toHaveLength(2)
     cleanup()
     show(infoOf([version('a1b2c3d4', '2026-10-15', 3, 2)], { daily: [], votes: [] }))
     expect(screen.getByText('No reader votes in this range')).toBeInTheDocument()
@@ -198,7 +211,7 @@ describe('Answer quality', () => {
     expect(within(card()).getByText(/Rated good by week \(today\)/)).toBeInTheDocument()
   })
 
-  it('labels a week by its Monday, day before month', () => {
-    expect(weekLabel('2026-10-12')).toBe('12 Oct')
+  it('labels a week by its Monday, month first as the admin writes days', () => {
+    expect(weekLabel('2026-10-12')).toBe('Oct 12')
   })
 })

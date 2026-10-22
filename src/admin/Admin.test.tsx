@@ -484,6 +484,23 @@ describe('rating answers from the dashboard', () => {
     expect(screen.getByText(/· 100% rated good \(1\)/)).toBeInTheDocument()
   })
 
+  it('a Needs you line lands on the question it asked for: the page goes to the top first, then focus moves to the question', async () => {
+    rateServe()
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    const order: string[] = []
+    vi.mocked(Element.prototype.scrollTo).mockImplementation(() => { order.push('top') })
+    const focus = HTMLElement.prototype.focus
+    vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (this: HTMLElement, options?: FocusOptions) {
+      order.push(`focus ${this.tagName}`)
+      focus.call(this, options)
+    })
+    go('assistant?rate=unrated')
+    expect(within(queue()).getByRole('heading', { level: 3, name: 'Where is he based?' })).toHaveFocus()
+    expect(order.indexOf('top')).toBeGreaterThanOrEqual(0)
+    expect(order.lastIndexOf('top')).toBeLessThan(order.indexOf('focus H3'))
+  })
+
   it.each([
     ['a refusal names the field', { status: 400, body: { error: 'invalid', field: 'note' } } as Answer, 'Could not save the rating (the server refused note)'],
     ['a server error gives its status', { status: 503, body: {} } as Answer, 'Could not save the rating (HTTP 503)'],

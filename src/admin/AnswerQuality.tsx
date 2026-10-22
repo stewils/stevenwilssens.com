@@ -24,6 +24,9 @@ export function AnswerQuality({ info, days, onShowWrong, onRateFirst }: { info: 
   const today = utcDay(now)
   const period = days === 1 ? 'the last day' : `the last ${days} days`
   const rateable = log.filter(isRateable).length
+  // The queue's counts: only answers still in the log, which is kept 90 days whatever the range.
+  const queue = queueCounts(log)
+  const logDays = info.logDays ?? days
   const summary = summarize(ratings)
   const rows = versions(log, ratings)
   const result = verdict(rows, info.model)
@@ -51,14 +54,14 @@ export function AnswerQuality({ info, days, onShowWrong, onRateFirst }: { info: 
         <>
           <div className={`stats${few ? ' quality-few' : ''}`} aria-label={`Your ratings, ${period}`}>
             <div className={summary.rated >= MIN_RATED ? 'highlight' : ''}><span>Rated good</span><strong>{summary.goodShare === null ? '—' : pct(summary.goodShare)}</strong><small>{summary.range ? (few ? `only ${summary.rated} rated` : `${summary.good} of ${summary.rated} · range ${rangeText(summary.range)}%`) : 'no ratings'}</small></div>
-            <div className={summary.wrong > 0 ? 'bad' : ''}><span>Wrong answers</span><strong>{summary.rated ? formatNumber(summary.wrong) : '—'}</strong><small>{summary.wrongShare === null ? 'no ratings' : few ? `only ${summary.rated} rated` : `${pct(summary.wrongShare)} of rated`}{summary.wrong > 0 && <> · <button type="button" className="link-button" onClick={onShowWrong}>Show them</button></>}</small></div>
+            <div className={summary.wrong > 0 ? 'bad' : ''}><span>Wrong answers</span><strong>{summary.rated ? formatNumber(summary.wrong) : '—'}</strong><small>{summary.wrongShare === null ? 'no ratings' : few ? `only ${summary.rated} rated` : `${pct(summary.wrongShare)} of rated`}{queue.wrong > 0 && <> · <button type="button" className="link-button" onClick={onShowWrong}>Show them</button></>}</small></div>
             <div><span>Mean score</span><strong>{summary.mean === null ? '—' : <>{summary.mean.toFixed(1)}<small> /5</small></>}</strong><small>{few ? `only ${summary.rated} rated` : '1 to 5'}</small></div>
-            <div><span>Rated</span><strong>{rateable || summary.rated ? `${formatNumber(summary.rated)} of ${formatNumber(Math.max(rateable, summary.rated))}` : '—'}</strong><small>{rateable ? `${pct(Math.min(1, summary.rated / rateable))} · ${formatNumber(queueCounts(log).unrated)} wait in Rate answers` : 'nothing to rate'}</small></div>
+            <div><span>Rated</span><strong>{rateable ? `${formatNumber(queue.rated)} of ${formatNumber(rateable)}` : '—'}</strong><small>{rateable ? `${pct(queue.rated / rateable)} · ${formatNumber(queue.unrated)} wait in Rate answers${days > logDays ? ` · answers of the last ${logDays} days` : ''}` : 'nothing to rate'}</small></div>
           </div>
           {summary.rated > 0 && (
             <RankedList title="By criterion (share Yes)" format={(value) => `${value}%`} max={100} rows={CRITERIA.map(({ key, label }) => {
               const count = summary.criteria[key]
-              return { name: label, visitors: count.yesShare === null ? 0 : Math.round(count.yesShare * 100), detail: [count.partlyShare === null ? null : `${pct(count.partlyShare)} partly`, count.na ? `${count.na} n/a` : null].filter(Boolean).join(' · ') || undefined }
+              return { name: label, visitors: count.yesShare === null ? 0 : Math.round(count.yesShare * 100), detail: [count.partly ? `${pct(count.partlyShare!)} partly` : null, count.na ? `${count.na} n/a` : null].filter(Boolean).join(' · ') || undefined }
             })} />
           )}
           <ShareChart
@@ -74,9 +77,9 @@ export function AnswerQuality({ info, days, onShowWrong, onRateFirst }: { info: 
         </>
       )}
       <div className="trends">
-        <TrendChart title="Answered with a source, by week" unit="answered share" per="week" max={100} format={(value) => `${value}%`} readout={answeredWeeks.length ? `now ${pct(answeredWeeks[answeredWeeks.length - 1].answeredShare!)}` : ''} points={answeredWeeks.map((week) => ({ key: week.week, label: weekLabel(week.week), value: Math.round(week.answeredShare! * 100), detail: `${week.answered} of ${week.inScope} answered with a source` }))} />
+        <TrendChart title="Answered with a source, by week" unit="answered share" per="week" max={100} format={(value) => `${value}%`} readout={answeredWeeks.length ? `now ${pct(answeredWeeks[answeredWeeks.length - 1].answeredShare!)}` : ''} points={context.map((week) => ({ key: week.week, label: weekLabel(week.week), value: week.answeredShare === null ? null : Math.round(week.answeredShare * 100), detail: week.answeredShare === null ? 'No questions in scope' : `${week.answered} of ${week.inScope} answered with a source` }))} />
         {votedWeeks.length ? (
-          <TrendChart title="Reader votes, by week" unit="helpful share" per="week" max={100} format={(value) => `${value}%`} readout={`${votes.helpful} helpful of ${votes.total}`} points={votedWeeks.map((week) => ({ key: week.week, label: weekLabel(week.week), value: Math.round((week.helpful / week.votes) * 100), detail: `${week.helpful} helpful of ${week.votes}` }))} />
+          <TrendChart title="Reader votes, by week" unit="helpful share" per="week" max={100} format={(value) => `${value}%`} readout={`${votes.helpful} helpful of ${votes.total}`} points={context.map((week) => ({ key: week.week, label: weekLabel(week.week), value: week.votes ? Math.round((week.helpful / week.votes) * 100) : null, detail: week.votes ? `${week.helpful} helpful of ${week.votes}` : 'No reader votes' }))} />
         ) : (
           <figure className="trend"><figcaption><span>Reader votes, by week</span></figcaption><p className="empty">No reader votes in this range</p></figure>
         )}

@@ -194,8 +194,8 @@ export const weekOf = (day: string) => {
   date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7))
   return date.toISOString().slice(0, 10)
 }
-/** A week by its Monday, day before month: "13 Oct". */
-export const weekLabel = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+/** A week by its Monday, in the admin's order for days: "Oct 13". */
+export const weekLabel = (day: string) => new Date(`${day}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
 /** Every week from the one with `sinceDay` to the one with `untilDay`. */
 export const weekList = (sinceDay: string, untilDay: string) => {
   const weeks: string[] = []
@@ -248,6 +248,12 @@ export const withRatings = (info: AskInfo, saved: Map<number, AskRating>): AskIn
     ratings: [...ratings, ...saved.values()],
     unratedWeek: info.unratedWeek?.filter((id) => !saved.has(id)),
   }
+}
+
+/** Of the ratings saved since a load, those the loaded page shows an answer for and has no newer rating of. */
+export const newerRatings = (info: AskInfo, saved: Map<number, AskRating>) => {
+  const loaded = new Map((info.log ?? []).map((entry) => [entry.id, entry.rating]))
+  return new Map([...saved].filter(([id, rating]) => loaded.has(id) && !((loaded.get(id)?.ratedAt ?? -Infinity) >= rating.ratedAt)))
 }
 
 /** "· 72% rated good (25)" for the overview tile, once there is a rating. */

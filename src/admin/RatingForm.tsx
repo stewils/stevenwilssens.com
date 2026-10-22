@@ -1,4 +1,4 @@
-import { useId, useImperativeHandle, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type Ref } from 'react'
+import { useEffect, useId, useImperativeHandle, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type Ref } from 'react'
 import { CRITERIA, isPoor, NOTE_MAX, OVERALL } from './askQuality'
 import type { AskLogEntry, AskRating, Criterion, RatingDraft } from './types'
 
@@ -48,6 +48,14 @@ export function RatingForm({ entry, onSave, saveLabel, onCancel, actions, status
     const group = form.current?.querySelector<HTMLElement>(`fieldset[data-key="${key}"]`)
     ;(group?.querySelector<HTMLInputElement>('input:checked') ?? group?.querySelector<HTMLInputElement>('input'))?.focus()
   }
+  // A shortcut moves focus once its choice is drawn, so focus lands on the option it checked
+  // (an arrow key then moves from there) and never on an unchecked one in a group with a choice.
+  const focusNext = useRef<string | null>(null)
+  useEffect(() => {
+    if (focusNext.current === null) return
+    focusGroup(focusNext.current)
+    focusNext.current = null
+  }, [values])
 
   const save = async () => {
     if (busy.current) return
@@ -86,17 +94,17 @@ export function RatingForm({ entry, onSave, saveLabel, onCancel, actions, status
     }
     if (inNote || event.ctrlKey || event.metaKey || event.altKey) return
     const key = event.key.toLowerCase()
-    if (/^[1-5]$/.test(key)) { event.preventDefault(); update({ overall: Number(key) }); return }
+    if (/^[1-5]$/.test(key)) { event.preventDefault(); focusNext.current = 'overall'; update({ overall: Number(key) }); return }
     const answer = ({ y: 'yes', p: 'partly', n: 'no', a: 'na' } as Record<string, Criterion>)[key]
     if (!answer) return
     const focused = target.closest<HTMLElement>('fieldset[data-key]')?.dataset.key
     const criterion = CRITERIA.find((item) => item.key === focused) ?? CRITERIA.find((item) => values[item.key] === null)
     if (!criterion || (answer === 'na' && !(criterion.na && off))) return
     event.preventDefault()
-    update({ [criterion.key]: answer })
     const open = (item: (typeof CRITERIA)[number]) => item !== criterion && values[item.key] === null
     const after = CRITERIA.slice(CRITERIA.indexOf(criterion) + 1).find(open) ?? CRITERIA.find(open)
-    focusGroup(after ? after.key : 'overall')
+    focusNext.current = after ? after.key : 'overall'
+    update({ [criterion.key]: answer })
   }
   useImperativeHandle(keys, () => ({ onKey }))
 

@@ -58,6 +58,30 @@ describe('TrendChart', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Oct 1120 pts points')
   })
 
+  it('keeps a point without a value on the axis and breaks the line there, with no wash', () => {
+    plotBox()
+    const gappy = [{ key: 'a', label: 'Sep 28', value: 40 }, { key: 'b', label: 'Oct 5', value: null, detail: 'No reader votes' }, { key: 'c', label: 'Oct 12', value: 60 }, { key: 'd', label: 'Oct 19', value: 80 }, { key: 'e', label: 'Oct 26', value: null }]
+    const { container } = render(<TrendChart title="Reader votes" points={gappy} unit="helpful share" per="week" />)
+    // The axis runs over every week, the line starts again after the gap, and the last value is the last week with one.
+    expect(screen.getByText('Sep 28')).toBeInTheDocument()
+    expect(screen.getByText('Oct 26')).toBeInTheDocument()
+    expect(container.querySelector('path.line')!.getAttribute('d')!.match(/M/g)).toHaveLength(2)
+    expect(container.querySelector('path.area')).toBeNull()
+    expect(container.querySelectorAll('circle.dot')).toHaveLength(4)
+    expect(container.querySelector('text.value')).toHaveTextContent('80')
+    expect(screen.getByText('Total 180 · peak 80')).toBeInTheDocument()
+    const hit = container.querySelector('rect')!
+    fireEvent.pointerMove(hit, { clientX: 25 })
+    expect(screen.getByRole('status')).toHaveTextContent('Oct 5No reader votes')
+    fireEvent.pointerMove(hit, { clientX: 100 })
+    expect(screen.getByRole('status')).toHaveTextContent('Oct 26No data')
+  })
+
+  it('says there is no data when no point has a value', () => {
+    render(<TrendChart title="Reader votes" points={[{ key: 'a', label: 'Oct 5', value: null }]} unit="helpful share" />)
+    expect(screen.getByText('No data yet')).toBeInTheDocument()
+  })
+
   it('is drawn at the width it is shown at, and stops watching when it goes', () => {
     const disconnect = vi.fn()
     let measure = () => {}

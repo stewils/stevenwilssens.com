@@ -22,7 +22,7 @@ const unavailable = (error: unknown) => {
 }
 
 // The body, but never more than MAX_BODY bytes of it: null when it is longer.
-export const readCapped = async (request: Request) => {
+const readCapped = async (request: Request) => {
   if (!request.body) return ''
   const reader = request.body.getReader()
   const chunks: Uint8Array[] = []

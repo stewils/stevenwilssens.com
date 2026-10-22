@@ -20,18 +20,22 @@ const UNRATED_DAYS = 7
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })
 
 // A logged answer as the admin shows it: each cited source by its title and link from the
-// site's own data (an id no longer in it as the id alone), and its rating.
-const shown = (entry: LogEntry, rating: Rating | null) => {
-  const titles = sources()
-  return { ...entry, sources: (entry.sources ?? []).map((id) => titles.get(id) ?? { id, title: null, href: null }), rating }
-}
+// site's own data (`titles`, read once per request; an id no longer in it as the id alone),
+// and its rating.
+const shown = (titles: ReturnType<typeof sources>, entry: LogEntry, rating: Rating | null) =>
+  ({ ...entry, sources: (entry.sources ?? []).map((id) => titles.get(id) ?? { id, title: null, href: null }), rating })
 
 const oneEntry = async (env: Env, param: string) => {
   const id = Number(param)
   if (!/^\d+$/.test(param) || !Number.isSafeInteger(id) || id < 1) return json({ error: 'invalid', field: 'entry' }, 400)
-  const store = new D1AskStore(env.DB)
-  const [entry, rating] = await Promise.all([store.entry(id), store.ratingFor(id)])
-  return entry ? json({ entry: shown(entry, rating) }) : json({ error: 'not found' }, 404)
+  try {
+    const store = new D1AskStore(env.DB)
+    const [entry, rating] = await Promise.all([store.entry(id), store.ratingFor(id)])
+    return entry ? json({ entry: shown(sources(), entry, rating) }) : json({ error: 'not found' }, 404)
+  } catch (error) {
+    console.error('ask entry', error instanceof Error ? error.message : 'unknown error')
+    return json({ error: 'unavailable' }, 503)
+  }
 }
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
@@ -62,6 +66,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   }
   const [log, ratings, unrated] = kept ?? [null, null, null]
   const ratingOf = new Map((ratings ?? []).filter((rating) => rating.logId !== null).map((rating) => [rating.logId, rating]))
+  const titles = sources()
   return json({
     configured: Boolean(env.ANTHROPIC_API_KEY),
     mock: env.ASK_MOCK === '1',
@@ -80,7 +85,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     // Answers can be long; the list needs enough to read, and ?entry= has the rest.
     log: log?.map((entry) => {
       const cut = Boolean(entry.answer && entry.answer.length > ANSWER_CHARS)
-      return { ...shown(entry, ratingOf.get(entry.id) ?? null), answer: cut ? `${entry.answer!.slice(0, ANSWER_CHARS)}…` : entry.answer, cut }
+      return { ...shown(titles, entry, ratingOf.get(entry.id) ?? null), answer: cut ? `${entry.answer!.slice(0, ANSWER_CHARS)}…` : entry.answer, cut }
     }),
     logDays: Math.min(days, LOG_DAYS),
     logCapped: log ? log.length >= LOG_LIMIT : undefined,

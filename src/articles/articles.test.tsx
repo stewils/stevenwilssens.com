@@ -115,6 +115,8 @@ describe('the assistant\'s report card on /building-this-site', () => {
     const { container } = render(<SiteArticle />)
     const said = screen.getByText(/where I also read and rate the answers myself, mark the wrong ones and compare the model and instruction versions/)
     expect(said.textContent).not.toMatch(/vote|\d+ ?%|\d\/5/i)
+    // The ratings are not what the card below shows.
+    expect(said).toHaveTextContent('Those ratings stay private; the counts below are public, straight from the database.')
     expect(container.querySelector('.wx-report-wait')!.textContent).not.toMatch(/vote/i)
   })
 

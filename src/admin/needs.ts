@@ -41,10 +41,12 @@ export const computeNeeds = ({ stats, mcp, ask, resume, team }: AdminData, now =
     if (ask.month.costMicro > budget * 0.8) add('ask-budget', 'assistant', 1, `the assistant has used ${formatUsd(ask.month.costMicro)} of its ${formatUsd(budget)} monthly budget`)
     // The pace only means something once a few days are in; day one would multiply a single question by thirty.
     else if (now.getUTCDate() >= 3 && projected > budget) add('ask-pace', 'assistant', 1, `at this pace the assistant's budget runs out before the month ends (about ${formatUsd(projected)} of ${formatUsd(budget)})`)
-    // Steven's ratings: the answers he marked wrong in the range, and every rateable answer of the
-    // last seven days (whatever the range) that he has not rated. Nothing when the log could not be read.
+    // Steven's ratings: the answers he marked wrong in the range that are still kept (past 90 days
+    // a rating keeps its scores but not its answer, so there is nothing left to check or re-rate),
+    // and every rateable answer of the last seven days (whatever the range) that he has not rated.
+    // Nothing when the log could not be read.
     if (ask.log) {
-      const wrong = (ask.ratings ?? []).filter(isWrong).length
+      const wrong = (ask.ratings ?? []).filter((rating) => rating.logId !== null && isWrong(rating)).length
       add('ask-wrong', 'assistant', wrong, plural(wrong, 'answer you marked wrong: check the facts it used', 'answers you marked wrong: check the facts they used'), 'assistant?rate=wrong')
       const unrated = ask.unratedWeek?.length ?? 0
       add('ask-unrated', 'assistant', unrated, plural(unrated, 'answer from the last 7 days waits for your rating', 'answers from the last 7 days wait for your rating'), 'assistant?rate=unrated')

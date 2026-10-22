@@ -172,6 +172,8 @@ describe('the assistant ratings in Needs you and on the tile', () => {
   it('one need for the answers marked wrong in the range, worded for one and for several, linking to Marked wrong', () => {
     expect(ratingNeeds({ ratings: [rating('no', 4, 1)] })).toEqual([{ key: 'ask-wrong', page: 'assistant', n: 1, text: 'answer you marked wrong: check the facts it used', hash: 'assistant?rate=wrong' }])
     expect(ratingNeeds({ ratings: [rating('no', 4, 1), rating('no', 1, 2), rating('yes', 2, 3)] })[0]).toMatchObject({ n: 2, text: 'answers you marked wrong: check the facts they used' })
+    // A wrong rating whose answer is past the 90-day log has nothing left to check: it raises nothing.
+    expect(ratingNeeds({ ratings: [{ ...rating('no', 4, 1), logId: null }] })).toEqual([])
   })
 
   it('every unrated answer of the last 7 days waits, worded for one and for several, linking to Not rated, and goes once they are rated', () => {

@@ -70,8 +70,12 @@ export interface AskStore {
   // outcome and day from the log row; null when the row is not kept, cannot be rated, or
   // does not allow an n/a it was given.
   saveRating(input: RatingInput): Promise<Rating | null>
-  // The question "Add to my questions" made from a rating.
-  linkRatingQuestion(ratingId: number, questionId: number): Promise<void>
+  // Links a question to a rating that has none yet and whose answer is kept; answers the
+  // question the rating carries after it (an earlier one wins), null when its answer is gone.
+  linkRatingQuestion(ratingId: number, questionId: number): Promise<number | null>
+  // "Add to my questions": the question made from a rating, once. An open one left by a save
+  // whose link failed is used again, and one that lost a race with another save is dropped.
+  addRatingQuestion(ratingId: number, q: QuestionInput, keepMs: number): Promise<number | null>
   // The rateable answers since `since` that have no rating, newest first.
   unrated(since: number): Promise<number[]>
 }
@@ -226,7 +230,16 @@ export class D1AskStore implements AskStore {
   }
 
   async linkRatingQuestion(ratingId: number, questionId: number) {
-    await this.db.prepare('UPDATE ask_ratings SET question_id = ? WHERE id = ?').bind(questionId, ratingId).run()
+    const row = await this.db.prepare('UPDATE ask_ratings SET question_id = COALESCE(question_id, ?1) WHERE id = ?2 AND log_id IS NOT NULL RETURNING question_id').bind(questionId, ratingId).first<{ question_id: number | null }>()
+    return row?.question_id ?? null
+  }
+
+  async addRatingQuestion(ratingId: number, q: QuestionInput, keepMs: number) {
+    const open = await this.db.prepare('SELECT id FROM ask_questions WHERE ts = ? AND reason = ? AND question = ? AND resolved_at IS NULL LIMIT 1').bind(q.ts, q.reason, q.question).first<{ id: number }>()
+    const id = open?.id ?? (await this.saveQuestion(q, keepMs))
+    const linked = await this.linkRatingQuestion(ratingId, id)
+    if (linked !== id && !open) await this.db.prepare('DELETE FROM ask_questions WHERE id = ? AND resolved_at IS NULL').bind(id).run()
+    return linked
   }
 
   async unrated(since: number) {
@@ -320,7 +333,20 @@ export class MemoryAskStore implements AskStore {
     this.ratingRows.push(rating)
     return rating
   }
-  async linkRatingQuestion(ratingId: number, questionId: number) { this.ratingRows = this.ratingRows.map((r) => (r.id === ratingId ? { ...r, questionId } : r)) }
+  async linkRatingQuestion(ratingId: number, questionId: number) {
+    const rating = this.ratingRows.find((r) => r.id === ratingId && r.logId !== null)
+    if (!rating) return null
+    const linked = rating.questionId ?? questionId
+    this.ratingRows = this.ratingRows.map((r) => (r === rating ? { ...r, questionId: linked } : r))
+    return linked
+  }
+  async addRatingQuestion(ratingId: number, q: QuestionInput, keepMs: number) {
+    const open = this.saved.find((item) => item.ts === q.ts && item.reason === q.reason && item.question === q.question && !item.resolvedAt)
+    const id = open?.id ?? (await this.saveQuestion(q, keepMs))
+    const linked = await this.linkRatingQuestion(ratingId, id)
+    if (linked !== id && !open) this.saved = this.saved.filter((item) => item.id !== id)
+    return linked
+  }
   async unrated(since: number) {
     const rated = new Set(this.ratingRows.map((r) => r.logId))
     return this.entries.filter((e) => e.ts >= since && isRateable(e) && !rated.has(e.id)).sort((a, b) => b.ts - a.ts).map((e) => e.id)

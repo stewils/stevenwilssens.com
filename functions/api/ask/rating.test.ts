@@ -33,11 +33,10 @@ describe('POST /api/ask/rating refuses everyone but Steven', () => {
     const db = fakeD1()
     for (const [headers, extra] of [[{ 'Content-Type': 'application/json' }, {}], [{ ...auth, Authorization: 'Bearer wrong' }, {}], [auth, { ADMIN_TOKEN: undefined }]] as const) {
       const request = post({ id: 1, ...good }, headers)
-      const read = vi.spyOn(request, 'text')
       const response = await send(request, db, extra)
       expect(response.status).toBe(401)
       expect(await response.json()).toEqual({ error: 'unauthorized' })
-      expect(read).not.toHaveBeenCalled()
+      expect(request.bodyUsed).toBe(false)
     }
     expect(db.queries).toHaveLength(0)
   })
@@ -97,7 +96,7 @@ describe('POST /api/ask/rating saves a rating', () => {
     ['overall 4.5', { overall: 4.5 }, 'overall'],
     ['overall "4"', { overall: '4' }, 'overall'],
     ['overall null', { overall: null }, 'overall'],
-    ['a 1,001-character note', { note: 'Private note '.repeat(77) + 'x' }, 'note'],
+    ['a 1,001-character note', { note: 'Private note ' + 'x'.repeat(988) }, 'note'],
     ['an unknown key', { question: 'Private question text' }, 'keys'],
     ['id -1', { id: -1 }, 'id'],
     ['id 1.5', { id: 1.5 }, 'id'],

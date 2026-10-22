@@ -196,14 +196,19 @@ describe('Rate answers', () => {
 
   it('a fit check shows that only the first words are kept, and a source no longer in the data shows its id', async () => {
     const user = userEvent.setup()
-    render(<Harness info={makeAsk({ log: [makeLogEntry({ id: 14, kind: 'fit', question: 'Job description (900 characters): Director…', sources: [{ id: 'site:old', title: null, href: null }], knowledgeVersion: null, page: null, country: null, asOrg: null })] })} />)
-    expect(question()).toHaveTextContent('Fit check: Job description (900 characters): Director…')
-    expect(within(card()).getByText('only the first words of a pasted job description are kept')).toBeInTheDocument()
+    render(<Harness info={makeAsk({ log: [makeLogEntry({ id: 14, kind: 'fit', question: "Job description (1442 characters): Job description to check against Steven's record: Director…", sources: [{ id: 'site:old', title: null, href: null }], knowledgeVersion: null, page: null, country: null, asOrg: null }), makeLogEntry({ id: 15, ts: 1, kind: 'fit', question: 'A posting logged some other way' })] })} />)
+    // The heading is the posting's first words; its length goes in the line under it.
+    expect(question()).toHaveTextContent(/^Fit check: Director…$/)
+    expect(within(card()).getByText('A job description of 1,442 characters; only the first words of a pasted job description are kept')).toBeInTheDocument()
     expect(within(card()).getByText('site:old · no longer in the data')).toBeInTheDocument()
     expect(within(card()).getByText('fit check')).toBeInTheDocument()
     expect(within(card()).queryByText(/^knowledge/)).not.toBeInTheDocument()
     await user.click(filterButton(/All/))
     expect(filterButton(/All/)).toHaveAttribute('aria-pressed', 'true')
+    // Without the logged length the question is shown as it is.
+    await user.click(within(card()).getByRole('button', { name: 'Skip' }))
+    expect(question()).toHaveTextContent(/^Fit check: A posting logged some other way$/)
+    expect(within(card()).getByText('only the first words of a pasted job description are kept')).toBeInTheDocument()
   })
 
   it('a focus request (Show them, Needs you) goes to the first question', () => {
@@ -219,6 +224,12 @@ describe('Rate answers', () => {
     expect(card().querySelector('img')).toBeNull()
     for (const link of card().querySelectorAll('a')) expect(link.getAttribute('href')).toMatch(/^https:\/\/steven\.wilssens\.com\//)
     expect(within(card()).getAllByText(/<img src=x onerror=alert\(1\)>/).length).toBeGreaterThan(0)
+    // A saved note comes back only as the text of the note box.
+    cleanup()
+    render(<Harness initial="rated" info={makeAsk({ log: [makeLogEntry({ id: 17, rating: makeRating({ logId: 17, note: hostile }) })] })} />)
+    expect(card().querySelector('img')).toBeNull()
+    expect(within(card()).getByRole('textbox', { name: /Note/ })).toHaveValue(hostile)
+    expect(card().querySelectorAll('a[href^="javascript:"], a[href*="evil.example"]')).toHaveLength(0)
   })
 
   it('marks its chip while unrated answers of the last seven days wait', () => {

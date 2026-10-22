@@ -51,8 +51,42 @@ describe.each(keptStores)('ratings in the %s assistant store', (_, make) => {
     expect(await store.ratings('2026-10-15')).toEqual([])
     expect(await store.ratingFor(id)).toEqual(again)
     expect(await store.ratingFor(id + 1)).toBeNull()
-    await store.linkRatingQuestion(saved!.id, 77)
+    expect(await store.linkRatingQuestion(saved!.id, 77)).toBe(77)
     expect((await store.ratingFor(id))?.questionId).toBe(77)
+    // A link never replaces one already there.
+    expect(await store.linkRatingQuestion(saved!.id, 78)).toBe(77)
+    expect((await store.ratingFor(id))?.questionId).toBe(77)
+  })
+
+  it("adds a rating's question once: again after a failed link it reuses the open one", async () => {
+    const { store } = make()
+    await store.logQuestion(logged(Date.UTC(2026, 9, 20, 6)), 900 * day)
+    const id = await lastId(store)
+    const saved = (await store.saveRating(rating(id, { accurate: 'no', overall: 2 })))!
+    const q = { ts: Date.UTC(2026, 9, 20, 6), reason: 'rated' as const, page: 'experience', question: 'Has he led managers of managers?', answer: 'Yes.', country: null, asOrg: null }
+    // An earlier save made the question, then its link failed: the next save links that one.
+    const left = await store.saveQuestion(q, 900 * day)
+    expect(await store.addRatingQuestion(saved.id, q, 900 * day)).toBe(left)
+    expect(await store.questions(0, 10)).toHaveLength(1)
+    expect((await store.ratingFor(id))?.questionId).toBe(left)
+    // Saved again with the box ticked: still one question.
+    expect(await store.addRatingQuestion(saved.id, q, 900 * day)).toBe(left)
+    expect(await store.questions(0, 10)).toHaveLength(1)
+  })
+
+  it('a save that loses the race to link drops the question it made, and an answer pruned meanwhile gets none', async () => {
+    const { store } = make()
+    await store.logQuestion(logged(Date.UTC(2026, 9, 20, 6)), 900 * day)
+    const id = await lastId(store)
+    const saved = (await store.saveRating(rating(id, { accurate: 'no', overall: 2 })))!
+    const q = { ts: Date.UTC(2026, 9, 20, 6), reason: 'rated' as const, page: 'experience', question: 'Has he led managers of managers?', answer: 'Yes.', country: null, asOrg: null }
+    const other = await store.saveQuestion({ ...q, ts: q.ts + 1 }, 900 * day)
+    await store.linkRatingQuestion(saved.id, other)
+    expect(await store.addRatingQuestion(saved.id, q, 900 * day)).toBe(other)
+    expect((await store.questions(0, 10)).map((question) => question.id)).toEqual([other])
+    await store.prune(Date.UTC(2026, 9, 21))
+    expect(await store.addRatingQuestion(saved.id, { ...q, ts: Date.UTC(2026, 9, 22) }, 900 * day)).toBeNull()
+    expect(await store.questions(0, 10)).toEqual([])
   })
 
   it('rates only answers the model gave, and n/a only on an off-topic one', async () => {
@@ -103,6 +137,18 @@ describe.each(keptStores)('pruning the ratings of the %s assistant store', (_, m
     await store.logQuestion(logged(91 * day, { visitor: 'later' }), 90 * day)
     expect(await store.entry(id)).toBeNull()
     expect(await store.ratings('1970-01-01')).toEqual([{ ...saved, logId: null, note: null, questionId: null }])
+  })
+
+  it("an answer logged earlier on the cutoff's own day loses its rating's link, note and question in the same prune", async () => {
+    const { store } = make()
+    await store.logQuestion(logged(Date.UTC(2026, 9, 20, 6)), 900 * day)
+    const id = await lastId(store)
+    const saved = await store.saveRating(rating(id, { note: "Steven's own note" }))
+    expect(await store.linkRatingQuestion(saved!.id, 5)).toBe(5)
+    await store.prune(Date.UTC(2026, 9, 20, 12))
+    expect(await store.entry(id)).toBeNull()
+    // The day sweep alone would keep it until tomorrow: the answer's day is the cutoff's day.
+    expect(await store.ratings('1970-01-01')).toMatchObject([{ day: '2026-10-20', logId: null, note: null, questionId: null, overall: 4 }])
   })
 
   it('the sweep clears a rating whose answer went another way', async () => {

@@ -482,7 +482,7 @@ a.team-link:hover { text-decoration: underline; }
 .ranked-block + .share-chart, .stats + .share-chart { margin-top: 16px; }
 .share-chart + .trends, .quality-first + .trends { margin-top: 12px; }
 .share-chart figcaption { flex-wrap: wrap; }
-.chart-legend { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.share-legends { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; font-weight: 600; color: var(--muted); }
 .share-legend { display: inline-flex; align-items: center; gap: 5px; font-family: 'DM Mono', monospace; }
 .share-line { fill: none; stroke-width: 2; stroke-linecap: round; }
 .share-line.thin { stroke-width: 1; }
@@ -501,7 +501,13 @@ a.team-link:hover { text-decoration: underline; }
 .share-dot.thin.now { stroke: var(--series); }
 .share-dot.thin.before { stroke: var(--warn-ink); }
 .share-dot.thin.other { stroke: var(--muted); }
-.share-strip { fill: var(--series-track); stroke: var(--muted); stroke-width: 1; stroke-dasharray: 8 100; }
+.share-strip { fill: var(--line); stroke: var(--muted); stroke-width: 1; stroke-dasharray: 8 100; }
+.share-range { stroke-width: 6; stroke-linecap: round; opacity: 0.25; }
+.share-series.now .share-range { stroke: var(--series); }
+.share-series.before .share-range { stroke: var(--warn-ink); }
+.share-series.other .share-range { stroke: var(--muted); }
+.share-strip-key { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; font-size: 11px; color: var(--muted); }
+.share-strip-key span { width: 8px; height: 10px; background: var(--line); border-top: 1px solid var(--muted); }
 .share-chart details table { margin-top: 8px; }
 .version-label { font: 12px 'DM Mono', monospace; }
 .version-line { display: block; font-size: 11px; }
@@ -560,4 +566,7 @@ p.answer-sources { padding: 0; }
   .seg label, .rubric-actions button { min-height: 44px; }
   .rubric-actions .primary { flex: 1 0 100%; }
   .rubric-actions .ghost { flex: 1; justify-content: center; }
+  .turn-meta .ghost { min-height: 44px; }
+  .rate-filters { border-radius: 14px; }
+  .rate-filters button { flex: 1 0 auto; white-space: nowrap; padding: 0 12px; }
 }

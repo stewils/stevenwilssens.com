@@ -196,8 +196,11 @@ describe('the rubric by keyboard in the queue', () => {
     expect(pick('Supported', 'Yes')).toHaveFocus()
     await user.keyboard('yyy5')
     expect(pick('Overall', /^5/)).toBeChecked()
-    expect(pick('Overall', /^1/)).toHaveFocus()
-    await user.keyboard('{Enter}')
+    // Focus follows the option the shortcut checked, so an arrow key moves from there.
+    expect(pick('Overall', /^5/)).toHaveFocus()
+    await user.keyboard('3')
+    expect(pick('Overall', /^3/)).toHaveFocus()
+    await user.keyboard('5{Enter}')
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ accurate: 'yes', supported: 'yes', answers: 'yes', tone: 'yes', overall: 5 }))
   })
 
@@ -218,6 +221,11 @@ describe('the rubric by keyboard in the queue', () => {
     expect(pick('Supported', 'Yes')).toHaveFocus()
     await user.keyboard('y')
     expect(pick('Overall', /^1/)).toHaveFocus()
+    // Moving on to a group that has a choice lands on that choice.
+    await user.keyboard('4')
+    pick('Tone and length', 'Partly').focus()
+    await user.keyboard('y')
+    expect(pick('Overall', /^4/)).toHaveFocus()
   })
 
   it('A answers n/a only where it is offered and does nothing elsewhere', async () => {

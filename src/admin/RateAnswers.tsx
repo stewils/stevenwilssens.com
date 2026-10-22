@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { renderMarkdown, safeHref } from '../ask/markdown'
-import { outcomeBadge, outcomeLabel, type LoadEntry } from './askEntries'
+import { fitParts, outcomeBadge, outcomeLabel, type LoadEntry } from './askEntries'
 import { earlierTurns, isGood, isWrong, queueCounts, queueOf, versionLabel, type Filter } from './askQuality'
 import { formatTime } from './format'
 import { RatingForm, type RatingKeys, type SaveResult } from './RatingForm'
@@ -81,6 +81,7 @@ export function RateAnswers({ info, filter, onFilter, focusRequest, onRate, load
   const keys = useRef<RatingKeys>(null)
   const index = Math.max(0, list.findIndex((entry) => entry.id === cursor))
   const entry = list[index] as AskLogEntry | undefined
+  const fit = entry?.kind === 'fit' ? fitParts(entry.question) : null
   const next = list[index + 1]
   const logDays = info.logDays ?? 30
   const period = logDays === 1 ? 'the last day' : `the last ${logDays} days`
@@ -128,8 +129,8 @@ export function RateAnswers({ info, filter, onFilter, focusRequest, onRate, load
             <p className="muted rate-meta">{index + 1} of {list.length} · {formatTime(entry.ts)}{entry.page ? ` on /${entry.page}` : ''}{entry.country || entry.asOrg ? ` · ${[entry.country, entry.asOrg].filter(Boolean).join(', ')}` : ''}</p>
             <p className="rate-badges"><span className={`badge ${outcomeBadge[entry.outcome]}`}>{entry.kind === 'fit' ? 'fit check' : outcomeLabel[entry.outcome]}</span> <VersionBadge entry={entry} />{entry.rating && <> <RatingBadge rating={entry.rating} /></>}</p>
             <Earlier log={log} entry={entry} />
-            <h3 tabIndex={-1} ref={heading}>{entry.kind === 'fit' ? `Fit check: ${entry.question}` : entry.question}</h3>
-            {entry.kind === 'fit' && <small className="muted">only the first words of a pasted job description are kept</small>}
+            <h3 tabIndex={-1} ref={heading}>{fit ? `Fit check: ${fit.head}` : entry.question}</h3>
+            {fit && <small className="muted">{fit.length === null ? '' : `A job description of ${fit.length.toLocaleString('en-US')} characters; `}only the first words of a pasted job description are kept</small>}
             <AnswerText entry={entry} load={load} />
             <h4>Sources</h4>
             <SourceList sources={entry.sources} />
