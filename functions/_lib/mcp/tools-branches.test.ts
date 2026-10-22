@@ -251,12 +251,12 @@ describe('site updates', () => {
     const failed = fakeGitHub({ runs: [run(1, { conclusion: 'failure' })] })
     expect((await call(store, 'wait_for_site_update', {}, { github: failed.github })).json).toMatchObject({ done: true, outcome: 'failed', pullRequest: null, next: expect.stringContaining('ended with "failure"') })
     const nothing = fakeGitHub({ runs: [run(2, { event: 'repository_dispatch' })] })
-    expect((await call(store, 'wait_for_site_update', { run_id: 2 }, { github: nothing.github })).json).toMatchObject({ outcome: 'no-change', next: expect.stringMatching(/^The run "Run 2" finished and there was nothing to change/) })
+    expect((await call(store, 'wait_for_site_update', { run_id: 2 }, { github: nothing.github })).json).toMatchObject({ outcome: 'no-change', say: 'Your Run 2 update needed no changes: your site already says this.', next: expect.stringMatching(/^"Run 2 update" finished with nothing to change/) })
     // A request that succeeded has a pull request; when it is not found, it is not "nothing to change".
     const lost = fakeGitHub({ runs: [run(5)] })
-    expect((await call(store, 'wait_for_site_update', { run_id: 5 }, { github: lost.github })).json).toMatchObject({ outcome: 'failed', next: expect.stringMatching(/^The run "Run 5" finished, but its pull request was not found here/) })
+    expect((await call(store, 'wait_for_site_update', { run_id: 5 }, { github: lost.github })).json).toMatchObject({ outcome: 'failed', say: expect.stringMatching(/can't find it/), next: expect.stringMatching(/^"Run 5 update" finished, but its pull request was not found here/) })
     const running = fakeGitHub({ runs: [run(3, { status: 'in_progress', conclusion: null })] })
-    expect((await call(store, 'wait_for_site_update', { seconds: 5 }, { github: running.github })).json).toMatchObject({ done: false })
+    expect((await call(store, 'wait_for_site_update', { seconds: 5 }, { github: running.github })).json).toMatchObject({ done: false, say: 'Your Run 3 update is still being made.' })
   })
 
   it('waits and reports a pull request that lowers the score and conflicts, falling back to the listed one', async () => {
@@ -264,7 +264,9 @@ describe('site updates', () => {
     const lowering = pull(12, { branch: 'update/z-4', mergeable: false, mergeableState: 'dirty' }, '<!-- resume-score before=90 after=80 -->')
     const { github } = fakeGitHub({ runs: [run(4)], pulls: [lowering], single: () => null })
     const waited = await call(store, 'wait_for_site_update', {}, { github })
-    expect(waited.json).toMatchObject({ done: true, warning: expect.stringContaining('#12 lowers the resume score from 90 to 80'), mergeTrouble: expect.stringContaining('conflicts with main') })
+    expect(waited.json).toMatchObject({ done: true, warning: expect.stringContaining("PR 12 update lowers the résumé's ATS score from 90 to 80"), mergeTrouble: expect.stringContaining('conflicts with main') })
+    expect(waited.json!.say).toBe('Your PR 12 update is ready to check: https://update-pr-12.stevenwilssens.pages.dev. One thing first: this version of your résumé scores lower with job-application software (90 → 80 out of 100) than the one live today. Want it live?')
+    expect(waited.json!.mergeTrouble).toMatch(/redoes it by itself/)
   })
 
   it('lists one open pull request without a tip, falling back to the listed one', async () => {
@@ -295,13 +297,23 @@ describe('site updates', () => {
   it('explains GitHub refusing the merge: a conflict, a moving branch, anything else, and a merge that did not happen', async () => {
     const store = new MemoryStore()
     const refusing = (message: string) => fakeGitHub({ pulls: [pull(5)], merge: () => Promise.reject(new Error(message)) }).github
-    expect((await call(store, 'merge_site_update', { number: 5, confirm: true }, { github: refusing('GitHub 405: Pull Request is not mergeable') })).text).toMatch(/conflicts with main.*To redo it now, call merge_site_update again with redo: true\.$/)
+    expect((await call(store, 'merge_site_update', { number: 5, confirm: true }, { github: refusing('GitHub 405: Pull Request is not mergeable') })).text).toMatch(/conflicts with main.*It cannot be redone automatically/)
     expect((await call(store, 'merge_site_update', { number: 5, confirm: true }, { github: refusing('GitHub 409: Head branch was modified') })).text).toMatch(/^GitHub says the branch changed while merging/)
     expect((await call(store, 'merge_site_update', { number: 5, confirm: true }, { github: refusing('GitHub 403: forbidden') })).text).toBe('GitHub refused the merge: GitHub 403: forbidden')
     const notMerged = fakeGitHub({ pulls: [pull(5, {}, encodeUpdateRequest({ title: 't', instruction: 'i', proposals: [1], supersedes: null }))], merge: async () => ({ merged: false, message: 'Base branch was modified' }) })
     const result = await call(store, 'merge_site_update', { number: 5, confirm: true }, { github: notMerged.github })
     expect(result.json).toMatchObject({ merged: false, message: 'Base branch was modified' })
     expect(result.json).not.toHaveProperty('proposalsApplied')
+  })
+
+  it('tries a merge once more when the branch moved while merging', async () => {
+    const store = new MemoryStore()
+    let tries = 0
+    const { github, calls } = fakeGitHub({ pulls: [pull(5)], merge: async () => { tries++; if (tries === 1) throw new Error('GitHub 409: Head branch was modified'); return { merged: true, message: 'merged' } } })
+    const merged = await call(store, 'merge_site_update', { number: 5, confirm: true }, { github })
+    expect(merged.json).toMatchObject({ merged: true, name: 'PR 5 update', say: 'Your PR 5 update is live on your site; it shows within a few minutes.' })
+    expect(tries).toBe(2)
+    expect(calls.merged).toEqual([5, 5])
   })
 
   it('redoes a conflicted pull request only when it carries its request', async () => {
@@ -376,7 +388,9 @@ describe('what became of a run (AC-5, AC-6, AC-13)', () => {
     const waited = (await call(store, 'wait_for_site_update', { run_id: 40 }, { github })).json!
     expect(waited).toMatchObject({ done: true, outcome: 'no-change', reason: noChange.reason, pullRequest: null })
     const next = waited.next as string
-    expect(next).toMatch(/^Tell Steven first: the request "About page: stronger opening" was not carried out\./)
+    expect(next).toMatch(/^Tell Steven first: "About page: stronger opening update" was not carried out and nothing on his site changed/)
+    expect(waited.say).toBe("I couldn't make your About page: stronger opening update, so nothing on your site changed. Want me to try again?")
+    expect(waited.say).not.toContain(noChange.reason!)
     expect(next).toContain("the run's own text")
     expect(next).toMatch(/ask Steven first; only on his yes, call request_site_update/)
     expect(next).toContain('the instruction you sent in this session')
@@ -447,7 +461,7 @@ describe('what became of a run (AC-5, AC-6, AC-13)', () => {
       [54, 'failed', null, null],
     ])
     expect(calls.failures).toEqual([52])
-    const known = ['id', 'number', 'status', 'conclusion', 'startedAt', 'url', 'branch', 'title', 'outcome', 'reason', 'pullRequest']
+    const known = ['name', 'id', 'number', 'status', 'conclusion', 'startedAt', 'url', 'branch', 'title', 'outcome', 'reason', 'pullRequest']
     for (const item of shaped) expect(Object.keys(item).every((key) => known.includes(key)), Object.keys(item).join()).toBe(true)
     expect(status.note).toMatch(/running.*pull-request.*no-change.*failed/s)
     expect(status.note).not.toMatch(/made no changes, or failed/)
@@ -476,7 +490,7 @@ describe('a run and its pull request, beyond the first page and from forks (F-1,
     const { github, calls } = fakeGitHub({ runs: [run(61)], pulls: [...newer, older] })
     const status = (await call(store, 'site_update_status', {}, { github })).json!
     expect((status.pullRequests as { number: number }[]).map((item) => item.number)).toEqual([80])
-    expect(status.warning).toMatch(/#80 lowers the resume score/)
+    expect(status.warning).toMatch(/PR 80 update lowers the résumé's ATS score/)
     expect((status.runs as Record<string, unknown>[])[0]).toMatchObject({ outcome: 'pull-request', pullRequest: 80 })
     expect((await call(store, 'wait_for_site_update', { run_id: 61 }, { github })).json).toMatchObject({ outcome: 'pull-request', pullRequest: { number: 80 } })
     expect(calls.pages).toContain(100)
@@ -524,7 +538,7 @@ describe("a fork's pull request is never a site update (m-7, m-8)", () => {
     const status = (await call(store, 'site_update_status', {}, { github })).json!
     expect((status.pullRequests as { number: number }[]).map((item) => item.number)).toEqual([94])
     expect(status.fromForks).toEqual([{ number: 92, url: 'https://github.com/x/pull/92', from: 'outsider/stevenwilssens.com' }, { number: 93, url: 'https://github.com/x/pull/93', from: 'outsider/stevenwilssens.com' }])
-    expect(status.forksNote).toMatch(/not site updates/)
+    expect(status.forksNote).toMatch(/not Steven's updates/)
     expect(status).not.toHaveProperty('tip')
     expect(JSON.stringify(status)).not.toContain('Rewrite the team rules')
     expect((await call(store, 'site_update_status', {}, { github: fakeGitHub({ pulls: [pull(95)] }).github })).json).not.toHaveProperty('fromForks')
