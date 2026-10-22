@@ -32,9 +32,9 @@ describe('the team step runs every agent in the foreground (AC-1)', () => {
     expect(team).toMatch(/^ {6}- name: Let Claude make the change\n {8}id: claude\n/)
   })
 
-  it('turns background tasks off in the settings Claude Code reads', () => {
+  it('turns background tasks and hooks off in the settings Claude Code reads', () => {
     const settings = /\n {10}settings: '(.+)'\n/.exec(team)?.[1]
-    expect(JSON.parse(settings ?? 'null')).toEqual({ env: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' } })
+    expect(JSON.parse(settings ?? 'null')).toEqual({ env: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' }, disableAllHooks: true })
   })
 
   it.each([

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import type { CostRow } from './store'
-import { buildViews, lastMonths, moneyOf, pullStateOf, reviewRounds, totalOf, zero, type PullInfo } from './views'
+import { buildViews, lastMonths, moneyOf, ownPulls, pullStateOf, reviewRounds, totalOf, zero, type PullInfo } from './views'
 
 // Money worked out by hand: claude-opus-5-5 output is $20 per million tokens, so N output
 // tokens are 20 * N micro-dollars (1,000 tokens = $0.02).
@@ -16,8 +16,8 @@ const local = (extra: Partial<CostRow> = {}): CostRow => ({
 const review = (runId: number, runAttempt: number, extra: Partial<CostRow> = {}): CostRow => ({
   ...local(), source: 'github', runKey: `github:${runId}:${runAttempt}:team`, pr: 61, workflow: 'review', job: 'team', runId, runAttempt, role: 'review-workflow', model: 'reported', billing: 'billed', output: 0, reportedMicro: 1_000_000, numTurns: 16, durationMs: 1000, ...extra,
 })
-const views = (rows: CostRow[], { budgets = new Map<string, number>(), pulls = [] as PullInfo[] | null } = {}) => buildViews({ rows, budgets, pulls, now: NOW, repo: 'stewils/stevenwilssens.com', pricesRead: '2026-10-19' })
-const pull = (number: number, branch: string, extra: Partial<PullInfo> = {}): PullInfo => ({ number, branch, state: 'open', merged: false, mergeCommit: null, supersedes: null, ...extra })
+const views = (rows: CostRow[], { budgets = new Map<string, number>(), pulls = [] as PullInfo[] | null, pullsCapped = false } = {}) => buildViews({ rows, budgets, pulls, pullsCapped, now: NOW, repo: 'stewils/stevenwilssens.com', pricesRead: '2026-10-19' })
+const pull = (number: number, branch: string, extra: Partial<PullInfo> = {}): PullInfo => ({ number, branch, headRepo: 'stewils/stevenwilssens.com', state: 'open', merged: false, mergeCommit: null, supersedes: null, ...extra })
 
 describe('review rounds', () => {
   it('numbers the Review rows of one pull request by run id and attempt, whatever order they came in', () => {
@@ -27,6 +27,16 @@ describe('review rounds', () => {
     const other = review(250, 1, { pr: 62 })
     const rounds = reviewRounds([third, first, second, other, local()])
     expect([rounds.get(first), rounds.get(second), rounds.get(third), rounds.get(other)]).toEqual([1, 2, 3, 1])
+  })
+
+  it('numbers thousands of shuffled rows of one pull request, rows of the same run sharing a round', () => {
+    const rows = Array.from({ length: 20_000 }, (_, index) => review(1000 + ((index * 7919) % 5000), 1 + (index % 2)))
+    const rounds = reviewRounds(rows)
+    const byRun = new Map(rows.map((row) => [`${row.runId}:${row.runAttempt}`, rounds.get(row)]))
+    expect(rows.every((row) => rounds.get(row) === byRun.get(`${row.runId}:${row.runAttempt}`))).toBe(true)
+    expect(byRun.size).toBe(new Set(rounds.values()).size)
+    expect(rounds.get(rows.find((row) => row.runId === 1000 && row.runAttempt === 1)!)).toBe(1)
+    expect(Math.max(...rounds.values())).toBe(byRun.size)
   })
 
   it('gives each round its own line, and counts a Site update run as the spec and build, never a round', () => {
@@ -98,6 +108,36 @@ describe('pull request states', () => {
     expect(pullStateOf('redone', pulls)).toEqual({ state: 'superseded', number: 54, mergeCommit: null, supersededBy: 56 })
     expect(pullStateOf('nothing', pulls).state).toBe('none')
     expect(pullStateOf('merged', null).state).toBe('unknown')
+  })
+
+  it('ignores a fork’s pull request with the same branch name, and its redo marker', () => {
+    const fork = { headRepo: 'someone/stevenwilssens.com' }
+    const pulls = [
+      pull(10, 'dev-costs', { state: 'closed', merged: true }),
+      // Newer, from a fork, closed without merging: would make the feature waste if it counted.
+      pull(11, 'dev-costs', { ...fork, state: 'closed' }),
+      pull(12, 'redo-me', { state: 'closed' }), pull(13, 'x', { ...fork, supersedes: 12 }),
+      pull(14, 'gone', { headRepo: null, state: 'closed' }),
+      pull(15, 'upper', { headRepo: 'Stewils/StevenWilssens.com' }),
+    ]
+    expect(ownPulls(pulls, 'stewils/stevenwilssens.com')!.map((item) => item.number)).toEqual([10, 12, 15])
+    expect(ownPulls(pulls, null)).toBe(pulls)
+    expect(ownPulls(null, 'stewils/stevenwilssens.com')).toBeNull()
+    const answer = views([local({ branch: 'dev-costs' }), local({ branch: 'redo-me' }), local({ branch: 'gone' })], { pulls })
+    const byBranch = Object.fromEntries(answer.features.map((feature) => [feature.branch, feature]))
+    expect(byBranch['dev-costs'].pull).toMatchObject({ state: 'merged', number: 10 })
+    expect(byBranch['dev-costs'].waste.closed).toBe(false)
+    expect(byBranch['redo-me'].pull).toEqual({ state: 'closed', number: 12, mergeCommit: null, supersededBy: null })
+    expect(byBranch.gone.pull?.state).toBe('none')
+  })
+
+  it('says unknown, not none, for a branch missing from a list cut at its page cap; a branch in it keeps its state', () => {
+    const pulls = [pull(500, 'recent', { state: 'closed', merged: true })]
+    expect(pullStateOf('old', pulls, true).state).toBe('unknown')
+    expect(pullStateOf('old', pulls, false).state).toBe('none')
+    expect(pullStateOf('recent', pulls, true).state).toBe('merged')
+    const answer = views([local({ branch: 'old' }), local({ branch: 'recent' })], { pulls, pullsCapped: true })
+    expect(answer.features.map((feature) => [feature.branch, feature.pull?.state]).sort()).toEqual([['old', 'unknown'], ['recent', 'merged']])
   })
 })
 

@@ -77,6 +77,15 @@ export function FlowDiagram({ flow, changed, labelledBy }: { flow: Flow; changed
   const nodes = flow.diagram.nodes
   const notes = flow.diagram.notes ?? []
   const labelOf = (id: string) => nodes.find((node) => node.id === id)?.label ?? id
+  // A note names the steps it runs alongside by number (the numbers on the nodes above), and a
+  // node without a step by its label.
+  const alongsideOf = (labels: string[]) => {
+    const found = labels.map((label) => nodes.find((node) => node.label === label))
+    const numbers = [...new Set(found.flatMap((node) => node?.steps ?? []))].sort((a, b) => a - b)
+    const unnumbered = labels.filter((_, index) => !found[index]?.steps.length)
+    const steps = numbers.length === 0 ? [] : [`${numbers.length === 1 ? 'step' : 'steps'} ${listOf(numbers.map(String))}`]
+    return listOf([...steps, ...unnumbered])
+  }
   const teamCount = nodes.filter((node) => node.lane !== 'you').length
   const place = placeNodes(nodes, teamCount)
   // A team node whose arrow would point at the next team node it does not lead to (the pull
@@ -122,7 +131,7 @@ export function FlowDiagram({ flow, changed, labelledBy }: { flow: Flow; changed
             {notes.map((note) => (
               <li className="fd-note" key={note.label}>
                 {note.label}
-                {note.alongside.length > 0 && <span className="fd-note-along"><span aria-hidden="true"> · </span><span className="visually-hidden">, </span>alongside {listOf(note.alongside)}</span>}
+                {note.alongside.length > 0 && <span className="fd-note-along"><span aria-hidden="true"> · </span><span className="visually-hidden">, </span>alongside {alongsideOf(note.alongside)}</span>}
                 <span className="visually-hidden">.</span>
               </li>
             ))}

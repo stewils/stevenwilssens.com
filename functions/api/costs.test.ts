@@ -31,6 +31,8 @@ const read = (db: FakeD1, token = admin, extra?: Partial<Env>) => onRequestGet(c
 const setBudget = (db: FakeD1, body: unknown, token = admin) => budget.onRequestPost(context(new Request(`${url}/budget`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body) }), env(db)).ctx)
 const stored = (db: FakeD1) => db.sqlite.prepare('SELECT run_key, branch, batch, role, model, output_tokens, reported_micro, billing, ended_at FROM dev_cost_runs ORDER BY id').all()
 const answerOf = async (response: Response) => (await response.json()) as CostsAnswer
+// The head repository GitHub reports for a pull request from this repository's own branch.
+const own = { full_name: 'stewils/stevenwilssens.com' }
 
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
@@ -189,7 +191,7 @@ describe('GET /api/costs', () => {
     await send(postRequest(local({ rows: [row(), row({ batch: 2, model: 'claude-x-1' })] })), db)
     await send(postRequest(github()), db)
     const sha = 'c'.repeat(40)
-    const fetch = vi.fn(async () => Response.json([{ number: 61, title: 't', html_url: 'u', head: { ref: 'dev-costs' }, state: 'closed', merged_at: '2026-10-18', merge_commit_sha: sha, body: null, created_at: 'x' }]))
+    const fetch = vi.fn(async () => Response.json([{ number: 61, title: 't', html_url: 'u', head: { ref: 'dev-costs', repo: own }, state: 'closed', merged_at: '2026-10-18', merge_commit_sha: sha, body: null, created_at: 'x' }]))
     vi.stubGlobal('fetch', fetch)
     const response = await read(db, admin, { GITHUB_TOKEN: 'ghp_test' })
     const text = await response.clone().text()
@@ -218,13 +220,39 @@ describe('GET /api/costs', () => {
     expect(String(fetch.mock.calls[1][0])).toContain('/repos/stewils/stevenwilssens.com/')
   })
 
+  it('matches a feature only to pull requests from this repository: a fork’s closed one with the same branch changes nothing', async () => {
+    const db = fakeD1()
+    await send(postRequest(github()), db)
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json([
+      { number: 70, title: 'fork', html_url: 'u', head: { ref: 'dev-costs', repo: { full_name: 'someone/stevenwilssens.com' } }, state: 'closed', merged_at: null, merge_commit_sha: null, body: null, created_at: 'x' },
+      { number: 61, title: 'mine', html_url: 'u', head: { ref: 'dev-costs', repo: own }, state: 'open', merged_at: null, merge_commit_sha: null, body: null, created_at: 'x' },
+    ])))
+    const [feature] = (await answerOf(await read(db, admin, { GITHUB_TOKEN: 'ghp_test' }))).features
+    expect(feature.pull).toEqual({ state: 'open', number: 61, mergeCommit: null, supersededBy: null })
+    expect(feature.waste.closed).toBe(false)
+  })
+
+  it('says state unknown for a feature missing from a pull request list that hit its 5-page cap', async () => {
+    const db = fakeD1()
+    await send(postRequest(local()), db)
+    const page = Array.from({ length: 100 }, (_, index) => ({ number: 1000 + index, title: 't', html_url: 'u', head: { ref: `other-${index}`, repo: own }, state: 'open', merged_at: null, merge_commit_sha: null, body: null, created_at: 'x' }))
+    const fetch = vi.fn(async () => Response.json(page))
+    vi.stubGlobal('fetch', fetch)
+    const [feature] = (await answerOf(await read(db, admin, { GITHUB_TOKEN: 'ghp_test' }))).features
+    expect(fetch).toHaveBeenCalledTimes(5)
+    expect(feature.pull?.state).toBe('unknown')
+    // One short page: the list is complete, and the branch has no pull request.
+    fetch.mockImplementation(async () => Response.json(page.slice(0, 99)))
+    expect((await answerOf(await read(db, admin, { GITHUB_TOKEN: 'ghp_test' }))).features[0].pull?.state).toBe('none')
+  })
+
   it('marks a closed pull request superseded when another one’s site-update marker names it, and counts it as redone', async () => {
     const db = fakeD1()
     await send(postRequest(github({ pr: 54 })), db)
     const marker = `<!-- site-update-request ${btoa(JSON.stringify({ title: 'Redo', instruction: 'x', proposals: [], supersedes: 54 }))} -->`
     vi.stubGlobal('fetch', vi.fn(async () => Response.json([
-      { number: 54, title: 'first', html_url: 'u', head: { ref: 'dev-costs' }, state: 'closed', merged_at: null, merge_commit_sha: null, body: null, created_at: 'x' },
-      { number: 56, title: 'redo', html_url: 'u', head: { ref: 'update/redo-56' }, state: 'open', merged_at: null, merge_commit_sha: null, body: marker, created_at: 'x' },
+      { number: 54, title: 'first', html_url: 'u', head: { ref: 'dev-costs', repo: own }, state: 'closed', merged_at: null, merge_commit_sha: null, body: null, created_at: 'x' },
+      { number: 56, title: 'redo', html_url: 'u', head: { ref: 'update/redo-56', repo: own }, state: 'open', merged_at: null, merge_commit_sha: null, body: marker, created_at: 'x' },
     ])))
     const answer = await answerOf(await read(db, admin, { GITHUB_TOKEN: 'ghp_test' }))
     const [feature] = answer.features

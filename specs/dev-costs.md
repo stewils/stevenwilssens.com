@@ -841,5 +841,7 @@ Draft AC numbers used in the Recruiter, Design, Threat model and Technical appro
 | Senior recruiter | APPROVE (round 2), with W-1 | APPROVE with M-2 after deploy (round 2) | check:recruiter 80 = main, ATS 100 = live, main-*.js +279 B gzip (+0.28%, accepted); M-1 met; M-2: Steven chose to ask production the five questions right after the deploy and revert on a cost figure (2026-10-20) |
 | Senior designer | APPROVE (round 2) | APPROVE (round 3) | No findings; preview article diagram identical to the branch's |
 | Senior developer | (feasibility) | APPROVE (round 2, review mode) | Round-2 minors fixed in b2c32c0 |
-| Security engineer | APPROVE (round 2), with S-15 to S-17 | APPROVE (round 2) | S-1 to S-17 built and tested; follow-up: `disableAllHooks` through the action's `settings:` input |
+| Security engineer | APPROVE (round 2), with S-15 to S-17 | APPROVE (round 2) | S-1 to S-17 built and tested; `disableAllHooks` now set through the action's `settings:` input in both workflows (GitHub review minors) |
 | Senior tester | (test plan) | APPROVE (round 3) | 1185 tests, 99.52 / 97.4 / 99.19 / 99.89, every changed file at 90% or more; two nits deferred |
+
+The Costs page with seeded local data, as the designer saw it (the Review workflow's database is empty): [desktop, this month and features](dev-costs-screens/admin-costs-desktop-dark-1.png), [desktop, over time](dev-costs-screens/admin-costs-desktop-dark-2.png), [phone, this month](dev-costs-screens/admin-costs-phone-dark-1.png). Taken before the GitHub review's CSS minor: since then the parts inside a stacked bar are no longer rounded or dimmed on their own, only the bar as a whole.

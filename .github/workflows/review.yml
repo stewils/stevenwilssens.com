@@ -321,6 +321,8 @@ jobs:
             push, commit, merge or edit any file outside .review/. Always finish by writing .review/result.json
             as the skill says, even when a reviewer failed or ran out of turns (that role then counts as
             CHANGES_REQUESTED with the reason); its "comment" is posted on the pull request for Steven.
+          # No hooks run on GitHub: the costs hook's own guard is the first safeguard, this the second (specs/dev-costs.md S-4).
+          settings: '{"disableAllHooks":true}'
           claude_args: '--max-turns 300 --allowedTools "Agent,Task,Read,Glob,Grep,Write(.review/**),Edit(.review/**),Write(/${{ github.workspace }}/.review/**),Edit(/${{ github.workspace }}/.review/**),Bash(npm run lint*),Bash(npm test*),Bash(npm run test:coverage*),Bash(npm run check:recruiter*),Bash(npm run check:site*),Bash(npm run screenshots*),Bash(npm audit*),Bash(node scripts/resume-check.mjs*),Bash(node scripts/recruiter-check.mjs*),Bash(node scripts/screenshots.mjs*),Bash(node scripts/site-check.mjs*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(git status*),Bash(gh pr view*),Bash(gh pr diff*),Bash(ls*),Bash(cat*),Bash(head*),Bash(tail*),Bash(wc*),Bash(grep*),Bash(sort*),Bash(diff*),Bash(md5sum*),Bash(sha256sum*),Bash(jq*),Bash(git rev-parse*),Bash(git ls-files*),Bash(git cat-file*),Bash(git merge-base*),Bash(git blame*),Bash(npx vitest*),Bash(npx tsc*),Bash(npx oxlint*),Bash(mkdir -p .review*),Bash(sed -n*)"'
 
       # What the run cost, for /admin#costs (specs/dev-costs.md): only three numbers leave this job, as job
@@ -394,9 +396,11 @@ jobs:
   # jq and curl, no permissions. COSTS_INGEST_TOKEN is in this one step's env and nowhere else. Every value
   # reaches the script through env and is checked again; the body is built by jq; any problem is one
   # warning and the run still passes.
+  # Not for Dependabot's own dependency updates (the same opener, branch, actor and triggering actor as the
+  # team job's first step; its runs have no Claude step and no secrets); everything else is recorded.
   costs:
     needs: team
-    if: always() && needs.team.result != 'skipped'
+    if: always() && needs.team.result != 'skipped' && !(github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' && github.triggering_actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}

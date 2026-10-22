@@ -230,8 +230,9 @@ jobs:
             - Commit nothing yourself; the workflow commits the change and the spec and opens the pull request. End with a short summary of what changed and any open questions, written for Steven.
             - That final summary is published in the public run log: do not quote sources/, .git/ or environment values in it.
             - A run that changes nothing outside specs/ fails and Steven is told the request was not carried out; if the change cannot be made, say why in the final summary.
-          # Background tasks off: an agent cannot outlive the lead's turn, which ends the run.
-          settings: '{"env":{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1"}}'
+          # Background tasks off: an agent cannot outlive the lead's turn, which ends the run. No hooks run on
+          # GitHub: the costs hook's own guard is the first safeguard, this the second (specs/dev-costs.md S-4).
+          settings: '{"env":{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1"},"disableAllHooks":true}'
           claude_args: '--max-turns 400 --allowedTools "Agent,Task,Read,Edit,Write,MultiEdit,Glob,Grep,Bash(npm run *),Bash(npm test*),Bash(node scripts/*),Bash(npx vitest*),Bash(git diff*),Bash(git status*),Bash(git log*),Bash(git show*),Bash(ls*),Bash(mkdir -p specs*)"'
 
       # What the run cost, for /admin#costs (specs/dev-costs.md): only three numbers leave this job, as job

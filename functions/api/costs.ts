@@ -23,6 +23,8 @@ const MAX_BODY = 16 * 1024
 const MIN_SECRET = 32
 const REPO = /^[\w.-]+\/[\w.-]+$/
 const DEFAULT_REPO = 'stewils/stevenwilssens.com'
+// GitHub's pull requests are read 100 a page, at most this many pages.
+const PULL_PAGES = 5
 
 const failed = (what: string, error: unknown) => {
   // The error's class only: never the body, a header or a message that could carry either.
@@ -62,15 +64,19 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     const store = new CostStore(env.DB)
     const [rows, budgets] = await Promise.all([store.rows(), store.budgets()])
     // GitHub failing (or no token) leaves every state unknown; the rest of the answer stands.
+    // A full last page means the list may go on past the cap: branches not in it stay unknown.
     let pulls: PullInfo[] | null = null
+    let pullsCapped = false
     if (env.GITHUB_TOKEN && rows.length) {
       try {
-        pulls = (await gitHubClient(env.GITHUB_TOKEN, repo).allPulls()).map((pull) => ({ number: pull.number, state: pull.state, merged: pull.merged, mergeCommit: pull.mergeCommit, branch: pull.branch, supersedes: pull.request?.supersedes ?? null }))
+        const list = await gitHubClient(env.GITHUB_TOKEN, repo).allPulls(PULL_PAGES)
+        pullsCapped = list.length >= PULL_PAGES * 100
+        pulls = list.map((pull) => ({ number: pull.number, state: pull.state, merged: pull.merged, mergeCommit: pull.mergeCommit, branch: pull.branch, headRepo: pull.headRepo, supersedes: pull.request?.supersedes ?? null }))
       } catch (error) {
         console.error('costs pull requests failed:', error instanceof Error ? error.name : 'unknown error')
       }
     }
-    return json(buildViews({ rows, budgets, pulls, now: Date.now(), repo, pricesRead: PRICES_READ }))
+    return json(buildViews({ rows, budgets, pulls, pullsCapped, now: Date.now(), repo, pricesRead: PRICES_READ }))
   } catch (error) {
     return failed('read', error)
   }

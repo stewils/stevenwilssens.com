@@ -110,6 +110,14 @@ describe('the Costs page’s styles', () => {
     expect(narrow).toMatch(/\.chart--stacked \.chart-axis span \{ overflow: visible; display: flex; justify-content: center; white-space: nowrap; \}/)
   })
 
+  it('rounds and dims a plain bar, never the parts inside a stacked one a second time', () => {
+    // The plain bar is the button's own span; a stacked bar's parts are spans inside its .chart-stack.
+    expect(css).toMatch(/\n\.chart-bar > span \{[^}]*border-radius: 4px 4px 0 0/)
+    expect(css).toMatch(/\n\.chart-bars:hover \.chart-bar > span \{ opacity: 0\.45; \}/)
+    expect(css).toMatch(/\n\.chart-bars \.chart-bar\.active > span \{ opacity: 1; \}/)
+    expect(css).not.toMatch(/\.chart-bar span\b/)
+  })
+
   it('draws a note beside the Team flow quieter than a step: dashed, muted, 12px', () => {
     expect(css).toMatch(/\.fd-note \{[^}]*border: 1px dashed var\(--line\)[^}]*font-size: 12px[^}]*color: var\(--muted\)/)
   })

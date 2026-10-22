@@ -82,12 +82,21 @@ describe('the flow diagram', () => {
     expect(nodes()).toHaveLength(flow.diagram!.nodes.length)
     expect(screen.getByRole('figure')).not.toHaveClass('fd-long')
     const notes = within(screen.getByRole('list', { name: 'Alongside the steps' })).getAllByRole('listitem')
-    expect(notes.map((item) => item.textContent)).toEqual(['Runs metered: admin, Costs · , alongside Draft: drafts/slug.md and Editor fixes.', 'Logged.'])
+    // The steps by number (Draft is step 2); a node without a step (Editor fixes) by its label.
+    expect(notes.map((item) => item.textContent)).toEqual(['Runs metered: admin, Costs · , alongside step 2 and Editor fixes.', 'Logged.'])
     expect(notes[0]).toHaveClass('fd-note')
     expect(container.querySelector('.fd-note [aria-hidden="true"]')).toHaveTextContent('·')
     // The notes come after the steps, inside the frame.
     expect(container.querySelector('.fd-frame > .fd-steps + .fd-notes')).not.toBeNull()
     expect(container.querySelector('.fd-notes')!.querySelectorAll('a, button, [tabindex]')).toHaveLength(0)
+  })
+
+  it('names the steps a note runs alongside by number, in order and once, so labels with commas cannot run together', () => {
+    // Publish is step 4, the decision step 3; the draft node here holds steps 5 and 2.
+    const numbered: Flow = { ...flow, diagram: { nodes: flow.diagram!.nodes.map((item) => (item.id === 'draft' ? { ...item, label: 'Draft, with checks', steps: [5, 2] } : item)), notes: [{ label: 'Runs metered', alongside: ['Publish to the site', 'Draft, with checks', 'Questions only the owner can answer?'] }] } }
+    show([], numbered)
+    const [note] = within(screen.getByRole('list', { name: 'Alongside the steps' })).getAllByRole('listitem')
+    expect(note.textContent).toBe('Runs metered · , alongside steps 2, 3, 4 and 5.')
   })
 
   it('draws no notes row when the chart has none', () => {

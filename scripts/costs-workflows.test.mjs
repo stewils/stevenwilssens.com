@@ -80,12 +80,34 @@ describe.each(Object.entries(workflows))('the %s workflow', (workflow, meta) => 
   it('posts from its own job: after the Claude job, no permissions, no checkout, no action, no npm', () => {
     expect(costs).not.toBeNull()
     expect(costs).toContain(`    needs: ${meta.job}\n`)
-    expect(costs).toContain(`    if: always() && needs.${meta.job}.result != 'skipped'\n`)
+    const skipsDependabot = workflow === 'review' ? " && !(github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' && github.triggering_actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/'))" : ''
+    expect(costs).toContain(`    if: always() && needs.${meta.job}.result != 'skipped'${skipsDependabot}\n`)
     expect(costs).toContain('    permissions: {}\n')
     expect(costs).toMatch(/\n {4}timeout-minutes: 5\n/)
     expect(costs).not.toMatch(/uses:|checkout|npm |npx |setup-node|upload-artifact|download-artifact/)
     for (const step of costs.split('\n      - name: ').slice(1)) expect(runScript(`      - name: ${step}`)).not.toContain('${{')
   })
+
+  it('turns every hook off in the Claude step’s settings, the second safeguard after the hook’s own guard (S-4)', () => {
+    const claude = stepBlock(job, meta.claudeStep)
+    const settings = /\n {10}settings: '(.+)'\n/.exec(claude)?.[1]
+    expect(JSON.parse(settings ?? 'null')).toMatchObject({ disableAllHooks: true })
+    // Through the action's settings input, not a second --settings in claude_args.
+    expect(claude).not.toContain('--settings')
+  })
+
+  if (workflow === 'review') {
+    it('skips the costs job for Dependabot’s own updates by the same signs the team job reads', () => {
+      const who = runScript(stepBlock(job, 'Dependabot\'s own dependency update?'))
+      expect(who).toContain('[ "$AUTHOR" = \'dependabot[bot]\' ]')
+      expect(who).toContain('[ "$GITHUB_ACTOR" = \'dependabot[bot]\' ]')
+      expect(who).toContain('"${GITHUB_TRIGGERING_ACTOR:-$GITHUB_ACTOR}" = \'dependabot[bot]\'')
+      expect(who).toContain('[[ "$HEAD_REF" == dependabot/* ]]')
+      const condition = /\n {4}if: (.+)\n/.exec(costs)[1]
+      for (const sign of ["github.event.pull_request.user.login == 'dependabot[bot]'", "github.actor == 'dependabot[bot]'", "github.triggering_actor == 'dependabot[bot]'", "startsWith(github.head_ref, 'dependabot/')"]) expect(condition).toContain(sign)
+      expect(condition).toMatch(/&& !\(.+\)$/)
+    })
+  }
 
   it('names COSTS_INGEST_TOKEN once, in the post step’s env, and passes neither Claude credential into it', () => {
     expect(text.match(/COSTS_INGEST_TOKEN: \$\{\{/g)).toHaveLength(1)

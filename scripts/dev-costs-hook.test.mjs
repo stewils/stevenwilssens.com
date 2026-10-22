@@ -5,7 +5,7 @@
 // the queue, and a fetch stub that refuses any call it was not given. Nothing touches the real
 // ~/.claude, the repository's queue or the network.
 import { execFileSync, spawnSync } from 'node:child_process'
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -253,6 +253,33 @@ describe('what leaves the machine', () => {
     expect(isInside(folder, folder)).toBe(false)
   })
 
+  it('refuses a link inside the projects folder that points outside it, for a transcript and for a backfill folder', async (context) => {
+    const outsideDir = join(temp, 'elsewhere')
+    cpSync(folder, outsideDir, { recursive: true })
+    const projects = join(home, '.claude', 'projects')
+    const fileLink = join(folder, 'bbbbbbbb-2222-4222-8222-222222222222.jsonl')
+    const dirLink = join(projects, 'linked')
+    try {
+      // A junction needs no privilege on Windows; elsewhere the type is ignored.
+      symlinkSync(outsideDir, dirLink, 'junction')
+      symlinkSync(join(outsideDir, `${SESSION}.jsonl`), fileLink, 'file')
+    } catch (error) {
+      // Windows without Developer Mode cannot make a file link: nothing to test there.
+      if (['EPERM', 'EACCES', 'ENOSYS'].includes(error?.code)) return context.skip()
+      throw error
+    }
+    expect(isInside(projects, fileLink)).toBe(false)
+    expect(isInside(projects, join(dirLink, `${SESSION}.jsonl`))).toBe(false)
+    await run({ input: stdin(fileLink) })
+    await run({ input: stdin(join(dirLink, `${SESSION}.jsonl`)) })
+    expect(queueText()).toBe('')
+    expect((await run({ argv: ['--backfill', '--dir', dirLink] })).err).toEqual(['dev-costs: the backfill folder is not a project folder of Claude Code'])
+    expect(queueText()).toBe('')
+    // The positive control: the same transcript through its real path inside the folder is read.
+    await run({ input: stdin() })
+    expect(queueText()).not.toBe('')
+  })
+
   it('reads the Claude config folder from CLAUDE_CONFIG_DIR when it is set', async () => {
     const config = join(temp, 'config')
     cpSync(join(home, '.claude'), config, { recursive: true })
@@ -390,6 +417,16 @@ describe('the hook never gets in the way', () => {
     expect(readdirSync(root)).toEqual([QUEUE_FILE])
     writeQueue(root, [])
     expect(readdirSync(root)).toEqual([])
+  })
+
+  it('leaves the old queue whole when writing the new one fails: it never writes the queue in place', () => {
+    const old = '{"v":1,"source":"local","rows":[1]}'
+    writeQueue(root, [old])
+    // The temp file's name taken by a folder: the write fails before anything touches the queue.
+    mkdirSync(join(root, `${QUEUE_FILE}.${process.pid}.tmp`))
+    expect(() => writeQueue(root, [old, '{"v":1,"source":"local","rows":[2]}'])).toThrow()
+    expect(queueText()).toBe(`${old}\n`)
+    expect(readQueue(root)).toEqual([old])
   })
 
   it('keeps a payload another session queued while this one was sending', async () => {

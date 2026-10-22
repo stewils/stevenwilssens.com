@@ -15,7 +15,8 @@ import { assignPhases, TEAM_ROLES, type PhaseKind } from './phases'
 import type { CostRow } from './store'
 
 export type Money = { billed: number; estimated: number; unknown: number; unpriced: { model: string; tokens: number }[] }
-export type PullInfo = { number: number; state: 'open' | 'closed'; merged: boolean; mergeCommit: string | null; branch: string; supersedes: number | null }
+// headRepo: the repository the pull request's branch lives in (owner/name); a fork's can carry any branch name.
+export type PullInfo = { number: number; state: 'open' | 'closed'; merged: boolean; mergeCommit: string | null; branch: string; headRepo: string | null; supersedes: number | null }
 export type PullState = { state: 'open' | 'merged' | 'closed' | 'superseded' | 'none' | 'unknown'; number: number | null; mergeCommit: string | null; supersededBy: number | null }
 export type LineKind = PhaseKind | 'site-update' | 'review-workflow'
 export type PhaseLine = { kind: LineKind; round: number; pr: number | null; at: number; money: Money; roles: { role: string; money: Money }[] }
@@ -63,11 +64,20 @@ export const moneyOf = (row: CostRow): Money => {
   return money
 }
 
+const UNKNOWN: PullState = { state: 'unknown', number: null, mergeCommit: null, supersededBy: null }
+
+// Only the pull requests whose branch lives in this repository: a fork's pull request with
+// the same branch name (or a redo marker in its body) never closes or redoes a feature.
+export const ownPulls = (pulls: PullInfo[] | null, repo: string | null) =>
+  pulls && repo ? pulls.filter((item) => item.headRepo?.toLowerCase() === repo.toLowerCase()) : pulls
+
 // The pull request of a feature, from GitHub's list (null when GitHub could not be asked).
-export const pullStateOf = (branch: string, pulls: PullInfo[] | null): PullState => {
-  if (!pulls) return { state: 'unknown', number: null, mergeCommit: null, supersededBy: null }
+// The list is newest first, so a pull request found in it is the newest; when the list was
+// cut at its page cap (`capped`), a branch not in it may still have an older one: unknown.
+export const pullStateOf = (branch: string, pulls: PullInfo[] | null, capped = false): PullState => {
+  if (!pulls) return { ...UNKNOWN }
   const pull = pulls.filter((item) => item.branch === branch).sort((a, b) => b.number - a.number)[0]
-  if (!pull) return { state: 'none', number: null, mergeCommit: null, supersededBy: null }
+  if (!pull) return capped ? { ...UNKNOWN } : { state: 'none', number: null, mergeCommit: null, supersededBy: null }
   if (pull.merged) return { state: 'merged', number: pull.number, mergeCommit: pull.mergeCommit, supersededBy: null }
   if (pull.state === 'open') return { state: 'open', number: pull.number, mergeCommit: null, supersededBy: null }
   const redo = pulls.filter((item) => item.supersedes === pull.number && item.number !== pull.number).sort((a, b) => a.number - b.number)[0]
@@ -85,11 +95,11 @@ export const reviewRounds = (rows: CostRow[]): Map<CostRow, number> => {
     else byPull.set(key, [row])
   }
   for (const group of byPull.values()) {
-    const runs = [...new Set(group.map((row) => `${row.runId}:${row.runAttempt}`))]
-      .map((key) => key.split(':').map(Number))
-      .sort((a, b) => a[0] - b[0] || a[1] - b[1])
-      .map(([id, attempt]) => `${id}:${attempt}`)
-    for (const row of group) rounds.set(row, runs.indexOf(`${row.runId}:${row.runAttempt}`) + 1)
+    // Each distinct run once, sorted, then a lookup per row: n log n, not a search per row.
+    const runs = new Map<string, [number, number]>()
+    for (const row of group) runs.set(`${row.runId}:${row.runAttempt}`, [Number(row.runId), Number(row.runAttempt)])
+    const order = new Map([...runs.entries()].sort(([, a], [, b]) => a[0] - b[0] || a[1] - b[1]).map(([key], index) => [key, index + 1]))
+    for (const row of group) rounds.set(row, order.get(`${row.runId}:${row.runAttempt}`)!)
   }
   return rounds
 }
@@ -157,7 +167,9 @@ export const lastMonths = (now: number, count = 12) => {
 const roleKind = (role: string): RoleKind => (role === 'lead' ? 'lead' : TEAM_ROLES.includes(role) ? 'team' : WORKFLOW_ROLES.includes(role) ? 'workflow' : 'other')
 const OTHER = 'other-agents'
 
-export const buildViews = ({ rows, budgets, pulls, now, repo, pricesRead }: { rows: CostRow[]; budgets: Map<string, number>; pulls: PullInfo[] | null; now: number; repo: string | null; pricesRead: string }): CostsAnswer => {
+// pullsCapped: GitHub's list stopped at its page cap, so it may not hold every pull request.
+export const buildViews = ({ rows, budgets, pulls: allPulls, pullsCapped = false, now, repo, pricesRead }: { rows: CostRow[]; budgets: Map<string, number>; pulls: PullInfo[] | null; pullsCapped?: boolean; now: number; repo: string | null; pricesRead: string }): CostsAnswer => {
+  const pulls = ownPulls(allPulls, repo)
   const byFeature = new Map<string | null, CostRow[]>()
   for (const row of rows) {
     const feature = featureOf(row.branch)
@@ -169,7 +181,7 @@ export const buildViews = ({ rows, budgets, pulls, now, repo, pricesRead }: { ro
   const allTagged: (Tagged & { feature: string | null })[] = []
   const features: Feature[] = []
   for (const [branch, group] of byFeature) {
-    const pull = branch === null ? null : pullStateOf(branch, pulls)
+    const pull = branch === null ? null : pullStateOf(branch, pulls, pullsCapped)
     const closed = pull?.state === 'closed' || pull?.state === 'superseded'
     const tagged = tagFeature(group, closed)
     allTagged.push(...tagged.map((item) => ({ ...item, feature: branch })))
