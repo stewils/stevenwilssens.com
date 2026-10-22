@@ -129,7 +129,7 @@ export function RateAnswers({ info, filter, onFilter, focusRequest, onRate, load
             <p className="muted rate-meta">{index + 1} of {list.length} · {formatTime(entry.ts)}{entry.page ? ` on /${entry.page}` : ''}{entry.country || entry.asOrg ? ` · ${[entry.country, entry.asOrg].filter(Boolean).join(', ')}` : ''}</p>
             <p className="rate-badges"><span className={`badge ${outcomeBadge[entry.outcome]}`}>{entry.kind === 'fit' ? 'fit check' : outcomeLabel[entry.outcome]}</span> <VersionBadge entry={entry} />{entry.rating && <> <RatingBadge rating={entry.rating} /></>}</p>
             <Earlier log={log} entry={entry} />
-            <h3 tabIndex={-1} ref={heading}>{fit ? `Fit check: ${fit.head}` : entry.question}</h3>
+            <h3 tabIndex={-1} ref={heading} className={fit ? 'rate-fit' : undefined} title={fit ? `Fit check: ${fit.head}` : undefined}>{fit ? `Fit check: ${fit.head}` : entry.question}</h3>
             {fit && <small className="muted">{fit.length === null ? '' : `A job description of ${fit.length.toLocaleString('en-US')} characters; `}only the first words of a pasted job description are kept</small>}
             <AnswerText entry={entry} load={load} />
             <h4>Sources</h4>

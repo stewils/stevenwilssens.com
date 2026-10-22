@@ -1,6 +1,6 @@
 # Steven rates the assistant's answers and sees whether it gets better
 
-Slug: `ask-ratings` · Branch: `ask-ratings` · Status: **approved** (spec round 2, 2026-10-20): Steven answered the four open questions, the tester's round-2 findings are in, nothing is left open. Build after `dev-costs` merges and main is merged into `ask-ratings`.
+Slug: `ask-ratings` · Branch: `ask-ratings` · Status: **built** (2026-10-22: merge reviews in two rounds, fix round 2 done, every role signed off the merge). The spec was approved in spec round 2 (2026-10-20): Steven answered the four open questions, the tester's round-2 findings are in, nothing is left open. Built after `dev-costs` merged and main was merged into `ask-ratings`.
 Asked by Steven on 2026-10-20: "Can we build an admin function where I can see the question and rate the answer? So we don't just rely on users reviewing? Can we then also on the tab for the agent see the scores. Make sure I see the model scoring over time? What will we use to calculate if the model is getting better?"
 
 ## Problem
@@ -389,7 +389,7 @@ The sketch's numbers illustrate each element, not one data set: the verdict and 
   - **Versions apart without colour alone**: the version answering now solid 2px `--series`; the one before dashed (`6 4`) 2px `--warn-ink` (dark `#f2c66d`, light `#8a5a00`, both above 3:1 on `--paper`); every older one and Before versions dotted (`2 3`) 2px `--muted`. "Now" and "before" are the verdict's two versions (primary-served only, as the decision rule picks them), never simply the newest lines: a fallback-served or `mock` version is always dotted `--muted`, with "fallback" (or "mock") after its label in the legend, the tooltip and the Versions table, even when it answered last, so solid and dashed never land on it. With no verdict, nothing is solid; with no version before, nothing is dashed. The legend in the figcaption shows each line sample with its version label (`.chart-legend` from `dev-costs` once merged; otherwise those rules come with this change). The last point of the current version carries its value ("90%").
   - **Uncertainty**: under each version's line its 95% range as a band (`fill` the line's colour, `opacity: 0.12`), so a week resting on two ratings shows as a wide band by itself.
   - **Low sample** (fewer than 5 ratings in that week): a hollow dot (fill `--paper`, 2px stroke in the line's colour) and the segment into it 1px wide. Still drawn, still read out, visibly not a firm reading; no opacity on the line, so it keeps 3:1.
-  - **Sample strip**: under the plot, one thin bar per week (up to 20px, `--series-track` fill, a 1px `--muted` top edge), labelled "rated per week" at the right: sample size at a glance.
+  - **Sample strip**: under the plot, one thin bar per week (up to 20px, `--series-track` fill, a 1px `--muted` top edge), explained by a key under the plot ("Bars along the bottom: answers rated per week"): sample size at a glance.
   - Tooltip per week: "Week of Oct 13" then a line per version: "a1b2c3d4: 86% good, 6 of 7 rated · range 49 to 97%", "9f8e7d6c: 50%, 1 of 2, too few to read". Figcaption readout: "Now 90% good (18 of 20)".
   - `role="img"`, `aria-label` "Rated good by week, 90 days. a1b2c3d4: 90% of 20 rated. 9f8e7d6c: 60% of 20 rated." The text alternative with the weekly values (AC-18) is a `<details>` "The weeks as a table" under the chart, a plain `table.data` (week, version, rated, good share, range): every number readable without the picture.
   - Before the first rating: `.empty` "Your scores appear here after your first rating." With ratings in one week only: dots, no lines.
@@ -1107,9 +1107,9 @@ Decided by the PM, not asked (Steven can still overrule):
 
 | Role | Spec | Merge | Notes |
 |---|---|---|---|
-| Product manager | APPROVE (round 2) | | Steven's four answers recorded; tester's findings 11 to 14 in AC-1, AC-2, AC-9, AC-17 and "The decision rule"; AC-10, AC-20 and AC-23 rewritten for Open questions 3 and 4; nothing open |
-| Senior recruiter | APPROVE (see Recruiter impact) | | merge check 4 reworded by the PM to a local check (preview never logs); round 2: report card loses the votes tile (five tiles) |
-| Senior designer | APPROVE (spec round 2) | | AC-25 (queue), AC-18; round 2: Design lines on the Open question 3 countdown and the no-verdict state to align with AC-17 and AC-20 |
-| Senior developer | APPROVE_WITH_CHANGES, taken in round 1 | | 0014, `servingModel`, AC-4, AC-9, merge order; round 2 changes in the Technical approach's PM note |
-| Security engineer | APPROVE | | AC-1 day only, AC-6 `?entry=`, AC-7 server-side checks; round 2: the report only loses fields |
-| Senior tester | APPROVE (spec round 2, findings 11, 12 and 14 taken) | | AC-10, AC-14, AC-17 numbers, AC-22, AC-25, version rule; round 2: fallback flag, whole-number thresholds, exact `MODEL` match |
+| Product manager | APPROVE (round 2) | APPROVE (round 1): all 25 ACs met, six deviations accepted | Steven's four answers recorded; tester's findings 11 to 14 in AC-1, AC-2, AC-9, AC-17 and "The decision rule"; AC-10, AC-20 and AC-23 rewritten for Open questions 3 and 4; nothing open |
+| Senior recruiter | APPROVE (see Recruiter impact) | APPROVE (round 1): `check:recruiter` 80/100, the same as main; résumé ATS 100; the assistant checked locally with the real model | merge check 4 reworded by the PM to a local check (preview never logs); round 2: report card loses the votes tile (five tiles) |
+| Senior designer | APPROVE (spec round 2) | APPROVE (round 2): the nine round-1 findings fixed; the two round-2 minors fixed in fix round 2 | AC-25 (queue), AC-18; round 2: Design lines on the Open question 3 countdown and the no-verdict state to align with AC-17 and AC-20 |
+| Senior developer | APPROVE_WITH_CHANGES, taken in round 1 | APPROVE (round 2) | 0014, `servingModel`, AC-4, AC-9, merge order; round 2 changes in the Technical approach's PM note |
+| Security engineer | APPROVE | APPROVE (round 1): S-1 to S-16 built and tested | AC-1 day only, AC-6 `?entry=`, AC-7 server-side checks; round 2: the report only loses fields |
+| Senior tester | APPROVE (spec round 2, findings 11, 12 and 14 taken) | APPROVE (round 2), pending confirmation of fix round 2 | AC-10, AC-14, AC-17 numbers, AC-22, AC-25, version rule; round 2: fallback flag, whole-number thresholds, exact `MODEL` match |

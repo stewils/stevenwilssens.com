@@ -501,6 +501,34 @@ describe('rating answers from the dashboard', () => {
     expect(order.lastIndexOf('top')).toBeLessThan(order.indexOf('focus H3'))
   })
 
+  it('a rating saved while the page refreshes stays shown when the refresh read the log before it, and gives way to a later rating from the server', async () => {
+    rateServe()
+    const base = fetchMock.getMockImplementation()!
+    const held: ((body: unknown) => void)[] = []
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (!/^\/api\/ask\/admin\?days=.*&r=[1-9]/.test(url)) return base(url, init)
+      return new Promise<Response>((resolve) => { held.push((body) => resolve(new Response(JSON.stringify(body), { status: 200 }))) })
+    })
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    go('assistant')
+    const goodShare = () => screen.getByText('Rated good', { selector: '.stats span' }).parentElement!.querySelector('strong')
+    // The refresh starts, reads the database, and the rating is saved before it lands.
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(held).toHaveLength(1))
+    rateIt()
+    await waitFor(() => expect(goodShare()).toHaveTextContent(/^100%$/))
+    await act(async () => { held[0](makeAsk({ log: [entry], ratings: [] })) })
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
+    expect(goodShare()).toHaveTextContent(/^100%$/)
+    // A later rating in the database (from another tab, say) wins over the one saved here.
+    const later = makeRating({ logId: 1, overall: 1, accurate: 'no', ratedAt: makeRating().ratedAt + 60_000 })
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(held).toHaveLength(2))
+    await act(async () => { held[1](makeAsk({ log: [{ ...entry, rating: later }], ratings: [later] })) })
+    expect(goodShare()).toHaveTextContent(/^0%$/)
+  })
+
   it.each([
     ['a refusal names the field', { status: 400, body: { error: 'invalid', field: 'note' } } as Answer, 'Could not save the rating (the server refused note)'],
     ['a server error gives its status', { status: 503, body: {} } as Answer, 'Could not save the rating (HTTP 503)'],

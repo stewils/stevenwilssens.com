@@ -49,6 +49,8 @@ describe('Rate answers', () => {
     expect(filterButton(/Not rated/)).toHaveAttribute('aria-pressed', 'true')
     expect(within(card()).getByRole('group', { name: 'Show' }).textContent).toBe('Not rated 3Rated 1All 4')
     expect(question()).toHaveTextContent('Write me a poem')
+    expect(question()).not.toHaveClass('rate-fit')
+    expect(question()).not.toHaveAttribute('title')
     expect(within(card()).getByText(/^1 of 3 ·/)).toBeInTheDocument()
   })
 
@@ -199,6 +201,10 @@ describe('Rate answers', () => {
     render(<Harness info={makeAsk({ log: [makeLogEntry({ id: 14, kind: 'fit', question: "Job description (1442 characters): Job description to check against Steven's record: Director…", sources: [{ id: 'site:old', title: null, href: null }], knowledgeVersion: null, page: null, country: null, asOrg: null }), makeLogEntry({ id: 15, ts: 1, kind: 'fit', question: 'A posting logged some other way' })] })} />)
     // The heading is the posting's first words; its length goes in the line under it.
     expect(question()).toHaveTextContent(/^Fit check: Director…$/)
+    // Clamped to three lines on screen; the whole heading stays in its title and its text.
+    expect(question()).toHaveClass('rate-fit')
+    expect(question()).toHaveAttribute('title', 'Fit check: Director…')
+    expect(question()).not.toHaveAttribute('aria-hidden')
     expect(within(card()).getByText('A job description of 1,442 characters; only the first words of a pasted job description are kept')).toBeInTheDocument()
     expect(within(card()).getByText('site:old · no longer in the data')).toBeInTheDocument()
     expect(within(card()).getByText('fit check')).toBeInTheDocument()
