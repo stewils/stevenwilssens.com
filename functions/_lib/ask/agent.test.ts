@@ -59,6 +59,12 @@ describe('who Steven is, from his About page', () => {
     for (const [, , words] of reported) expect(text).toContain(words)
   })
 
+  it('lists the HiPo selection first under [site:honors], with no year made up for it', () => {
+    const text = dossierText([])
+    expect(text).toContain('# [site:honors] Honors\n- Selected for Microsoft’s High Potential (HiPo) program (Issued by Microsoft)\n')
+    expect(text).toMatch(/HiPo\) program \(Issued by Microsoft\)$/m)
+  })
+
   it('keeps no About prose of its own in the prompt source', () => {
     const source = readFileSync(resolve('functions/_lib/ask/prompt.ts'), 'utf8')
     for (const opening of ['based in the Seattle area', 'Most recently he led', 'Before leading Windows data teams', 'He describes his work']) expect(source).not.toContain(opening)

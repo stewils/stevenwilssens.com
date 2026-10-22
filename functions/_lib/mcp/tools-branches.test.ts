@@ -621,6 +621,10 @@ describe('the About page', () => {
     await store.decideProposal(waiting.id, 'approved', null, 2)
     const publicResume = await call(store, 'get_resume', {}, { mode: 'public' })
     expect(Object.keys(publicResume.json!)).toEqual(['headline', 'summary', 'profile', 'keyAchievements', 'skills', 'roles', 'selectedWork', 'education', 'languages', 'honors', 'pdf', 'pages', 'note'])
+    // The undated HiPo honor comes first, with no year made up for it.
+    const publicHonors = publicResume.json!.honors as string[]
+    expect(publicHonors).toHaveLength(5)
+    expect(publicHonors[0]).toBe('Selected for Microsoft’s High Potential (HiPo) program (Issued by Microsoft)')
     expect(publicResume.text).not.toContain('A secret new intro.')
     const ownerResume = await call(store, 'get_resume')
     expect(ownerResume.json!.about).toEqual({ intro: about.intro, paragraphs: about.paragraphs })

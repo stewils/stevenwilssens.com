@@ -63,6 +63,8 @@ describe('WebMCP', () => {
     expect(about.roles.map((role: { key: string }) => role.key)).toEqual(experiences.map((item) => item.key))
     expect(about.keyNumbers[0]).toEqual({ value: '250%+', label: 'growth in monthly active spatial-audio devices', backedByRole: 'spatial-audio-lead' })
     expect(Object.keys(about.pages)).toContain('building-this-site')
+    expect(about.honors).toHaveLength(5)
+    expect(about.honors[0]).toBe('Selected for Microsoft’s High Potential (HiPo) program (Issued by Microsoft)')
   })
 
   it('get_experience returns every role, or one by its key, and names the keys on a wrong one', async () => {

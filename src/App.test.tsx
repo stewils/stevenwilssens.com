@@ -54,7 +54,22 @@ describe('resume site', () => {
 
     expect(screen.getByText('US permanent resident (green card)')).toBeInTheDocument()
     expect(screen.getByText('Seattle, Washington')).toBeInTheDocument()
-    expect(within(screen.getByRole('list', { name: 'Honors and awards' })).getAllByRole('listitem')).toHaveLength(4)
+    const honorItems = within(screen.getByRole('list', { name: 'Honors and awards' })).getAllByRole('listitem')
+    expect(honorItems).toHaveLength(5)
+    expect(honorItems[0]).toHaveTextContent('Selected for Microsoft’s High Potential (HiPo) program')
+    expect(honorItems[0]).toHaveTextContent('Issued by Microsoft')
+  })
+
+  it('lists five honors on /honors, the HiPo selection first with "Issued by Microsoft" as its line', () => {
+    setPath('/honors')
+    const { container } = render(<App />)
+
+    const list = container.querySelector('.archive-list.honor')!
+    const titles = within(list as HTMLElement).getAllByRole('heading', { level: 2 })
+    expect(titles).toHaveLength(5)
+    expect(titles[0]).toHaveTextContent('Selected for Microsoft’s High Potential (HiPo) program')
+    expect(titles[0].nextElementSibling).toHaveTextContent(/^Issued by Microsoft$/)
+    expect(titles[1]).toHaveTextContent('Microsoft Lighthouse Award for Teamwork')
   })
 
   it('renders the About copy from src/resume.ts, the first paragraph as the green opening', () => {

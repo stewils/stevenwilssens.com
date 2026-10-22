@@ -44,6 +44,12 @@ const role = (item, points, kind = '') => `<article class="role${kind ? ` ${kind
   </div>
 </article>`
 
+// One honor on the footer line: the year in parentheses, or nothing when the honor has no date (never "()").
+export const honorLine = ([title, issued]) => {
+  const date = issued.replace(/^Issued by Microsoft(?: · (?:\w+ )?)?/, '')
+  return `${esc(title.replace(/^Microsoft /, '').replace(/^Most Valuable Professional \(MVP\)/, 'Microsoft MVP'))}${date ? ` <small>(${esc(date)})</small>` : ''}`
+}
+
 export const resumeHtml = ({ olderBullets = 2, compact = false } = layouts[0]) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <title>${esc(profile.name)} · Resume</title>
@@ -110,6 +116,7 @@ body.compact .role { padding: 4px 0 4px; }
 body.compact .role li { font-size: 8.7pt; line-height: 1.24; }
 body.compact .early div { font-size: 9pt; line-height: 1.3; }
 body.compact .foot { font-size: 8.7pt; }
+body.compact .foot .honors { line-height: 1.32; }
 </style></head>
 <body class="${compact ? 'compact' : ''}">
 <header>
@@ -158,7 +165,7 @@ body.compact .foot { font-size: 8.7pt; }
 
 <section class="foot">
   <div><h2>Education</h2><strong>${esc(education.degree)}</strong>${esc(education.school)} <small>· ${esc(education.dates)}</small><br><br><strong>Languages</strong>${esc(languages)}</div>
-  <div><h2>Honors</h2><p class="honors">${honors.map(([title, issued]) => `${esc(title.replace(/^Microsoft /, '').replace(/^Most Valuable Professional \(MVP\)/, 'Microsoft MVP'))} <small>(${esc(issued.replace(/^Issued by Microsoft · (\w+ )?/, ''))})</small>`).join(' · ')}</p></div>
+  <div><h2>Honors</h2><p class="honors">${honors.map(honorLine).join(' · ')}</p></div>
   <div><h2>Patents and press</h2><strong>${granted} granted US patents, ${published} published applications</strong>Spatial audio, streaming, media and device telemetry (Microsoft). Press: Forbes, Windows Central; Build 2016 speaker. <a href="${esc(profile.site)}/patents">${esc(profile.site.replace(/^https:\/\//, ''))}/patents</a></div>
 </section>
 </body></html>`
