@@ -578,7 +578,7 @@ describe('a queued run reads as waiting to start (AC-13)', () => {
   it('a run held for approval is waiting for approval, not queued, and one in progress is neither', async () => {
     const { client } = fakeFetch({
       'POST https://api.github.com/graphql': graphqlReply({ commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [] } } } }] } }),
-      'GET /actions/runs?head_sha=': { body: { workflow_runs: [{ name: 'Review', status: 'completed', conclusion: 'action_required' }, { name: 'Review', status: 'queued' }, { name: 'Site checks', status: 'in_progress' }] } },
+      'GET /actions/runs?head_sha=': { body: { workflow_runs: [{ name: 'Review', status: 'completed', conclusion: 'action_required' }, { name: 'Site checks', status: 'in_progress' }] } },
     })
     expect(await client.status(12)).toMatchObject({ waiting: ['gates', 'team'], queued: [] })
   })
@@ -647,5 +647,15 @@ describe('what isAppPullRequest reads (C17)', () => {
     expect(await client.pullCommits(81)).toBeNull()
     expect(await client.activity('update/x-1')).toBeNull()
     expect((await fakeFetch({ 'GET /pulls/83': { body: pullJson({ user: null }) } }).client.pull(83))!.author).toBeNull()
+  })
+})
+
+describe('a held run beside a queued rerun (AC-13)', () => {
+  it('reads as waiting to start, not as waiting for approval, so no second recheck is offered', async () => {
+    const { client } = fakeFetch({
+      'POST https://api.github.com/graphql': graphqlReply({ commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [checkRun('check')] } } } }] } }),
+      'GET /actions/runs?head_sha=': { body: { workflow_runs: [{ name: 'Review', status: 'queued', conclusion: null }, { name: 'Review', status: 'completed', conclusion: 'action_required' }] } },
+    })
+    expect(await client.status(12)).toMatchObject({ queued: ['gates', 'team'], waiting: [] })
   })
 })

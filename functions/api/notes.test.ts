@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PUBLIC_CALLS_PER_HOUR } from '../_lib/mcp/server'
 import { MemoryStore } from '../_lib/mcp/store'
 import { context, fakeD1 } from '../_lib/testing/d1'
+import { D1AskStore, MemoryAskStore } from '../_lib/ask/store'
 import { cacheKey, handleNotes, notesLimiter, notesResponse, onRequestGet, publicNotes } from './notes'
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
@@ -158,5 +159,22 @@ describe('the edge cache and the limit (AC-15, C23)', () => {
     await onRequestGet(ctx as unknown as Ctx)
     await settled()
     expect(entries.size).toBe(1)
+  })
+})
+
+describe("reads of /api/notes and the assistant's human check", () => {
+  it('are counted for their own limit only, never toward the hits the human check reads', async () => {
+    const db = fakeD1()
+    const store = new D1AskStore(db)
+    const now = Date.now()
+    const request = get('https://steven.wilssens.com/api/notes', { 'CF-Connecting-IP': '203.0.113.9' })
+    for (let n = 0; n < 5; n++) await notesLimiter(request, { DB: db, HASH_SALT: 'salt' } as never, () => now)()
+    await store.addHit('abc', now)
+    await store.addHit('abc:mcp', now)
+    expect(await store.countAllHits(now - 1000)).toBe(2)
+    const memory = new MemoryAskStore()
+    await memory.addHit('abc:notes', now)
+    await memory.addHit('abc', now)
+    expect(await memory.countAllHits(now - 1000)).toBe(1)
   })
 })

@@ -399,8 +399,10 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
       const runs = absent.length ? await api(`/actions/runs?head_sha=${headSha}&per_page=50`) as { workflow_runs?: { name?: string; status?: string; conclusion?: string | null }[] } : null
       // Only the required checks' workflows count: a held Deploy run holds nothing branch protection reads.
       const checksOf = (list: { name?: string }[]) => [...new Set(list.flatMap((run) => checksOfWorkflow[run.name ?? ''] ?? []))].filter((name) => !checks.some((state) => state.name === name))
-      const waiting = checksOf((runs?.workflow_runs ?? []).filter((run) => run.conclusion === 'action_required' || run.status === 'action_required'))
-      const queued = checksOf((runs?.workflow_runs ?? []).filter((run) => queuedStatuses.includes(run.status ?? ''))).filter((name) => !waiting.includes(name))
+      // A held run beside a queued rerun of the same workflow (a recheck while the old run stays held) is waiting to
+      // start: the rerun counts, so no second recheck is offered (AC-13).
+      const queued = checksOf((runs?.workflow_runs ?? []).filter((run) => queuedStatuses.includes(run.status ?? '')))
+      const waiting = checksOf((runs?.workflow_runs ?? []).filter((run) => run.conclusion === 'action_required' || run.status === 'action_required')).filter((name) => !queued.includes(name))
       const workflowOf = (check: string) => Object.keys(checksOfWorkflow).find((name) => checksOfWorkflow[name].includes(check))
       const pending = absent.filter((check) => contexts.some((node) => node.checkSuite?.workflowRun?.workflow?.name === workflowOf(check) && String(node.status ?? '').toUpperCase() !== 'COMPLETED'))
       const prefix = `https://github.com/${repo}/pull/${number}`.toLowerCase()

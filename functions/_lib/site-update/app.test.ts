@@ -165,3 +165,14 @@ describe('hold (AC-22, C16)', () => {
     expect(holdState([], [{ event: 'labeled', label: 'other', actor: 'x' }, { event: 'commented', label: 'hold', actor: 'x' }], owner)).toBe(false)
   })
 })
+
+describe('git identity alone never proves an update is the bot\'s (C17)', () => {
+  it('every commit with the bot as author and committer is not enough without the bot as every pusher', () => {
+    const commits = [commit('a'.repeat(40)), commit(HEAD)]
+    expect(isAppPullRequest(data({ commits, activity: null }))).toBe(false)
+    expect(isAppPullRequest(data({ commits, activity: [] }))).toBe(false)
+    expect(isAppPullRequest(data({ commits, activity: [push({ actor: 'stewils' }), push({ type: 'branch_creation' })] }))).toBe(false)
+    expect(isAppPullRequest(data({ commits, activity: [push({ type: 'branch_creation', actor: 'github-actions[bot]' })] }))).toBe(false)
+    expect(isAppPullRequest(data({ commits, activity: [push({ type: 'branch_creation' })] }))).toBe(true)
+  })
+})

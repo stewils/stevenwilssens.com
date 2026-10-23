@@ -1240,12 +1240,28 @@ describe('updates made the old way (AC-11)', () => {
     expect((status.pullRequests as { madeTheOldWay?: boolean }[]).every((item) => item.madeTheOldWay)).toBe(true)
     expect(status.oldWayNote).toMatch(/None of these tools fixes, redoes or merges one of them by itself/)
     expect(status.say).not.toMatch(/needs to be made again before/)
-    // Steven's yes to one of them neither redoes nor merges it: its marker is not the site bot's.
+    // No redo and no recheck is offered for one of them, and none is listed as a conflict to redo.
+    const listed = status.pullRequests as { mergeTrouble: string; recheck?: boolean; queued?: boolean }[]
+    for (const item of listed) {
+      expect(item.mergeTrouble).toMatch(/^It was made the old way, before the site's bot made the updates, so it is never made again, fixed or put live by itself/)
+      expect(item.mergeTrouble).not.toMatch(/redo: \d|recheck|redoes it by itself/)
+      expect(item).not.toHaveProperty('recheck')
+    }
+    expect(status).not.toHaveProperty('conflicts')
+    expect(status).not.toHaveProperty('tip')
+    expect(fake.calls.status).toEqual([])
+    // Steven's yes to one of them neither redoes nor merges it, and says why truthfully: made the old way, not changed by hand.
     const merged = await call(store, 'merge_site_update', { number: 69, confirm: true }, { github: fake.github })
-    expect(merged.json).toMatchObject({ editedMarker: true, redone: false, merged: false })
+    expect(merged.json).toMatchObject({ madeTheOldWay: true, redone: false, merged: false, say: "Your Old R update was made the old way, so it can't go live by itself. Want me to make it again so it can?" })
+    expect(merged.json!.next).toMatch(/call request_site_update with a title and that instruction \(no redo\); then close_site_update #69/)
+    expect(JSON.stringify(merged.json)).not.toMatch(/by hand/)
     const redo = await call(store, 'request_site_update', { redo: 72 }, { github: fake.github })
     expect(redo.isError).toBe(true)
-    expect(redo.text).toMatch(/^#72 cannot be made again by itself: its description was written or last edited by stewils rather than the site's bot/)
+    expect(redo.text).toMatch(/^#72 is not made again by itself\. It was made the old way/)
+    expect(redo.text).toContain(`Tell Steven: "Your Old U update was made the old way, so it can't go live by itself. Want me to make it again so it can?"`)
+    expect(redo.text).not.toMatch(/by hand/)
+    // The refusal comes from who opened it; its marker is not even read again.
+    expect(fake.calls.markers).toEqual([])
     expect(fake.calls.dispatched).toEqual([])
     expect(fake.calls.events).toEqual([])
     expect(fake.calls.merged).toEqual([])
@@ -1319,5 +1335,15 @@ describe('the interview no longer asks what the résumé answers (AC-16)', () =>
     expect(angles).not.toMatch(/remote|hybrid|relocat/i)
     expect(angles).toMatch(/Start date and compensation expectations/)
     expect(profile.workArrangement).toMatch(/remote or hybrid/)
+  })
+})
+
+describe('a recheck is never offered while a check is queued (AC-13)', () => {
+  it('the guard holds when another check would offer one: queued team, missing check', async () => {
+    const result = await causesOf(statusOf({ checks: [green('gates')], queued: ['team'] }))
+    // "check" has not run, which alone offers a recheck; with team queued, closing and reopening would cancel it.
+    expect(result.text).toMatch(/waiting to start/)
+    expect(result.text).toMatch(/"check" has not run on its latest commit/)
+    expect(result.recheck).toBe(false)
   })
 })
