@@ -22,10 +22,13 @@ const font = (pkg, file) => `data:font/woff2;base64,${readFileSync(resolve('node
 // bullets, and the Belgian years in one line each. The resume must fit two pages: the
 // build renders the layouts below in order and keeps the first that does, so the two
 // latest roles never lose a bullet when the data grows; older roles and type do.
+// Tight page margins come before dropping the older Microsoft roles' first bullet
+// (Perfect Day among them), and only when nothing roomier fits.
 export const layouts = [
   { olderBullets: 2, compact: false },
   { olderBullets: 1, compact: false },
   { olderBullets: 1, compact: true },
+  { olderBullets: 1, compact: true, tight: true },
   { olderBullets: 0, compact: true },
 ]
 const detailed = experiences.slice(0, 2)
@@ -44,7 +47,13 @@ const role = (item, points, kind = '') => `<article class="role${kind ? ` ${kind
   </div>
 </article>`
 
-export const resumeHtml = ({ olderBullets = 2, compact = false } = layouts[0]) => `<!doctype html>
+// One honor on the footer line: the year in parentheses, or nothing when the honor has no date (never "()").
+export const honorLine = ([title, issued]) => {
+  const date = issued.replace(/^Issued by Microsoft(?: · (?:\w+ )?)?/, '')
+  return `${esc(title.replace(/^Microsoft /, '').replace(/^Most Valuable Professional \(MVP\)/, 'Microsoft MVP'))}${date ? ` <small>(${esc(date)})</small>` : ''}`
+}
+
+export const resumeHtml = ({ olderBullets = 2, compact = false, tight = false } = layouts[0]) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <title>${esc(profile.name)} · Resume</title>
 <meta name="author" content="${esc(profile.name)}">
@@ -53,7 +62,7 @@ export const resumeHtml = ({ olderBullets = 2, compact = false } = layouts[0]) =
 @font-face { font-family: 'Manrope'; font-weight: 200 800; src: url('${font('@fontsource-variable/manrope', 'manrope-latin-wght-normal.woff2')}') format('woff2'); }
 @font-face { font-family: 'DM Mono'; font-weight: 400; src: url('${font('@fontsource/dm-mono', 'dm-mono-latin-400-normal.woff2')}') format('woff2'); }
 @font-face { font-family: 'DM Mono'; font-weight: 500; src: url('${font('@fontsource/dm-mono', 'dm-mono-latin-500-normal.woff2')}') format('woff2'); }
-@page { size: Letter; margin: 0.45in 0.55in 0.42in; }
+@page { size: Letter; margin: ${tight ? '0.4in 0.5in 0.36in' : '0.45in 0.55in 0.42in'}; }
 :root { --ink: #172121; --muted: #5b6765; --green: #096b50; --line: #d9e1dc; --soft: #eef4f0; }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
@@ -110,6 +119,7 @@ body.compact .role { padding: 4px 0 4px; }
 body.compact .role li { font-size: 8.7pt; line-height: 1.24; }
 body.compact .early div { font-size: 9pt; line-height: 1.3; }
 body.compact .foot { font-size: 8.7pt; }
+body.compact .foot .honors { line-height: 1.32; }
 </style></head>
 <body class="${compact ? 'compact' : ''}">
 <header>
@@ -159,7 +169,7 @@ body.compact .foot { font-size: 8.7pt; }
 
 <section class="foot">
   <div><h2>Education</h2><strong>${esc(education.degree)}</strong>${esc(education.school)} <small>· ${esc(education.dates)}</small><br><br><strong>Languages</strong>${esc(languages)}</div>
-  <div><h2>Honors</h2><p class="honors">${honors.map(([title, issued]) => `${esc(title.replace(/^Microsoft /, '').replace(/^Most Valuable Professional \(MVP\)/, 'Microsoft MVP'))} <small>(${esc(issued.replace(/^Issued by Microsoft · (\w+ )?/, ''))})</small>`).join(' · ')}</p></div>
+  <div><h2>Honors</h2><p class="honors">${honors.map(honorLine).join(' · ')}</p></div>
   <div><h2>Patents and press</h2><strong>${granted} granted US patents, ${published} published applications</strong>Spatial audio, streaming, media and device telemetry (Microsoft). Press: Forbes, Windows Central; Build 2016 speaker. <a href="${esc(profile.site)}/patents">${esc(profile.site.replace(/^https:\/\//, ''))}/patents</a></div>
 </section>
 </body></html>`
@@ -210,7 +220,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const result = await buildResume({ out: value('--out') ? resolve(value('--out')) : resumePath, force: args.includes('--force'), html: value('--html') ? resolve(value('--html')) : null })
   if (result.current) console.log(`Current resume\n${formatReport(result.current)}\n`)
   console.log(`New resume\n${formatReport(result.next)}\n`)
-  if (result.layout !== layouts[0]) console.log(`Layout: ${result.layout.olderBullets} bullet${result.layout.olderBullets === 1 ? '' : 's'} on the older Microsoft roles${result.layout.compact ? ', compact type' : ''}, to fit two pages.`)
+  if (result.layout !== layouts[0]) console.log(`Layout: ${result.layout.olderBullets} bullet${result.layout.olderBullets === 1 ? '' : 's'} on the older Microsoft roles${result.layout.compact ? ', compact type' : ''}${result.layout.tight ? ', tight margins' : ''}, to fit two pages.`)
   if (result.unchanged) console.log('The PDF is already up to date.')
   else if (result.replaced) console.log(`${result.forced ? 'Forced: ' : ''}Wrote ${result.out} (score ${result.current ? `${result.current.score} → ` : ''}${result.next.score}).`)
   else { console.error(`Not replaced: the new resume scores ${result.next.score}, the current one ${result.current.score}. Fix the findings above or pass --force.`); process.exitCode = 1 }
