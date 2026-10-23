@@ -872,7 +872,7 @@ describe('this repository', () => {
 
   it('draws step 8 as the pull request with its three required checks, still 10 nodes, the gates and Steven where they were (specs/mcp-prs-flow.md, AC-11)', () => {
     const team = committed('.claude/team.md').replace(/\r\n/g, '\n')
-    expect(team).toContain("  subgraph pr [Pull request: its required checks start on it]\n    prGates[gates: main's checkers]\n    prTeam[team: six reviews, with the assistant check in CI]\n    prCheck[check: site checks]\n  end\n")
+    expect(team).toContain("  subgraph pr [Pull request: a draft until ready, then its required checks start on it]\n    prGates[gates: main's checkers]\n    prTeam[team: the panel the roster picks, approvals carried over, the assistant check in CI]\n    prCheck[check: site checks]\n  end\n")
     for (const line of ['  class ask,steven1,merge you', '  class spec,reviews,pr gate', '  %% step 8: pr', '  %% step 9: merge', '  pr --> merge([Steven merges]) --> deploy[Deploy to steven.wilssens.com]']) expect(team).toContain(line)
     const chart = /```mermaid\n([\s\S]*?)```/.exec(team)[1]
     // No auto-merge or redo edge in the flow (they come with mcp-prs-automation); the costs text may say "redone".
@@ -883,7 +883,7 @@ describe('this repository', () => {
     const manifest = generate({ root: repoRoot })
     expect(manifest.flow.diagram.nodes).toHaveLength(10)
     const pr = manifest.flow.diagram.nodes.find((node) => node.id === 'pr')
-    expect(pr).toMatchObject({ label: 'Pull request: its required checks start on it', shape: 'group', gate: true, steps: [8], members: [{ label: "gates: main's checkers", via: null }, { label: 'team: six reviews, with the assistant check in CI', via: null }, { label: 'check: site checks', via: null }] })
+    expect(pr).toMatchObject({ label: 'Pull request: a draft until ready, then its required checks start on it', shape: 'group', gate: true, steps: [8], members: [{ label: "gates: main's checkers", via: null }, { label: 'team: the panel the roster picks, approvals carried over, the assistant check in CI', via: null }, { label: 'check: site checks', via: null }] })
     expect(manifest.flow.diagram.nodes.find((node) => node.id === 'merge')).toMatchObject({ lane: 'you', steps: [9] })
     const step8 = JSON.stringify(manifest.flow.steps.find((step) => step.n === 8)).replace(/\s+/g, ' ')
     for (const words of ['job opens the pull request', "site's App", 'start Review, Site checks and Deploy on the pull request', 'assistant check in CI', 'recheck: true']) expect(step8, words).toContain(words)
