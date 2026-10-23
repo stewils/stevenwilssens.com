@@ -63,13 +63,14 @@ const normalize = (text) => text.replace(/[‘’]/g, "'").replace(/[“”]/g, 
 const presentTense = /^(Lead|Own|Partner|Drive|Build|Manage|Define|Deliver|Grow|Oversee|Create|Develop|Ship|Work)\b/
 
 // Questions the data itself raises, independent of the PDF: what a recruiter will ask
-// from the dates alone, and which numbers have nothing behind them.
-export const dataQuestions = (now = new Date()) => {
+// from the dates alone, and which numbers have nothing behind them. `roles` is the
+// résumé's experiences (latest first) unless a test passes made-up ones.
+export const dataQuestions = (now = new Date(), roles = experiences) => {
   const questions = []
   const current = now.getFullYear() * 12 + now.getMonth()
-  experiences.forEach((item, index) => {
+  roles.forEach((item, index) => {
     const mine = span(item.dates)
-    const previous = experiences[index + 1]
+    const previous = roles[index + 1]
     const before = previous ? span(previous.dates) : null
     if (mine && before && mine.start - before.end > 6) questions.push({ about: item.key, question: `${previous.role} at ${previous.company} ended ${monthName(before.end)} and ${item.role} started ${monthName(mine.start)}: ${mine.start - before.end - 1} months in between. What happened? Recruiters ask, so say it or correct the dates.` })
     if (mine && before && before.end > mine.start + 1) questions.push({ about: item.key, question: `${item.role} (${item.dates}) overlaps with ${previous.role} at ${previous.company} (${previous.dates}). Were these consultancy placements, or should the dates change?` })

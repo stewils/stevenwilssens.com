@@ -120,6 +120,23 @@ describe('what is already there', () => {
     expect(recruiterLens('nobody')).toEqual({ flags: [], angles: [] })
     expect(recruiterLens('general').angles.length).toBeGreaterThan(0)
   })
+
+  // Made-up roles, so the date flags stay tested whatever the real dates raise (#84 removes the Cosmos overlap).
+  it('flags an overlap, a gap, a short stint, a plateau and a company change in made-up roles', () => {
+    const roles = [
+      { key: 'latest', role: 'Director', company: 'Acme', dates: 'Jan 2023 - Aug 2023' },
+      { key: 'middle', role: 'Senior PM', company: 'Beta', dates: 'Jan 2016 - Jun 2023' },
+      { key: 'first', role: 'Engineer', company: 'Beta', dates: 'Jan 2010 - Dec 2014' },
+    ]
+    expect(recruiterLens('latest', roles).flags).toEqual(['Short stint: 8 months.', 'Overlaps with Senior PM at Beta (Jan 2016 - Jun 2023).', 'Company change from Beta.'])
+    expect(recruiterLens('middle', roles).flags).toEqual(['8 years in one role without a visible promotion.', '12 months unaccounted for before this role.'])
+    expect(recruiterLens('first', roles).flags).toEqual(['5 years in one role without a visible promotion.'])
+    const followOn = [
+      { key: 'latest', role: 'Group Lead', company: 'Beta', dates: 'Jul 2023 - Sep 2026' },
+      { key: 'middle', role: 'Lead', company: 'Beta', dates: 'Jan 2020 - Jun 2023' },
+    ]
+    expect(recruiterLens('latest', followOn).flags).toEqual([])
+  })
 })
 
 describe('proposals', () => {

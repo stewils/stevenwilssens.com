@@ -107,17 +107,18 @@ const span = (dates: string) => {
   return { start: parts[0], end: parts[1], months: parts[1] - parts[0] + 1 }
 }
 
-// What the dates alone would make a recruiter ask, plus the written angles.
-export const recruiterLens = (key: string) => {
+// What the dates alone would make a recruiter ask, plus the written angles. `roles` is the
+// résumé's experiences (latest first) unless a test passes made-up ones.
+export const recruiterLens = (key: string, roles: readonly Pick<(typeof experiences)[number], 'key' | 'role' | 'company' | 'dates'>[] = experiences) => {
   const flags: string[] = []
-  const index = experiences.findIndex((item) => item.key === key)
-  const item = experiences[index]
+  const index = roles.findIndex((item) => item.key === key)
+  const item = roles[index]
   if (item) {
     const mine = span(item.dates)
     if (mine) {
       if (mine.months < 12) flags.push(`Short stint: ${mine.months} months.`)
       if (mine.months >= 60 && !/Lead|Group/.test(item.role)) flags.push(`${Math.round(mine.months / 12)} years in one role without a visible promotion.`)
-      const previous = experiences[index + 1]
+      const previous = roles[index + 1]
       const before = previous ? span(previous.dates) : null
       if (before && before.end > mine.start) flags.push(`Overlaps with ${previous.role} at ${previous.company} (${previous.dates}).`)
       if (before && mine.start - before.end > 2) flags.push(`${mine.start - before.end - 1} months unaccounted for before this role.`)
