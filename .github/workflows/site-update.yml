@@ -256,6 +256,7 @@ jobs:
           echo "Resume on main: $score/100"
 
       - name: Let Claude make the change
+        # The team writes the spec, builds the change from it and reviews it, on this run's branch.
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
@@ -468,6 +469,7 @@ jobs:
           git -c core.hooksPath=/dev/null -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" push origin "refs/heads/$BRANCH:refs/heads/$BRANCH"
 
       - name: Open the pull request
+        # The team's change, checked, becomes a pull request that Steven merges from the MCP or on GitHub.
         id: pr
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}

@@ -169,12 +169,12 @@ export function TeamPage({ manifest, reads, readsError, onPost }: Props) {
       </Part>
 
       <Part id="changes" part="What changed" title="What changed" flag={unread.length > 0} head={<span className="team-head" aria-live="polite">{head}</span>}>
-        <p className="note">Every change to the agents, the team flow, the commands, the Review workflow, the gates, the Site update team step or the team's rules, newest first. A change counts as seen once this page has been in front of you for 5 seconds, on any device.</p>
+        <p className="note">Every change to the agents, the team flow, the commands, the Review workflow, the gates, the Site update team steps or the team's rules, newest first. A change counts as seen once this page has been in front of you for 5 seconds, on any device.</p>
         {seen === 'failed' && <p className="team-muted team-retry">Could not record that you have seen this; it will be tried again on your next visit.</p>}
         {!history
           ? <p className="empty">The history of changes is not in this build.</p>
           : !updates.length
-            ? <p className="empty">No changes recorded yet. Every change to the agents, the team flow, the commands, the Review workflow, the gates, the Site update team step or the team's rules will show up here.</p>
+            ? <p className="empty">No changes recorded yet. Every change to the agents, the team flow, the commands, the Review workflow, the gates, the Site update team steps or the team's rules will show up here.</p>
             : <>
               <ol className="team-updates">
                 {shown.map((update) => {
@@ -277,10 +277,11 @@ export function TeamPage({ manifest, reads, readsError, onPost }: Props) {
 
       <Part id="siteUpdate" part="Site update" title="When the MCP or a refresh asks" changed={changedFor({ section: 'siteUpdate' })}>
         {!siteUpdate || isUnreadable(siteUpdate) ? <Unreadable path={siteUpdate ? siteUpdate.unreadable : 'the Site update workflow'} /> : <>
-          <p className="note">The step of the Site update workflow where the team writes the spec and builds, on GitHub. Only a change to this step counts as a change to your team.</p>
+          <p className="note">The steps of the Site update workflow that hand the work to the team and back to you, on GitHub. Only a change to these steps counts as a change to your team.</p>
           {siteUpdate.steps.map((step) => (
             <div key={step.name} className="team-site-step">
               <code className="team-mono">{step.name}</code>
+              {step.description && <p className="team-step-description">{step.description}</p>}
               {step.lines.length > 0 && <ol>{step.lines.map((line, index) => <li key={index}>{line}</li>)}</ol>}
               {step.tools.length > 0 && <p className="team-tools"><span className="team-muted">Allowed tools:</span> {step.tools.map((tool, index) => <span key={index} className="badge">{tool}</span>)}</p>}
             </div>

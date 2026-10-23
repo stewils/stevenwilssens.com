@@ -36,7 +36,8 @@ const allowed = /--allowedTools\s+"([^"]*)"/.exec(team)?.[1].split(',') ?? []
 describe('the team step runs every agent in the foreground (AC-1)', () => {
   it('keeps its name, which the Team page tracks, and has the id the summary reads', () => {
     expect(TEAM_STEP).toBe('Let Claude make the change')
-    expect(team).toMatch(/^ {6}- name: Let Claude make the change\n {8}id: claude\n/)
+    // The comment under the name is the line the Team page shows for the step.
+    expect(team).toMatch(/^ {6}- name: Let Claude make the change\n {8}# The team writes the spec[^\n]*\n {8}id: claude\n/)
   })
 
   it('turns background tasks and hooks off in the settings Claude Code reads', () => {

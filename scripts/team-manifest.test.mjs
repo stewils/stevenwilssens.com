@@ -113,6 +113,8 @@ jobs:
       - name: Email Steven
         run: ${other}
 ${open === null ? '' : `      - name: Open the pull request
+        # The change becomes
+        # a pull request.
         run: ${open}
 `}`
 const RULES = (rules = 'Every change goes through the editors.') => `# Site\n\n## Facts\n\nOne source.\n\n## The team\n\n${rules}\n\nA reply never clears a stop.\n\n## The admin\n\nTiles.\n`
@@ -215,7 +217,7 @@ describe('the manifest of a fixture repository', () => {
       scripts: ['functions/_lib/review/recruiter.ts', 'scripts/recruiter-check.mjs'],
       protection: 'proof and panel pass; branch protection on main requires proof and panel.',
     })
-    expect(m.sections.siteUpdate).toEqual({ file: '.github/workflows/site-update.yml', steps: [{ name: 'Let Claude make the change', lines: ['Draft first.', 'Then build specs/<slug>.md on <branch>.'], tools: ['Read', 'Edit', 'Bash(npm run *)'] }] })
+    expect(m.sections.siteUpdate).toEqual({ file: '.github/workflows/site-update.yml', steps: [{ name: 'Let Claude make the change', description: '', lines: ['Draft first.', 'Then build specs/<slug>.md on <branch>.'], tools: ['Read', 'Edit', 'Bash(npm run *)'] }] })
     expect(m.sections.rules).toEqual({ file: 'CLAUDE.md', heading: 'The team', paragraphs: ['Every change goes through the editors.', 'A reply never clears a stop.'] })
   })
 
@@ -414,7 +416,7 @@ describe('the history (AC-6, AC-7)', () => {
     r.commit({ '.github/workflows/site-update.yml': siteUpdate({ open: 'gh pr create --draft', other: 'echo another mail' }) }, 'Another step')
     const m = generate({ root: r.dir })
     expect(m.history.updates.map((update) => [update.summary, update.sections])).toEqual([['How the pull request opens', ['siteUpdate']], ['Base', ['flow', 'roles', 'checks', 'commands', 'siteUpdate', 'rules']]])
-    expect(m.sections.siteUpdate.steps.map((step) => step.name)).toEqual(['Let Claude make the change', 'Open the pull request'])
+    expect(m.sections.siteUpdate.steps.map((step) => [step.name, step.description])).toEqual([['Let Claude make the change', ''], ['Open the pull request', 'The change becomes a pull request.']])
   }, SLOW)
 
   it('counts a CLAUDE.md change only when its "The team" section changed', () => {

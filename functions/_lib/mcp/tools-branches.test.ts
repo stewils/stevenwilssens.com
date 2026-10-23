@@ -624,7 +624,14 @@ describe('what holds a blocked Site update pull request (AC-8)', () => {
     const old = { sha: HEAD, url: commentUrl, stale: false, roles: [{ role: 'senior-recruiter', verdict: 'CHANGES_REQUESTED', summary: 'Old finding.' }] }
     const result = await causesOf(statusOf({ checks: [{ ...green('gates'), startedAt: '2026-10-20T15:00:00Z' }, { ...green('team'), conclusion: 'failure', startedAt: '2026-10-20T14:02:00Z' }, green('check')], verdicts: old }))
     expect(result.text).not.toContain('Old finding.')
-    expect(result.text).toMatch(/^#60: "team" failed/)
+    // The new review has not reached team yet: running, not the old run's failure, and no recheck or close.
+    expect(result.text).toBe('#60 is not ready yet: "team" is still running (started 15:00 UTC). Merge it once it passes; wait_for_site_update does not follow checks, so ask again in a few minutes.')
+    expect(result.recheck).toBe(false)
+    // Right after a recheck: the new Review run is queued (gates has no start yet) and the old team run failed.
+    const queued = await causesOf(statusOf({ checks: [{ ...green('gates'), status: 'queued', conclusion: null, startedAt: null }, { ...green('team'), conclusion: 'failure', startedAt: '2026-10-20T14:02:00Z' }, green('check')], verdicts: old }))
+    expect(queued.text).toBe('#60 is not ready yet: "gates" and "team" are still running. Merge it once they pass; wait_for_site_update does not follow checks, so ask again in a few minutes.')
+    expect(queued.text).not.toMatch(/failed|close_site_update/)
+    expect(queued.recheck).toBe(false)
     const current = await causesOf(statusOf({ checks: [{ ...green('gates'), startedAt: '2026-10-20T14:00:00Z' }, { ...green('team'), conclusion: 'failure', startedAt: '2026-10-20T14:20:00Z' }, green('check')], verdicts: old }))
     expect(current.text).toContain('Old finding.')
   })
@@ -724,6 +731,31 @@ describe('recheck and the redo of a write-up refresh (AC-7)', () => {
     if (typeof message === 'string') expect(result.text).toBe(message)
     else expect(result.text).toMatch(message)
     expect(fake.calls.reopened).toEqual([])
+  })
+
+  it('recheck refuses while a check on the head still runs, a recheck just made included, and closes nothing', async () => {
+    const running = statusOf({ checks: [green('gates'), { ...green('team'), status: 'in_progress', conclusion: null }, green('check')] })
+    // Just after a recheck: the new gates has started, the finished team run is the review before it.
+    const rechecked = statusOf({ checks: [{ ...green('gates'), startedAt: '2026-10-20T15:00:00Z' }, { ...green('team'), conclusion: 'failure' }, green('check')] })
+    for (const status of [running, rechecked]) {
+      const fake = fakeGitHub({ pulls: [blocked(60)], status: () => status })
+      const result = await call(new MemoryStore(), 'merge_site_update', { number: 60, recheck: true }, { github: fake.github })
+      expect(result.isError).toBe(true)
+      expect(result.text).toBe("#60's checks are still running on its latest commit, and a recheck now would cancel them. Tell Steven, in plain words, that the team is still checking it, and ask site_update_status again in a few minutes.")
+      expect(fake.calls.reopened).toEqual([])
+    }
+    // Finished checks (a reviewer waiting for his reply): the recheck goes ahead.
+    const fake = fakeGitHub({ pulls: [blocked(60)], status: () => statusOf() })
+    expect((await call(new MemoryStore(), 'merge_site_update', { number: 60, recheck: true }, { github: fake.github })).json).toMatchObject({ rechecked: true })
+    expect(fake.calls.reopened).toEqual([60])
+  })
+
+  it('an unstable update names the checks that failed instead of sending Steven to GitHub', async () => {
+    const fake = fakeGitHub({ pulls: [pull(12, { branch: 'update/z-4', mergeableState: 'unstable' })], checks: { 'sha-12': { pending: [], failed: ['team', 'check'] } } })
+    const listed = await call(new MemoryStore(), 'site_update_status', {}, { github: fake.github })
+    const trouble = (listed.json!.pullRequests as { mergeTrouble: string }[])[0].mergeTrouble
+    expect(trouble).toMatch(/^#12's checks have not passed \("team" and "check" failed on its latest commit\)\. It does not go live unless Steven/)
+    expect(trouble).not.toMatch(/Open https|to see which/)
   })
 
   it("redoes a Building refresh by sending the check-in again at the project's current main", async () => {

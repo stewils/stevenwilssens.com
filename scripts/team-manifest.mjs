@@ -408,8 +408,12 @@ export const cutSection = (text, heading) => {
 const READABLE = { 'steps.branch.outputs.spec': 'specs/<slug>.md' }
 export const readable = (text) => text.replace(/\$\{\{\s*([^}]*?)\s*\}\}/g, (_, name) => READABLE[name] ?? `<${name.split('.').pop() || 'value'}>`)
 
+// The comment lines right under a step's `- name:` say in a line what the step does.
+const stepDescription = (block) => (/^[^\n]*\n((?:[ \t]*#[^\n]*\n)+)/.exec(block.replace(/\r\n/g, '\n'))?.[1] ?? '').split('\n').map((line) => line.replace(/^\s*#\s?/, '').trim()).filter(Boolean).join(' ')
+
 const stepDetails = (name, block) => ({
   name: clean(name, 120),
+  description: clean(stepDescription(block), 300),
   lines: [...block.matchAll(/^\s*\d+\.\s+(.+)$/gm)].slice(0, 20).map((match) => clean(readable(plain(match[1])), 1000)),
   tools: (/--allowedTools\s+\\?"([^"\\]*)\\?"/.exec(block)?.[1] ?? '').split(',').map((tool) => clean(tool, 80)).filter(Boolean).slice(0, 60),
 })

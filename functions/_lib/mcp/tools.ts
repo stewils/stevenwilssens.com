@@ -165,17 +165,18 @@ const needGitHub = (ctx: ToolContext) => {
 }
 const sleepFor = (ctx: ToolContext, ms: number) => (ctx.sleep ?? ((wait) => new Promise<void>((resolve) => setTimeout(resolve, wait))))(ms)
 // GitHub's reasons a pull request will not merge, in words.
-const mergeTrouble = (pull: PullRequest) => {
+// With the head's check runs, an unstable one names the checks that failed instead of sending Steven to GitHub.
+const mergeTrouble = (pull: PullRequest, checks: CheckState | null = null) => {
   if (pull.state === 'closed') return pull.merged ? `#${pull.number} is already merged.` : `#${pull.number} is closed. Redo it with request_site_update (redo: ${pull.number}) to get a fresh pull request.`
   if (pull.mergeable === false || pull.mergeableState === 'dirty') return `#${pull.number} conflicts with main: another change touched the same files (usually src/resume.ts and the résumé PDF, which every update regenerates) and merged first. GitHub cannot merge it as it is. When Steven says to put it live, merge_site_update redoes it by itself on a fresh branch from main (the same instruction runs again, the old pull request is closed, the proposals it carries move with it); request_site_update with redo: ${pull.number} does the same now. Never tell Steven about the conflict: pass on the say line.`
-  if (pull.mergeableState === 'unstable') return `#${pull.number}'s checks have not passed (the team review or a site check failed or asked for changes). Open ${pull.url} to see which. It does not go live unless Steven, told in plain words that the team's checks on it have not passed, still wants it: then merge_site_update with acceptFailingChecks: true.`
+  if (pull.mergeableState === 'unstable') return `#${pull.number}'s checks have not passed (${checks?.failed.length ? `${names(checks.failed)} failed on its latest commit` : 'the team review or a site check failed or asked for changes; which one could not be read here'}). It does not go live unless Steven, told in plain words that the team's checks on it have not passed, still wants it: then merge_site_update with acceptFailingChecks: true.`
   return null
 }
 // What holds a blocked pull request, from its own data (specs/mcp-prs-flow.md, AC-8): at most
 // three causes, the most decisive first, each with the one next step. Reviewer text comes only
 // from the team-verdicts marker of the Review workflow's own comment, quoted as data with
-// GitHub's link to that comment. recheck: whether merge_site_update with recheck: true helps.
-export type Blocked = { causes: string[]; recheck: boolean }
+// GitHub's link to that comment. recheck: whether merge_site_update with recheck: true helps; running: a check on the head still runs.
+export type Blocked = { causes: string[]; recheck: boolean; running?: boolean }
 const MAX_CAUSES = 3
 // site_update_status asks GitHub what holds at most this many blocked pull requests (up to three requests each),
 // so one answer stays well inside the subrequests a Pages Function may make.
@@ -202,22 +203,26 @@ export const blockedCauses = (pull: PullRequest, status: PullStatus): Blocked =>
   // Steven's reply. Until then the check is "running" (or "not run").
   const team = status.checks.find((check) => check.name === 'team')
   const gates = status.checks.find((check) => check.name === 'gates')
-  const teamCurrent = team?.status === 'completed' && !(gates && String(gates.startedAt ?? '9999') > String(team.startedAt ?? ''))
+  const teamStale = team?.status === 'completed' && Boolean(gates) && String(gates!.startedAt ?? '9999') > String(team.startedAt ?? '')
+  const teamCurrent = team?.status === 'completed' && !teamStale
   const verdicts = status.verdicts && !status.verdicts.stale && teamCurrent ? status.verdicts : null
+  // A finished team run older than the head's gates is the review before a recheck: the new one has not reached
+  // team yet, so team reads as running, never as the old run's failure.
+  const checks = status.checks.map((check) => (check.name === 'team' && teamStale ? { ...check, status: 'in_progress', conclusion: null, startedAt: gates!.startedAt } : check))
   const link = verdicts?.url ?? pull.url
   const objections = verdicts ? verdicts.roles.filter((role) => role.verdict === 'CHANGES_REQUESTED' || role.verdict === 'NEEDS_STEVEN') : []
   for (const role of objections) {
     if (role.verdict === 'CHANGES_REQUESTED') ranked.push([1, `#${n}: the ${roleName(role.role)} asked for changes: "${quoteFinding(role.summary)}" (${link}). Ask for the fix with request_site_update, or close it with close_site_update.`])
     else ranked.push([2, `#${n}: the ${roleName(role.role)} waits for Steven's answer: "${quoteFinding(role.summary)}" (${link}). He replies there; merge_site_update with recheck: true then runs the review again with his reply.`])
   }
-  for (const check of status.checks) {
+  for (const check of checks) {
     if (check.status !== 'completed' || !check.conclusion || !failedConclusions.includes(check.conclusion)) continue
     if (check.name === 'team' && objections.length) continue // the reviewers above say why
     const where = check.step ? ` at "${quotedReason(check.step)}"` : ''
     ranked.push([3, `#${n}: "${check.name}" failed${where}${check.url ? ` (${check.url})` : ''}. Ask for the fix with request_site_update, or close it with close_site_update.`])
   }
   if (pull.resumeScore?.lower && !status.labels.includes('accept-lower-score')) ranked.push([4, `#${n} lowers the résumé score from ${pull.resumeScore.before} to ${pull.resumeScore.after}; only Steven's accept-lower-score label on GitHub lets it merge, and then merge_site_update with acceptLowerScore: true.`])
-  const present = new Set(status.checks.map((check) => check.name))
+  const present = new Set(checks.map((check) => check.name))
   // A required check with no run yet while another job of its workflow runs on the head (team waits for gates):
   // coming, so "running", never "not run" and never a recheck, which would cancel that run.
   const pending = (status.pending ?? []).filter((name) => !present.has(name))
@@ -226,19 +231,19 @@ export const blockedCauses = (pull: PullRequest, status: PullStatus): Blocked =>
   if (waiting.length) ranked.push([5, `#${n}: ${names(waiting)} ${waiting.length > 1 ? 'wait' : 'waits'} for approval on GitHub (a run started by a bot). Call merge_site_update with recheck: true to start ${waiting.length > 1 ? 'them' : 'it'} as Steven.`])
   const missing = requiredChecks.filter((name) => !present.has(name) && !waiting.includes(name) && !pending.includes(name))
   if (missing.length) ranked.push([6, `#${n} cannot merge yet: ${names(missing)} ${missing.length > 1 ? 'have' : 'has'} not run on its latest commit. Call merge_site_update with recheck: true to start ${missing.length > 1 ? 'them' : 'it'}.`])
-  const running = [...status.checks.filter((check) => check.status !== 'completed'), ...pending.map((name) => ({ name, startedAt: null }))]
+  const running = [...checks.filter((check) => check.status !== 'completed'), ...pending.map((name) => ({ name, startedAt: null }))]
   if (running.length) {
     const started = clock([...running.map((check) => check.startedAt)].filter(Boolean).sort()[0] ?? null)
     ranked.push([7, `#${n} is not ready yet: ${names(running.map((check) => check.name))} ${running.length > 1 ? 'are' : 'is'} still running${started ? ` (started ${started})` : ''}. Merge it once ${running.length > 1 ? 'they pass' : 'it passes'}; wait_for_site_update does not follow checks, so ask again in a few minutes.`])
   }
   if (!ranked.length) return { causes: [`GitHub still reports #${n} as blocked, although every required check passed and no reviewer is waiting; it may still be working it out. Call merge_site_update again in a minute.`], recheck: false }
   const causes = ranked.sort((a, b) => a[0] - b[0]).slice(0, MAX_CAUSES)
-  return { causes: causes.map(([, text]) => text), recheck: causes.some(([rank]) => rank === 2 || rank === 5 || rank === 6) }
+  return { causes: causes.map(([, text]) => text), recheck: causes.some(([rank]) => rank === 2 || rank === 5 || rank === 6), running: running.length > 0 }
 }
 // Why an open pull request of this repository does not merge, or null when nothing holds it. Asking
 // GitHub what holds a blocked one costs up to three requests; `look: false` names the block without asking.
-const troubleOf = async (github: GitHub, pull: PullRequest, look = true): Promise<Blocked | null> => {
-  const plain = mergeTrouble(pull)
+const troubleOf = async (github: GitHub, pull: PullRequest, look = true, checks: CheckState | null = null): Promise<Blocked | null> => {
+  const plain = mergeTrouble(pull, checks)
   if (plain) return { causes: [plain], recheck: false }
   if (pull.state !== 'open' || pull.mergeableState !== 'blocked') return null
   if (!look) return { causes: [`#${pull.number} is blocked by the repository's branch rules; this answer looks into at most ${LOOK_AT} blocked pull requests at a time. Deal with one of the others (merge, redo or close it) and ask again.`], recheck: false }
@@ -1086,7 +1091,7 @@ export const tools: Tool[] = [
       const teamReview = pull ? await teamReviewOf(github, pull, checks) : null
       const failure = await failureOf(github, run, pull)
       const outcome = runOutcome(run, pull, failure)
-      const held = pull && ownPull(github, pull) ? await troubleOf(github, pull) : null
+      const held = pull && ownPull(github, pull) ? await troubleOf(github, pull, true, checks) : null
       const trouble = held ? held.causes.join(' ') : null
       const reason = outcome === 'no-change' ? reasonFor(run, failure) : null
       const name = pull ? pullName(pull) : updateName(run.title)
@@ -1152,7 +1157,7 @@ export const tools: Tool[] = [
       const where = pulls.map((pull, index) => standing(pull, checks[index]))
       // What holds each one, from its own data (AC-8); GitHub is asked about at most LOOK_AT blocked ones.
       const blocked = pulls.filter((pull) => pull.mergeableState === 'blocked').slice(0, LOOK_AT)
-      const holds = await Promise.all(pulls.map((pull, index) => (beingRedone(pull) || where[index] === 'checking' ? null : troubleOf(github, pull, blocked.includes(pull)))))
+      const holds = await Promise.all(pulls.map((pull, index) => (beingRedone(pull) || where[index] === 'checking' ? null : troubleOf(github, pull, blocked.includes(pull), checks[index]))))
       const shaped = pulls.map((pull, index) => ({ name: pullName(pull), ...pull, proposals: pull.request?.proposals ?? [], supersedes: pull.request?.supersedes ?? null, request: undefined, standing: where[index], ...(checks[index] ? { checks: checks[index] } : {}), ...(reviews[index] ? { teamReview: reviews[index] } : {}), mergeTrouble: beingRedone(pull) ? 'Being made again on top of what is live; nothing to do until the new version is ready.' : holds[index] ? holds[index]!.causes.join(' ') : null, ...(holds[index]?.recheck ? { recheck: true } : {}) }))
       const lowering = pulls.filter((pull) => pull.resumeScore?.lower)
       const stuck = shaped.filter((pull, index) => pull.mergeTrouble && !beingRedone(pulls[index]))
@@ -1185,6 +1190,9 @@ export const tools: Tool[] = [
         if (target.merged) throw new ToolError(`#${number} is already merged; there is nothing to recheck.`)
         if (target.state === 'closed') throw new ToolError(`#${number} is closed; recheck starts the checks of an open pull request. To run it again, redo it with request_site_update (redo: ${number}).`)
         if (!target.branch.startsWith('update/')) throw new ToolError(`#${number} is not a Site update pull request (its branch is ${target.branch}, not update/…): only those are rechecked from here.`)
+        // Closing and reopening cancels the runs on the head: never while one of them still runs (a recheck just made included).
+        const status = await github.status(number).catch((error) => { console.error('pull status', String(error)); return null })
+        if (status && blockedCauses(target, status).running) throw new ToolError(`#${number}'s checks are still running on its latest commit, and a recheck now would cancel them. Tell Steven, in plain words, that the team is still checking it, and ask site_update_status again in a few minutes.`)
         try { await github.reopen(number) } catch (error) {
           throw new ToolError(`${quotedReason(String((error as Error)?.message ?? error))}. Tell Steven: reopen it on GitHub (${target.url}, "Reopen pull request"); that starts its checks too.`)
         }
