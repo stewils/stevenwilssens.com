@@ -64,9 +64,11 @@ describe('the resume PDF', () => {
     expect(atsScore(Array.from({ length: 6 }, () => ({ severity: 'error', lens: 'ats' })))).toBe(0)
   })
 
-  it('raises the questions the dates and numbers leave open', () => {
+  // Cosmos starts in Jan 2005, the month after Info Support ends: the overlap question is gone.
+  it('raises no question about the dates or the numbers once Cosmos follows Info Support', () => {
     const questions = dataQuestions(new Date('2026-10-17'))
-    expect(questions.some((q: { question: string }) => /Compuware.*Microsoft|months in between|overlaps with/.test(q.question))).toBe(true)
+    expect(questions.some((q: { about: string }) => q.about === 'cosmos')).toBe(false)
+    expect(questions.some((q: { question: string }) => /overlaps with/.test(q.question))).toBe(false)
     // Every key number has a role behind it, so none is asked about.
     expect(questions.some((q: { about: string }) => q.about === 'impact')).toBe(false)
   })
@@ -94,7 +96,7 @@ describe('the Windows Data roles', () => {
   it('csx-data keeps Perfect Day first and adds the team growth second', () => {
     expect(pointsOf('csx-data')).toEqual([
       'Redefined Windows quality measurement around end-to-end scenarios like gaming and the shell, creating the Perfect Day metric for issue-free user days.',
-      'Grew the team from one to five direct reports, leading to promotion to Principal Group Product Manager.',
+      'Grew the team from one to five PMs, working with about 20 developers, leading to promotion to Principal Group Product Manager.',
       'Drove measurable quality gains, with Perfect Day improving about 5% for gaming and 3–4% for the Windows shell.',
       'Provided the data behind Windows release decisions: whether a build was ready to move from internal audiences to Insider preview, which issues had to be fixed, and ultimately whether a release met the quality bar to ship.',
       'Built the alerting dashboards Windows teams used to catch customer-impacting issues, and ran the weekly Release Quality Review where area directors acted on them.',
@@ -104,7 +106,7 @@ describe('the Windows Data roles', () => {
   it('windows-devices-data says about 20, then about 12, with a curly apostrophe', () => {
     const points = pointsOf('windows-devices-data')
     expect(points).toEqual([
-      'Led a PM organization of about 20, initially through three people managers, then led its move to a flatter team of about 12 during Microsoft’s cost reductions; roughly half the team was promoted under my leadership.',
+      'Led a PM organization of about 20, working with more than 100 developers and data scientists, initially through three people managers, then led its move to a flatter team of about 12 during Microsoft’s cost reductions; roughly half the team was promoted under my leadership.',
       'Owned strategy and roadmap for the data platform and insights products Windows engineers and PMs use to ship higher-quality releases.',
       'Built the quality measurement framework that underpinned Windows K2, Microsoft’s high-profile push to improve Windows reliability and performance.',
       'Ran the weekly ship-readiness quality review where Windows VPs made release decisions based on my team’s data on ship-blocking issues.',
@@ -115,6 +117,11 @@ describe('the Windows Data roles', () => {
     ])
     expect(points[0]).toContain('Microsoft’s')
   })
+
+  it('no longer says "five direct reports", in the data or the PDF', async () => {
+    expect(JSON.stringify(experiences)).not.toContain('five direct reports')
+    expect(await pdfText()).not.toContain('five direct reports')
+  }, 30_000)
 
   // The assistant's prompt is checked in functions/_lib/ask/agent.test.ts.
   it('the old experimentation bullet is gone from the data and the PDF', async () => {
@@ -154,13 +161,49 @@ describe('the travel fact', () => {
   })
 })
 
+// Steven's team sizes and his Azure DevOps choice of 2026-10-23, word for word and in order.
+describe('the team sizes and the Azure DevOps choice', () => {
+  it('spatial-audio-lead leads with the team size', () => {
+    expect(pointsOf('spatial-audio-lead')).toEqual([
+      'Led six PMs, working with about 20 developers.',
+      'Led the Microsoft Spatial Audio Platform across Windows, Xbox One, and new platforms.',
+      'Grew monthly active devices playing spatial audio by more than 250% over 1.5 years.',
+      'Worked with developers and data insights to identify and deliver essential spatial audio features.',
+      'Partnered with game studios to ship spatial audio in major franchises, including Halo, Forza Horizon, Gears of War and Call of Duty.',
+      'Shaped Xbox xCloud game streaming strategy, prioritizing low latency over 4K resolution and making it the platform\'s key differentiator.',
+    ])
+  })
+
+  it('azure-devops says why Steven stayed at Microsoft', () => {
+    expect(pointsOf('azure-devops')).toEqual([
+      'Authored a DataOps product proposal compelling enough that the team building it was moved to GitHub, as the better home for the product.',
+      'Chose to stay at Microsoft rather than move to GitHub to lead the team building it.',
+    ])
+  })
+
+  it('prints on two pages the Group PM bullet in full, the team size under Silicon, Graphics, Media and the Cosmos year', async () => {
+    const report = await analyzeResume()
+    expect(report.pages).toBe(2)
+    const text = await pdfText()
+    expect(text).toContain(normalize('Led a PM organization of about 20, working with more than 100 developers and data scientists, initially through three people managers, then led its move to a flatter team of about 12 during Microsoft’s cost reductions; roughly half the team was promoted under my leadership.'))
+    const heading = text.indexOf('principal product manager lead - silicon, graphics, media')
+    const teamSize = text.indexOf(normalize('Led six PMs, working with about 20 developers.'), heading)
+    expect(heading).toBeGreaterThan(-1)
+    expect(teamSize).toBeGreaterThan(heading)
+    expect(teamSize).toBeLessThan(text.indexOf('principal product manager - silicon, graphics, media'))
+    expect(text).toContain('jan 2005 - dec 2005')
+    expect(text).not.toContain('jan 2004 - dec 2005')
+  }, 30_000)
+})
+
 describe('the early career', () => {
-  it('cosmos explains the Info Support overlap and keeps its dates, title, company, location and points', () => {
+  it('cosmos follows Info Support without overlap and keeps its title, company, location, summary and points', () => {
+    expect(experiences.find((item) => item.key === 'info-support')!.dates).toBe('Jan 2001 - Dec 2004')
     expect(experiences.find((item) => item.key === 'cosmos')).toEqual({
       key: 'cosmos',
       role: 'Software Developer',
       company: 'Cosmos',
-      dates: 'Jan 2004 - Dec 2005',
+      dates: 'Jan 2005 - Dec 2005',
       location: 'Antwerp Area, Belgium',
       summary: cosmosSummary,
       points: ['Provided technical guidance, application redesigns, developer support, and code reviews.', 'Worked on the Technical Components team responsible for construction, maintenance, and support.'],

@@ -192,7 +192,7 @@ describe('the dossier', () => {
     const roles = status.roles as { key: string; recruiterFlags: string[]; recruiterAngles: string[] }[]
     expect(roles.find((role) => role.key === 'azure-devops')!.recruiterFlags).toEqual(['Short stint: 6 months.'])
     expect(roles.find((role) => role.key === 'spatial-audio-senior')!.recruiterFlags).toContain('9 years in one role without a visible promotion.')
-    expect(roles.find((role) => role.key === 'cosmos')!.recruiterFlags.some((flag) => flag.startsWith('Overlaps with'))).toBe(true)
+    expect(roles.find((role) => role.key === 'cosmos')!.recruiterFlags.some((flag) => flag.startsWith('Overlaps with'))).toBe(false)
     expect(roles.find((role) => role.key === 'devdiv')!.recruiterFlags.some((flag) => flag.startsWith('Company change'))).toBe(true)
     expect(roles.find((role) => role.key === 'windows-devices-data')!.recruiterAngles.length).toBeGreaterThan(2)
     expect(roles.find((role) => role.key === 'general')!.recruiterAngles.some((angle) => angle.includes('Why leave Microsoft'))).toBe(true)
@@ -207,7 +207,7 @@ describe('the résumé', () => {
     const store = new MemoryStore()
     const resume = parse((await call(store, 'get_resume')).text)
     const roles = resume.roles as { key: string; points: string[] }[]
-    const current = roles.find((role) => role.key === 'spatial-audio-lead')!.points[1]
+    const current = roles.find((role) => role.key === 'spatial-audio-lead')!.points[2]
     expect(current).toContain('250%')
     expect((resume.pages as Record<string, string>)['building-wilssens']).toBeTruthy()
     expect(resume.profile).toMatchObject({ location: 'Seattle, Washington', workArrangement: profile.workArrangement, travel: profile.travel, workAuthorization: 'US permanent resident (green card)' })
