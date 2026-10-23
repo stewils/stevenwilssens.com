@@ -1,8 +1,6 @@
 // @vitest-environment node
 // The resume PDF is generated from src/resume.ts (npm run resume:build). This test
 // fails when the two drift, so a content change never ships without a new resume.
-import { readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import appSource from './App.tsx?raw'
 import { analyzeResume, atsScore, compareScores, dataQuestions, extractPdf, formatComparison, lenses, readBaseline, resumePath } from '../scripts/resume-check.mjs'
@@ -138,14 +136,11 @@ describe('the hiring logistics', () => {
 
   it('types the logistics values only in src/resume.ts', () => {
     const values = [profile.citizenship, profile.workArrangement, profile.employers, profile.relocation].map((value) => value.toLowerCase())
-    const sources = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-      const path = join(dir, entry.name)
-      if (entry.isDirectory()) return entry.name === 'node_modules' ? [] : sources(path)
-      return /\.(ts|tsx|mjs)$/.test(entry.name) && !/\.test\./.test(entry.name) ? [path] : []
-    })
-    const files = ['src', 'functions', 'scripts'].flatMap(sources)
-    expect(files).toContain(join('functions', '_lib', 'ask', 'prompt.ts'))
-    const hits = files.filter((file) => file !== join('src', 'resume.ts')).filter((file) => { const text = readFileSync(file, 'utf8').toLowerCase(); return values.some((value) => text.includes(value)) })
+    // Vite expands the glob when it transforms this file, so a file added since then is read on the next fresh run (as on GitHub).
+    const sources = import.meta.glob<string>(['./**/*.{ts,tsx,mjs}', '../functions/**/*.{ts,mjs}', '../scripts/**/*.{ts,mjs}', '!**/*.test.*', '!**/node_modules/**'], { query: '?raw', import: 'default', eager: true })
+    expect(Object.keys(sources)).toContain('../functions/_lib/ask/prompt.ts')
+    expect(Object.keys(sources)).toContain('../scripts/resume.mjs')
+    const hits = Object.entries(sources).filter(([file]) => file !== './resume.ts').filter(([, text]) => values.some((value) => text.toLowerCase().includes(value))).map(([file]) => file)
     expect(hits).toEqual([])
   })
 })
