@@ -163,12 +163,14 @@ const needGitHub = (ctx: ToolContext) => {
   return ctx.github
 }
 const sleepFor = (ctx: ToolContext, ms: number) => (ctx.sleep ?? ((wait) => new Promise<void>((resolve) => setTimeout(resolve, wait))))(ms)
-// GitHub's reasons a pull request will not merge, in words.
+// GitHub's reasons a pull request will not merge, in words, for the assistant: the update by its
+// name (numbers only where a tool takes one), and what to tell Steven in plain words.
 const mergeTrouble = (pull: PullRequest) => {
-  if (pull.state === 'closed') return pull.merged ? `#${pull.number} is already merged.` : `#${pull.number} is closed. Redo it with request_site_update (redo: ${pull.number}) to get a fresh pull request.`
-  if (pull.mergeable === false || pull.mergeableState === 'dirty') return `#${pull.number} conflicts with main: another change touched the same files (usually src/resume.ts and the résumé PDF, which every update regenerates) and merged first. GitHub cannot merge it as it is. When Steven says to put it live, merge_site_update redoes it by itself on a fresh branch from main (the same instruction runs again, the old pull request is closed, the proposals it carries move with it); request_site_update with redo: ${pull.number} does the same now. Never tell Steven about the conflict: pass on the say line.`
-  if (pull.mergeableState === 'unstable') return `#${pull.number}'s checks have not passed (the team review or a site check failed or asked for changes). Open ${pull.url} to see which. It does not go live unless Steven, told in plain words that the team's checks on it have not passed, still wants it: then merge_site_update with acceptFailingChecks: true.`
-  if (pull.mergeableState === 'blocked') return `#${pull.number} is blocked by the repository's branch rules (a required check or review). Open ${pull.url} to see which, and tell Steven in plain words that it is not ready to go live yet.`
+  const update = `The update "${pullName(pull)}"`
+  if (pull.state === 'closed') return pull.merged ? `${update} is already live.` : `${update} is set aside. Redo it with request_site_update (redo: ${pull.number}) to make it again.`
+  if (pull.mergeable === false || pull.mergeableState === 'dirty') return `${update} conflicts with main: another change touched the same files (usually src/resume.ts and the résumé PDF, which every update regenerates) and merged first. GitHub cannot merge it as it is. When Steven says to put it live, merge_site_update redoes it by itself on a fresh branch from main (the same instruction runs again, the old pull request is closed, the proposals it carries move with it); request_site_update with redo: ${pull.number} does the same now. Never tell Steven about the conflict: pass on the say line.`
+  if (pull.mergeableState === 'unstable') return `${update}: its checks have not passed (the team review or a site check failed or asked for changes). Open ${pull.url} to see which. It does not go live unless Steven, told in plain words that the team's checks on it have not passed, still wants it: then merge_site_update with acceptFailingChecks: true.`
+  if (pull.mergeableState === 'blocked') return `${update} is held by the repository's branch rules (a required check or review). Open ${pull.url} to see which, and tell Steven in plain words that it is not ready to go live yet.`
   return null
 }
 const shapeRun = (run: WorkflowRun) => ({ name: updateName(run.title), id: run.id, number: run.number, status: run.status, conclusion: run.conclusion, startedAt: run.createdAt, url: run.url, branch: run.branch, title: run.title })
@@ -1051,7 +1053,7 @@ export const tools: Tool[] = [
       const stuck = shaped.filter((pull, index) => pull.mergeTrouble && !beingRedone(pulls[index]))
       const by = (...wanted: Standing[]) => pulls.filter((_pull, index) => wanted.includes(where[index]))
       return {
-        say: say.status({ ready: by('ready').map(pullName), checking: by('checking').map(pullName), making: shapedRuns.filter((run) => run.outcome === 'running').map((run) => run.name), held: by('checks', 'blocked').map(pullName), clashing: by('clash').filter((pull) => !beingRedone(pull)).map(pullName), lowering: lowering.map(pullName) }),
+        say: say.status({ ready: by('ready').map(pullName), checking: by('checking').map(pullName), making: shapedRuns.filter((run) => run.outcome === 'running').map((run) => run.name), held: by('checks').map(pullName), waiting: by('blocked').map(pullName), clashing: by('clash').filter((pull) => !beingRedone(pull)).map(pullName), lowering: lowering.map(pullName) }),
         runs: shapedRuns,
         pullRequests: shaped,
         ...(reviews.some(Boolean) ? { teamReviewNote } : {}),

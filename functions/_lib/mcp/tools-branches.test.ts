@@ -304,7 +304,10 @@ describe('site updates', () => {
     const { github } = fakeGitHub({ pulls: [pull(13, { mergeableState: 'blocked', mergeable: true })], single: () => null })
     const status = await call(store, 'site_update_status', {}, { github })
     expect(status.json).not.toHaveProperty('tip')
-    expect(status.json!.conflicts).toEqual([expect.stringContaining('blocked by the repository')])
+    expect(status.json!.conflicts).toEqual([expect.stringContaining('held by the repository')])
+    expect(status.json!.conflicts).toEqual([expect.not.stringMatching(/#\d/)])
+    // Held by the branch rules with no check failed: not ready yet, not "the checks haven't passed".
+    expect(status.json!.say).toMatch(/isn't ready to go live yet: the team's checks haven't finished\.$/)
     expect((status.json!.pullRequests as { proposals: unknown[]; supersedes: unknown }[])[0]).toMatchObject({ proposals: [], supersedes: null })
   })
 
@@ -312,8 +315,8 @@ describe('site updates', () => {
     const store = new MemoryStore()
     expect((await call(store, 'merge_site_update', { number: 1, sha: 'sha-1', confirm: true }, { github: fakeGitHub().github })).text).toBe('no pull request #1')
     const closed = fakeGitHub({ pulls: [pull(2, { state: 'closed' }), pull(3, { state: 'closed', merged: true })] })
-    expect((await call(store, 'merge_site_update', { number: 2, sha: 'sha-2', confirm: 'true' }, { github: closed.github })).text).toMatch(/^#2 is closed\. Redo it/)
-    expect((await call(store, 'merge_site_update', { number: 3, sha: 'sha-3', confirm: true }, { github: closed.github })).text).toBe('#3 is already merged.')
+    expect((await call(store, 'merge_site_update', { number: 2, sha: 'sha-2', confirm: 'true' }, { github: closed.github })).text).toMatch(/^The update "[^"]+" is set aside\. Redo it with request_site_update \(redo: 2\)/)
+    expect((await call(store, 'merge_site_update', { number: 3, sha: 'sha-3', confirm: true }, { github: closed.github })).text).toMatch(/^The update "[^"]+" is already live\.$/)
     const unknown = pull(4, { mergeable: null, mergeableState: 'unknown' })
     const settling = fakeGitHub({ single: (_number, count) => (count === 1 ? unknown : { ...unknown, mergeable: true, mergeableState: 'clean' }) })
     const merged = await call(store, 'merge_site_update', { number: 4, sha: 'sha-4', confirm: true }, { github: settling.github })
@@ -406,7 +409,7 @@ describe('site updates', () => {
     expect(failing.calls.merged).toEqual([])
     expect((await call(store, 'merge_site_update', { number: 5, sha: 'sha-5', confirm: true, acceptFailingChecks: true }, { github: failing.github })).json).toMatchObject({ merged: true })
     const blocked = fakeGitHub({ pulls: [pull(6, { mergeableState: 'blocked' })] })
-    expect((await call(store, 'merge_site_update', { number: 6, sha: 'sha-6', confirm: true, acceptFailingChecks: true }, { github: blocked.github })).text).toMatch(/blocked by the repository's branch rules/)
+    expect((await call(store, 'merge_site_update', { number: 6, sha: 'sha-6', confirm: true, acceptFailingChecks: true }, { github: blocked.github })).text).toMatch(/held by the repository's branch rules/)
     expect(blocked.calls.merged).toEqual([])
   })
 
@@ -420,11 +423,11 @@ describe('site updates', () => {
     expect((await call(store, 'merge_site_update', { number: 5, sha: 'sha-5', confirm: true, acceptFailingChecks: true }, { github: mixed.github })).text).toMatch(/^Not live yet: the team is still checking/)
     // Blocked with a failed check: the branch rules hold it, whatever Steven accepts.
     const blocked = fakeGitHub({ pulls: [pull(6, { mergeableState: 'blocked' })], checks: { 'sha-6': { pending: [], failed: ['team'] } } })
-    expect((await call(store, 'merge_site_update', { number: 6, sha: 'sha-6', confirm: true, acceptFailingChecks: true }, { github: blocked.github })).text).toMatch(/blocked by the repository's branch rules/)
+    expect((await call(store, 'merge_site_update', { number: 6, sha: 'sha-6', confirm: true, acceptFailingChecks: true }, { github: blocked.github })).text).toMatch(/held by the repository's branch rules/)
     expect([...clean.calls.merged, ...mixed.calls.merged, ...blocked.calls.merged]).toEqual([])
     // A closed one says it is closed, sha or not.
     const closed = fakeGitHub({ pulls: [pull(2, { state: 'closed' })] })
-    expect((await call(store, 'merge_site_update', { number: 2, confirm: true }, { github: closed.github })).text).toMatch(/^#2 is closed/)
+    expect((await call(store, 'merge_site_update', { number: 2, confirm: true }, { github: closed.github })).text).toMatch(/^The update "[^"]+" is set aside/)
   })
 
   it("hands on the Review workflow's own comment as data when the team's review failed, and survives a GitHub error on the checks", async () => {

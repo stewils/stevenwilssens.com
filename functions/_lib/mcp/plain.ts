@@ -9,11 +9,11 @@ export const speakPlainly = 'Speak to Steven in plain English: say "your update"
 // oxlint-disable-next-line no-control-regex -- matching them is the point
 export const controlCharacters = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2069]+/g
 
-// At most 60 characters, the ellipsis included, cut at a word when there is one past the middle.
-const cap = (name: string) => {
-  if (name.length <= 60) return name
-  const cut = name.slice(0, 59)
-  return `${cut.slice(0, cut.lastIndexOf(' ') > 30 ? cut.lastIndexOf(' ') : 59)}…`
+// At most max characters, the ellipsis included, cut at a word when there is one past the middle.
+const cap = (name: string, max = 60) => {
+  if (name.length <= max) return name
+  const cut = name.slice(0, max - 1)
+  return `${cut.slice(0, cut.lastIndexOf(' ') > max / 2 ? cut.lastIndexOf(' ') : max - 1)}…`
 }
 
 // An update's short human name, from its title: "Foresight summary" becomes "Foresight summary
@@ -33,9 +33,16 @@ export const updateName = (title: string | null | undefined) => {
   // The Building refreshes' runs are titled by the workflow (site-update.yml run-name).
   const refresh = /^Refresh the Building write-up about (.+)$/i.exec(clean)
   if (refresh) return cap(`Building ${refresh[1]} write-up refresh`)
-  let name = clean.charAt(0).toUpperCase() + clean.slice(1)
-  if (!/\b(update|refresh|change|fix)\b/i.test(name)) name = `${name} update`
-  return cap(name)
+  // Their pull requests are titled "Building <project>: <the project's commit subject>"
+  // (scripts/building-brief.mjs), and that subject is often a merge commit's.
+  const building = /^Building (\S+): (.+)$/.exec(clean)
+  if (building) {
+    const subject = building[2].replace(/^Merge (?:pull request\s*)?from \S+\s*/i, '').replace(/^Merge [\w./-]+(?::\s*|$)/i, '').trim()
+    return cap(`${building[1]} write-up: ${/[a-z]/i.test(subject) ? subject : 'refresh after a check-in'}`)
+  }
+  const name = clean.charAt(0).toUpperCase() + clean.slice(1)
+  // " update" is never the part cut off.
+  return /\b(update|refresh|change|fix)\b/i.test(name) ? cap(name) : `${cap(name, 53)} update`
 }
 
 // The name keeps its case after "your": its first word may be a name (Foresight, HiPo, ATS).
@@ -78,15 +85,17 @@ export const say = {
   remade: (name: string, preview: string) => `There's already a new version of ${yours(name)}, made on top of what is live. Want it live? Preview: ${preview}`,
   closed: (name: string, waiting: number) => `I've set aside ${yours(name)}; nothing on your site changed.${waiting ? ` ${waiting === 1 ? 'The change you approved waits' : 'The changes you approved wait'} for the next update.` : ''}`,
   alreadyClosed: (name: string) => `${Yours(name)} was already set aside.`,
-  // site_update_status: what is ready, being made, held back by checks, clashing, scoring lower.
-  status: (parts: { ready: string[]; checking: string[]; making: string[]; held: string[]; clashing: string[]; lowering: string[] }) => {
+  // site_update_status: what is ready, being made, held back by checks, waiting on the branch
+  // rules with no check failed, clashing, scoring lower.
+  status: (parts: { ready: string[]; checking: string[]; making: string[]; held: string[]; waiting?: string[]; clashing: string[]; lowering: string[] }) => {
     const some = (names: string[], one: string, many: string) => (names.length === 1 ? `${Yours(names[0])} ${one}` : `${names.length} updates ${many}`)
-    const { ready, checking, making, held, clashing, lowering } = parts
+    const { ready, checking, making, held, waiting = [], clashing, lowering } = parts
     const lines: string[] = []
     if (ready.length) lines.push(`${some(ready, 'is', 'are')} ready to check${ready.length > 1 ? `: ${list(ready)}` : ''}.`)
     if (checking.length) lines.push(`${some(checking, 'is', 'are')} ready to look at while the team finishes checking${checking.length > 1 ? `: ${list(checking)}` : ' it'}.`)
     if (making.length) lines.push(`${some(making, 'is', 'are')} still being made.`)
     if (held.length) lines.push(`${some(held, 'is', 'are')} held back: the team's checks haven't passed${held.length > 1 ? ` (${list(held)})` : ''}.`)
+    if (waiting.length) lines.push(`${some(waiting, "isn't", "aren't")} ready to go live yet: the team's checks haven't finished${waiting.length > 1 ? ` (${list(waiting)})` : ''}.`)
     if (clashing.length) lines.push(`${some(clashing, 'needs', 'need')} to be made again before ${clashing.length === 1 ? 'it' : 'they'} can go live${clashing.length > 1 ? `: ${list(clashing)}` : ''}.`)
     if (lowering.length) lines.push(`${list(lowering.map((name, index) => (index ? yours(name) : Yours(name))))} would make your résumé score lower with job-application software.`)
     return lines.length ? lines.join(' ') : 'Nothing is waiting: every update is live or set aside.'

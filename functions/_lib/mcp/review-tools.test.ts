@@ -220,7 +220,7 @@ describe('site updates', () => {
     const redone = await call(store, 'merge_site_update', { number: 11, sha: 'sha-11', confirm: true }, github)
     expect(redone.isError).toBe(false)
     expect(calls.merged).toEqual([])
-    expect(redone.json).toMatchObject({ merged: false, redone: true, name: 'Two bullets update', why: expect.stringMatching(/#11 conflicts with main.*merged first/) })
+    expect(redone.json).toMatchObject({ merged: false, redone: true, name: 'Two bullets update', why: expect.stringMatching(/^The update "Two bullets update" conflicts with main.*merged first/) })
     expect(redone.json!.say).toBe("Your Two bullets update clashed with an update that just went live, so I'm making it again on top of that one. About 10 minutes; I'll tell you when it's ready to check.")
     expect(calls.dispatched).toEqual([{ workflow: 'site-update.yml', ref: 'main', inputs: { title: 'Two bullets', instruction: 'Apply the proposals.', proposals: '1,2', supersedes: '11' } }])
     expect((redone.json!.run as { id: number }).id).toBe(2)
