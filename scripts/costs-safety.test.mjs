@@ -4,7 +4,6 @@
 // code or name its tables, and nothing of it may reach the mail code. Checked on the source, with
 // the same import walk as team-safety.test.mjs and a positive control. Also the two style rules
 // the design holds the page to (D-10, D-12).
-import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
@@ -122,11 +121,8 @@ describe('the Costs page’s styles', () => {
     expect(css).toMatch(/\.fd-note \{[^}]*border: 1px dashed var\(--line\)[^}]*font-size: 12px[^}]*color: var\(--muted\)/)
   })
 
-  it('adds one colour token, --series-soft, in all three theme blocks', () => {
-    const tokens = (text) => new Set([...text.matchAll(/(--[\w-]+):/g)].map((match) => match[1]))
+  // A comparison with origin/main only held while the Costs branch was open: on main it finds no new token and fails the deploy.
+  it('defines the --series-soft colour token in all three theme blocks', () => {
     expect(css.match(/--series-soft:/g)).toHaveLength(3)
-    let main = null
-    try { main = execFileSync('git', ['show', 'origin/main:src/admin/admin.css'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }) } catch { /* no origin/main here */ }
-    if (main) expect([...tokens(css)].filter((token) => !tokens(main).has(token))).toEqual(['--series-soft'])
   })
 })
