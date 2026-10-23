@@ -181,6 +181,27 @@ describe('the GitHub client', () => {
     expect(calls[1].body).toEqual({ merge_method: 'merge', sha: 'f00d' })
   })
 
+  it('reads the check runs on a commit: pending, failed, and none when the token may not', async () => {
+    const { calls, client } = fakeFetch({
+      'GET /commits/f00d/check-runs': { body: { check_runs: [
+        { name: 'team', status: 'in_progress', conclusion: null },
+        { name: 'gates', status: 'completed', conclusion: 'failure' },
+        { name: 'gates', status: 'completed', conclusion: 'failure' },
+        { name: 'check', status: 'completed', conclusion: 'success' },
+        { name: 'deploy', status: 'completed', conclusion: 'timed_out' },
+        { name: 'other', status: 'completed', conclusion: null },
+      ] } },
+      'GET /commits/old/check-runs': { body: {} },
+      'GET /commits/refused/check-runs': { status: 403, body: { message: 'Resource not accessible' } },
+      'GET /commits/broken/check-runs': { status: 500, body: { message: 'Server error' } },
+    })
+    expect(await client.checks('f00d')).toEqual({ pending: ['team'], failed: ['gates', 'deploy'] })
+    expect(calls[0].url).toContain('/commits/f00d/check-runs?per_page=100')
+    expect(await client.checks('old')).toEqual({ pending: [], failed: [] })
+    expect(await client.checks('refused')).toBeNull()
+    await expect(client.checks('broken')).rejects.toThrow('GitHub 500')
+  })
+
   it('passes a refused merge on with GitHub\'s message', async () => {
     const { client } = fakeFetch({ 'PUT /pulls/12/merge': { status: 405, body: { message: 'Pull Request is not mergeable' } } })
     await expect(client.merge(12)).rejects.toMatchObject({ status: 405, message: 'GitHub 405 on /pulls/12/merge: Pull Request is not mergeable' })

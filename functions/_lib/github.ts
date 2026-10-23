@@ -4,7 +4,8 @@
 // back, merges them, closes them and waits for them. Needs a GitHub token (GITHUB_TOKEN
 // secret) with Actions: write, Contents: write (to delete a closed pull request's branch;
 // read is enough for everything else), Pull requests: write and Checks: read (the reason a
-// run made no change, from its annotations; without it the MCP points to the run instead).
+// run made no change, from its annotations, and whether an update's checks are still running or
+// failed; without it the MCP points to the run instead and reads a held update as not passed).
 
 // branch is GitHub's head_branch: the branch the workflow ran from, `main` for every run the
 // MCP dispatches. number is the run number, which the workflow puts at the end of the branch
@@ -36,10 +37,15 @@ export type UpdateRequest = { title: string; instruction: string; proposals: num
 // protection), dirty (conflicts with main), unknown (still being computed), or null
 // when it was not asked for (the list endpoint does not compute it). headRepo is the
 // repository the branch lives in (owner/name): a fork's pull request can carry any branch name.
-// headSha is the commit the preview was built from: a merge is pinned to it, so a push after
-// Steven looked never goes live unseen.
+// headSha is the commit the preview was built from. The MCP hands it out with every preview and
+// merge_site_update takes it back: GitHub merges that commit or nothing, so a push after Steven
+// looked never goes live unseen.
 export type PullRequest = { number: number; title: string; url: string; branch: string; headRepo: string | null; headSha?: string | null; draft: boolean; state: 'open' | 'closed'; merged: boolean; createdAt: string; previewUrl: string; mergeable: boolean | null; mergeableState: string | null; resumeScore: ResumeScore | null; request: UpdateRequest | null }
 export type MergeResult = { merged: boolean; message: string; sha?: string }
+// The check runs on a commit, by name: the ones still queued or running, and the ones that ended
+// badly (failure, cancelled, timed out, action required). GitHub's mergeable state says only
+// "unstable" for both, and the Site update workflow starts the checks as it opens the pull request.
+export type CheckState = { pending: string[]; failed: string[] }
 
 export class GitHubError extends Error { constructor(message: string, public status: number) { super(message) } }
 
@@ -57,6 +63,8 @@ export type GitHub = {
   mergedPulls(branchPrefix: string): Promise<number>
   // With sha, GitHub merges only when the branch still points at that commit (else 409).
   merge(number: number, sha?: string | null): Promise<MergeResult>
+  // The check runs on a commit; null when the token may not read them (Checks: read).
+  checks(sha: string): Promise<CheckState | null>
   // Closes a pull request with a comment saying why; the branch is deleted when the token may (best effort).
   close(number: number, comment: string): Promise<{ closed: boolean; branchDeleted: boolean }>
 }
@@ -172,6 +180,19 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
     merge: async (number, sha) => {
       const body = await api(`/pulls/${number}/merge`, { method: 'PUT', body: JSON.stringify({ merge_method: 'merge', ...(sha ? { sha } : {}) }) }) as { merged: boolean; message: string; sha?: string }
       return { merged: body.merged, message: body.message, sha: body.sha }
+    },
+    checks: async (sha) => {
+      let body: { check_runs?: { name: string; status: string; conclusion: string | null }[] }
+      try { body = await api(`/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`) as typeof body } catch (error) {
+        if (error instanceof GitHubError && (error.status === 403 || error.status === 404)) return null
+        throw error
+      }
+      const runs = body.check_runs ?? []
+      const names = (list: typeof runs) => [...new Set(list.map((item) => item.name))]
+      return {
+        pending: names(runs.filter((item) => item.status !== 'completed')),
+        failed: names(runs.filter((item) => item.status === 'completed' && ['failure', 'cancelled', 'timed_out', 'action_required'].includes(item.conclusion ?? ''))),
+      }
     },
     close: async (number, comment) => {
       const pull = (await api(`/pulls/${number}`)) as Record<string, unknown>
