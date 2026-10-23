@@ -6,6 +6,9 @@ import { RatingForm, type RatingKeys, type SaveResult } from './RatingForm'
 import { makeLogEntry, makeRating } from '../test/admin-fixtures'
 import type { AskLogEntry, RatingDraft } from './types'
 
+// Many keystrokes per test through user-event: a loaded CI runner can pass the 5 s default.
+vi.setConfig({ testTimeout: 15_000 })
+
 afterEach(cleanup)
 
 const saved = (draft: RatingDraft): SaveResult => ({ ok: true, rating: makeRating({ logId: draft.id, accurate: draft.accurate, overall: draft.overall }) })

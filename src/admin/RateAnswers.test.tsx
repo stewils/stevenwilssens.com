@@ -9,6 +9,9 @@ import type { SaveResult } from './RatingForm'
 import { makeAsk, makeLogEntry, makeRating, NOW, ts } from '../test/admin-fixtures'
 import type { AskInfo, AskLogEntry, AskRating, RatingDraft } from './types'
 
+// Many keystrokes per test through user-event: a loaded CI runner can pass the 5 s default.
+vi.setConfig({ testTimeout: 15_000 })
+
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(NOW)
