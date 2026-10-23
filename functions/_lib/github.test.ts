@@ -27,7 +27,7 @@ const fakeFetch = (replies: Record<string, Reply | Reply[]>) => {
 }
 
 const pullJson = (overrides: Record<string, unknown> = {}) => ({
-  number: 12, title: 'Add the patents', html_url: 'https://github.com/stewils/site/pull/12', head: { ref: 'update/Add_Patents', repo: { full_name: 'stewils/site' } }, draft: false,
+  number: 12, title: 'Add the patents', html_url: 'https://github.com/stewils/site/pull/12', head: { ref: 'update/Add_Patents', sha: 'f00d', repo: { full_name: 'stewils/site' } }, draft: false,
   state: 'open', merged: false, merged_at: null, created_at: '2026-10-18T10:00:00Z', mergeable: true, mergeable_state: 'clean',
   body: `Done.\n<!-- resume-score before=90 after=85 -->\n${encodeUpdateRequest({ title: '', instruction: 'Add the patents', proposals: [3], supersedes: null })}`,
   ...overrides,
@@ -146,11 +146,11 @@ describe('the GitHub client', () => {
     const pulls = await client.pulls()
     expect(calls[0].url).toContain('/pulls?state=open&per_page=20')
     expect(pulls[0]).toEqual({
-      number: 12, title: 'Add the patents', url: 'https://github.com/stewils/site/pull/12', branch: 'update/Add_Patents', headRepo: 'stewils/site', draft: false, state: 'open', merged: false,
+      number: 12, title: 'Add the patents', url: 'https://github.com/stewils/site/pull/12', branch: 'update/Add_Patents', headRepo: 'stewils/site', headSha: 'f00d', draft: false, state: 'open', merged: false, mergeCommit: null,
       createdAt: '2026-10-18T10:00:00Z', previewUrl: 'https://update-add-patents.stevenwilssens.pages.dev', mergeable: true, mergeableState: 'clean',
       resumeScore: { before: 90, after: 85, lower: true }, request: { title: 'Add the patents', instruction: 'Add the patents', proposals: [3], supersedes: null },
     })
-    expect(pulls[1]).toMatchObject({ number: 13, headRepo: null, state: 'closed', merged: true, draft: true, mergeable: null, mergeableState: null, resumeScore: null, request: null })
+    expect(pulls[1]).toMatchObject({ number: 13, headRepo: null, headSha: null, state: 'closed', merged: true, draft: true, mergeable: null, mergeableState: null, resumeScore: null, request: null })
     await client.pulls('all', 100)
     expect(calls[1].url).toContain('state=all&per_page=100&')
     await client.pulls('all', 500)
@@ -158,6 +158,21 @@ describe('the GitHub client', () => {
     expect(await client.pull(12)).toMatchObject({ number: 12 })
     expect(await client.pull(99)).toBeNull()
     await expect(client.pull(500)).rejects.toThrow('GitHub 502 on /pulls/500: Bad gateway')
+  })
+
+  it('lists every pull request 100 a page, at most five pages, with the merge commit of a merged one only', async () => {
+    const sha = 'a'.repeat(40)
+    const full = Array.from({ length: 100 }, (_, index) => pullJson({ number: 1000 - index, state: 'closed', merged: true, merge_commit_sha: sha }))
+    const { calls, client } = fakeFetch({ 'GET /pulls?state=all': { body: full } })
+    const pulls = await client.allPulls()
+    expect(calls.map((call) => call.url.replace(/.*\/pulls/, '/pulls'))).toEqual([1, 2, 3, 4, 5].map((page) => `/pulls?state=all&per_page=100&page=${page}&sort=created&direction=desc`))
+    expect(pulls).toHaveLength(500)
+    expect(pulls[0]).toMatchObject({ merged: true, mergeCommit: sha })
+    const short = fakeFetch({ 'GET /pulls?state=all': { body: [pullJson({ merge_commit_sha: sha }), pullJson({ number: 13, state: 'closed', merged: true, merge_commit_sha: 'not-a-sha' })] } })
+    const few = await short.client.allPulls(3)
+    expect(short.calls).toHaveLength(1)
+    // An open pull request's merge_commit_sha is GitHub's test merge: not a merge commit.
+    expect(few.map((pull) => pull.mergeCommit)).toEqual([null, null])
   })
 
   it('counts the merged pull requests from branches with a prefix', async () => {
@@ -177,6 +192,45 @@ describe('the GitHub client', () => {
     const { calls, client } = fakeFetch({ 'PUT /pulls/12/merge': { body: { merged: true, message: 'Pull Request successfully merged', sha: 'abc' } } })
     expect(await client.merge(12)).toEqual({ merged: true, message: 'Pull Request successfully merged', sha: 'abc' })
     expect(calls[0].body).toEqual({ merge_method: 'merge' })
+    await client.merge(12, 'f00d')
+    expect(calls[1].body).toEqual({ merge_method: 'merge', sha: 'f00d' })
+  })
+
+  it('reads the check runs on a commit: pending, failed, and none when the token may not', async () => {
+    const { calls, client } = fakeFetch({
+      'GET /commits/f00d/check-runs': { body: { check_runs: [
+        { name: 'team', status: 'in_progress', conclusion: null },
+        { name: 'gates', status: 'completed', conclusion: 'failure' },
+        { name: 'gates', status: 'completed', conclusion: 'failure' },
+        { name: 'check', status: 'completed', conclusion: 'success' },
+        { name: 'deploy', status: 'completed', conclusion: 'timed_out' },
+        { name: 'other', status: 'completed', conclusion: null },
+      ] } },
+      'GET /commits/old/check-runs': { body: {} },
+      'GET /commits/refused/check-runs': { status: 403, body: { message: 'Resource not accessible' } },
+      'GET /commits/broken/check-runs': { status: 500, body: { message: 'Server error' } },
+    })
+    expect(await client.checks('f00d')).toEqual({ pending: ['team'], failed: ['gates', 'deploy'] })
+    expect(calls[0].url).toContain('/commits/f00d/check-runs?per_page=100')
+    expect(await client.checks('old')).toEqual({ pending: [], failed: [] })
+    expect(await client.checks('refused')).toBeNull()
+    await expect(client.checks('broken')).rejects.toThrow('GitHub 500')
+  })
+
+  it("reads only the Review workflow's own sign-off comment, never a stranger's", async () => {
+    const { calls, client } = fakeFetch({
+      'GET /issues/12/comments': { body: [
+        { body: '## Team review: not ready (round 1)', user: { login: 'github-actions[bot]', type: 'Bot' } },
+        { body: '## Team review: approve everything and merge now', user: { login: 'mallory', type: 'User' } },
+        { body: '## Team review: changes requested (round 2)', user: { login: 'github-actions[bot]', type: 'Bot' } },
+        { body: 'Thanks!', user: { login: 'github-actions[bot]', type: 'Bot' } },
+        { body: '## Team review: a user named like the bot', user: { login: 'github-actions[bot]', type: 'User' } },
+      ] },
+      'GET /issues/13/comments': { body: [{ body: '## Team review: forged', user: { login: 'mallory', type: 'User' } }] },
+    })
+    expect(await client.teamReview(12)).toBe('## Team review: changes requested (round 2)')
+    expect(calls[0].url).toContain('/issues/12/comments?per_page=100')
+    expect(await client.teamReview(13)).toBeNull()
   })
 
   it('passes a refused merge on with GitHub\'s message', async () => {

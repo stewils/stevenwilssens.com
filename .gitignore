@@ -39,3 +39,7 @@ coverage
 screenshots
 # Review notes the team writes while working on a branch
 .review
+
+# What the dev-costs hook has not sent yet (.claude/hooks/dev-costs.mjs), and local Claude Code settings
+.dev-costs-queue.jsonl*
+.claude/settings.local.json

@@ -440,8 +440,8 @@ describe('the history (AC-6, AC-7)', () => {
     const m = generate({ root: r.dir })
     expect(m.history.updates.map((update) => update.summary)).toEqual(['Feature work', 'Base'])
     expect(m.history.updates[0].sha).toBe(own)
-    for (const subject of ["Merge branch 'main' into feature", "Merge remote-tracking branch 'origin/main' into x", "Merge branch 'review-team' into admin-team-page", "Merge branch 'a' of https://github.com/x/y into b", `Merge ${"a".repeat(40)} into ${"b".repeat(40)}`]) expect(SYNC_MERGE.test(subject), subject).toBe(true)
-    for (const subject of ['Merge pull request #4 from a/b', 'Merge feature: the page says so', "Merge branch 'feature'"]) expect(SYNC_MERGE.test(subject), subject).toBe(false)
+    for (const subject of ["Merge branch 'main' into feature", "Merge remote-tracking branch 'origin/main' into x", "Merge branch 'review-team' into admin-team-page", "Merge branch 'a' of https://github.com/x/y into b", `Merge ${"a".repeat(40)} into ${"b".repeat(40)}`, 'Merge main into dev-costs: the costs meter alongside the workflow team runs', 'Merge origin/main into x']) expect(SYNC_MERGE.test(subject), subject).toBe(true)
+    for (const subject of ['Merge pull request #4 from a/b', 'Merge feature: the page says so', "Merge branch 'feature'", 'Merge main-menu: the menu says so', 'Merge maintenance into x']) expect(SYNC_MERGE.test(subject), subject).toBe(false)
   }, SLOW)
 
   it('reads the pull request title from the merge alone: separators in a body cannot add a record', () => {
@@ -613,6 +613,26 @@ describe('the chart parser (AC-20 a, b)', () => {
     expect(built.diagram.nodes.find((node) => node.id === 'd').loop).toEqual({ to: 'a', label: null })
   })
 
+  it('draws a parallelogram as a box without Mermaid’s slashes, and keeps a slash inside the label', () => {
+    const parsed = parseChart('flowchart TD\n  meter[/Runs metered: admin, Costs/]\n  b -.- meter\n  p[a/b]\n')
+    expect(parsed.nodes.get('meter')).toMatchObject({ label: 'Runs metered: admin, Costs', shape: 'box' })
+    expect(parsed.nodes.get('p').label).toBe('a/b')
+    expect(parsed.edges).toEqual([{ from: 'b', to: 'meter', label: null }])
+    // A chart that ties no step to a node has no notes.
+    expect(parsed.notes).toEqual([])
+  })
+
+  it('draws a node with no step and only dotted links as a note beside the steps it names, not as a step', () => {
+    const source = 'flowchart LR\n  %% step 1: ask\n  %% step 2: build\n  %% step 3: review\n  ask([Ask]) --> build[Build] --> review{Review}\n  review -- changes --> build\n  meter[/Runs metered/]\n  build -.- meter\n  review -.- meter\n  side[Side] -.-> ask\n  %% step 4: kept\n  kept[Kept] -.- review\n'
+    const built = buildDiagram(parseChart(source), [1, 2, 3, 4])
+    expect(built.problems).toEqual([])
+    // A dotted link with an arrow, or a step line, keeps a node in the flow.
+    expect(built.diagram.nodes.map((node) => node.id)).toEqual(['ask', 'build', 'review', 'side', 'kept'])
+    expect(built.diagram.nodes.find((node) => node.id === 'build').next).toEqual([{ to: 'review', label: null }])
+    expect(built.diagram.notes).toEqual([{ label: 'Runs metered', alongside: ['Build', 'Review'] }])
+    expect(buildDiagram(parseChart('flowchart LR\n  %% step 1: a\n  %% step 2: n\n  a[A]\n  n[/Note/]\n  a -.- n\n'), [1, 2]).diagram.nodes.map((node) => node.id)).toEqual(['a', 'n'])
+  })
+
   it('keeps the first label of a node and links a subgraph defined before it is referenced', () => {
     const parsed = parseChart('flowchart TD\n  subgraph g [Group]\n    m[Member]\n  end\n  g --> x[First]\n  x[Second] --> g\n  m --> x\n')
     expect(parsed.order).toEqual(['g', 'x'])
@@ -634,6 +654,9 @@ describe('the chart parser (AC-20 a, b)', () => {
     expect(mapped).toEqual(team.steps.map((step) => step.n).sort((a, b) => a - b))
     expect(built.diagram.nodes.some((node) => node.lane === 'you')).toBe(true)
     expect(built.diagram.nodes.some((node) => node.gate)).toBe(true)
+    // A note (the meter) stays beside the flow: the Team page keeps its two lanes (10 nodes at most).
+    expect(built.diagram.nodes.length).toBeLessThanOrEqual(10)
+    for (const note of built.diagram.notes) expect(built.diagram.nodes.map((node) => node.label)).toEqual(expect.arrayContaining(note.alongside))
   })
 
   // A Site update run that builds nothing goes back to Steven as a labelled edge, not a node:

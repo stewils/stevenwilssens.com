@@ -3,7 +3,8 @@ import { formatNumber, niceMax, periodBefore, trendOf } from './format'
 import type { Row } from './types'
 
 export type Point = { key: string; label: string; value: number; detail?: string }
-export type Bar = { key: string; label: string; value: number; detail: string }
+// `estimated` stacks a second, lighter part on the bar (the Costs page: billed below, estimated on top).
+export type Bar = { key: string; label: string; value: number; detail: string; estimated?: number }
 
 // The width of an element, kept current by a ResizeObserver, so an SVG is drawn at the
 // width it is shown at and its text stays crisp.
@@ -91,31 +92,38 @@ export function TrendChart({ title, points, unit, max: fixedMax, format = format
   )
 }
 
-// Bars for values that are not a series in time (pageviews by hour of the day).
-export function BarChart({ title, bars, axisLabels, max: fixedMax }: { title: string; bars: Bar[]; axisLabels: string[]; max?: number }) {
+// Bars for values that are not a series in time (pageviews by hour of the day), or for
+// discrete months whose bars stack two parts (`estimated`), with a legend.
+export function BarChart({ title, bars, axisLabels, max: fixedMax, format = formatNumber, readout, legend }: { title: string; bars: Bar[]; axisLabels: string[]; max?: number; format?: (value: number) => string; readout?: string; legend?: ReactNode }) {
   const [hovered, setHovered] = useState<number | null>(null)
+  const stacked = bars.some((bar) => bar.estimated !== undefined)
+  const height = (bar: Bar) => bar.value + (bar.estimated ?? 0)
   // Round the axis up to an even number so the midpoint gridline is a whole number.
-  const peak = Math.max(...bars.map((bar) => bar.value), 0)
+  const peak = Math.max(...bars.map(height), 0)
   const max = fixedMax ?? Math.max(2, peak + (peak % 2))
   const active = hovered === null ? null : bars[hovered]
+  const pct = (value: number) => `${Math.min(100, (value / max) * 100)}%`
   return (
-    <figure className="chart">
+    <figure className={`chart${stacked ? ' chart--stacked' : ''}`}>
       <figcaption>
-        <span>{title}</span>
-        <span className="chart-readout">{active ? `${active.label} · ${active.detail}` : `Peak ${formatNumber(peak)}`}</span>
+        <span>{title}{legend}</span>
+        <span className="chart-readout">{active ? `${active.label} · ${active.detail}` : readout ?? `Peak ${format(peak)}`}</span>
       </figcaption>
       <div className="chart-plot" onMouseLeave={() => setHovered(null)}>
-        <span className="chart-grid" style={{ bottom: '100%' }}><em>{formatNumber(max)}</em></span>
-        <span className="chart-grid" style={{ bottom: '50%' }}><em>{formatNumber(max / 2)}</em></span>
+        <span className="chart-grid" style={{ bottom: '100%' }}><em>{format(max)}</em></span>
+        <span className="chart-grid" style={{ bottom: '50%' }}><em>{format(max / 2)}</em></span>
         <div className="chart-bars">
           {bars.map((bar, index) => (
             <button type="button" key={bar.key} className={`chart-bar ${hovered === index ? 'active' : ''}`} onMouseEnter={() => setHovered(index)} onFocus={() => setHovered(index)} onBlur={() => setHovered(null)} aria-label={`${bar.label}: ${bar.detail}`}>
-              <span style={{ height: `${Math.min(100, (bar.value / max) * 100)}%` }} />
+              {stacked
+                ? <span className="chart-stack" style={{ height: pct(height(bar)) }}>{(bar.estimated ?? 0) > 0 && <span className="chart-part est" style={{ flexGrow: bar.estimated }} />}{bar.value > 0 && <span className="chart-part billed" style={{ flexGrow: bar.value }} />}</span>
+                : <span style={{ height: pct(bar.value) }} />}
             </button>
           ))}
         </div>
       </div>
-      <div className="chart-axis">{axisLabels.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}</div>
+      {/* Stacked months: one axis column per bar, so each label sits under its bar. */}
+      <div className="chart-axis" style={stacked ? { gridTemplateColumns: `repeat(${axisLabels.length}, minmax(0, 1fr))` } : undefined}>{axisLabels.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}</div>
     </figure>
   )
 }

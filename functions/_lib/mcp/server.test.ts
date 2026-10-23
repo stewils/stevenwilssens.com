@@ -3,6 +3,7 @@ import type { Env } from '../env'
 import { escapeHtml, handleMcp, resolveMode } from './server'
 import { MemoryStore } from './store'
 import { publicInstructions, publicToolNames, recruiterLens, roleKeys, searchTerms, sitePages } from './tools'
+import { speakPlainly } from './plain'
 
 const env = { MCP_OWNER_KEY: 'owner-key-123' } as unknown as Env
 const url = 'https://steven.wilssens.com/mcp/owner-key-123'
@@ -286,6 +287,14 @@ describe('the About page as a proposal target', () => {
     for (const name of ['get_role', 'save_entry', 'list_entries', 'search_dossier']) expect(tools.find((tool) => tool.name === name)!.inputSchema.properties.role.enum).toEqual(roleKeys)
     const init = await send(rpc({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-03-26' } }), store)
     expect(((await init.json()) as { result: { instructions: string } }).result.instructions).toContain('or the About page (role "about"')
+  })
+
+  it('tells the assistant to speak plainly in every site-update tool and in the instructions (plain English AC5, AC11)', async () => {
+    const store = new MemoryStore()
+    const tools = await toolsOf(await send(rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' }), store))
+    for (const name of ['request_site_update', 'wait_for_site_update', 'site_update_status', 'merge_site_update', 'close_site_update']) expect(tools.find((tool) => tool.name === name)!.description, name).toContain(speakPlainly)
+    const init = await send(rpc({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-03-26' } }), store)
+    expect(((await init.json()) as { result: { instructions: string } }).result.instructions).toContain('every site-update answer has a say line to pass on')
   })
 
   it('leaves the public server as it was: the same eight tools, nothing about the About target (AC-7, T-1)', async () => {

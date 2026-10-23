@@ -32,9 +32,9 @@ describe('the team step runs every agent in the foreground (AC-1)', () => {
     expect(team).toMatch(/^ {6}- name: Let Claude make the change\n {8}id: claude\n/)
   })
 
-  it('turns background tasks off in the settings Claude Code reads', () => {
+  it('turns background tasks and hooks off in the settings Claude Code reads', () => {
     const settings = /\n {10}settings: '(.+)'\n/.exec(team)?.[1]
-    expect(JSON.parse(settings ?? 'null')).toEqual({ env: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' } })
+    expect(JSON.parse(settings ?? 'null')).toEqual({ env: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' }, disableAllHooks: true })
   })
 
   it.each([
@@ -84,9 +84,10 @@ describe('the steps around the team step (AC-3, AC-4, T-3, C-2, C-5)', () => {
   it('Remove the token from the origin URL, then Summarise Claude\'s run, both with if: always(), then the no-change step, then Check and commit', () => {
     expect(remove).toMatch(/\n {8}if: always\(\)\n/)
     expect(summary).toMatch(/\n {8}if: always\(\)/)
-    const order = [TEAM_STEP, 'Remove the token from the origin URL', "Summarise Claude's run", 'Stop when no change was made', 'Check and commit'].map(indexOf)
+    // Read what the run cost (specs/dev-costs.md) sits between the team step and the token removal.
+    const order = [TEAM_STEP, 'Read what the run cost', 'Remove the token from the origin URL', "Summarise Claude's run", 'Stop when no change was made', 'Check and commit'].map(indexOf)
     expect(order).toEqual([...order].sort((a, b) => a - b))
-    expect(order[4] - order[0]).toBe(4)
+    expect(order[5] - order[0]).toBe(5)
   })
 
   it('the summary and no-change steps have no secrets.* or github.token in their env and run the $RUNNER_TEMP copies', () => {
@@ -120,7 +121,9 @@ describe('the steps around the team step (AC-3, AC-4, T-3, C-2, C-5)', () => {
 
   it('the workflow uploads no execution file', () => {
     expect(workflow).not.toMatch(/upload-artifact/)
-    expect(workflow.match(/execution_file/g)).toHaveLength(1)
+    // Read only by the summary and by the cost step, which keeps three numbers from it (specs/dev-costs.md).
+    expect(workflow.match(/execution_file/g)).toHaveLength(2)
+    expect(step('Read what the run cost')).toContain('${{ steps.claude.outputs.execution_file }}')
   })
 })
 

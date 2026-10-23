@@ -5,7 +5,7 @@
 :root {
   color-scheme: dark;
   --ink: #e4ebe6; --muted: #98a6a0; --paper: #0f1916; --card: #15221e; --line: #25352f;
-  --green: #6fd1a6; --on-green: #0b1a15; --accent: #6fd1a6; --series: #3fb98a; --series-track: #1f3a30; --yellow: #e8b84a; --warn-ink: #f2c66d; --focus: #e8b84a;
+  --green: #6fd1a6; --on-green: #0b1a15; --accent: #6fd1a6; --series: #3fb98a; --series-soft: #2b7f60; --series-track: #1f3a30; --yellow: #e8b84a; --warn-ink: #f2c66d; --focus: #e8b84a;
   --bad: #ff9b93; --bad-bg: #3a1a17; --good-bg: #1c3a2a; --warn-bg: #3d3115; --poor-bg: #3f1f1f;
   --side-bg: #0a120f; --side-text: rgba(255, 255, 255, 0.74); --side-hover: rgba(255, 255, 255, 0.08); --side-active: rgba(255, 255, 255, 0.14);
   --gutter: clamp(16px, 3.5vw, 44px);
@@ -13,7 +13,7 @@
 :root[data-theme='light'] {
   color-scheme: light;
   --ink: #172121; --muted: #586360; --paper: #f4f6f1; --card: #ffffff; --line: #d7dfd8;
-  --green: #096b50; --on-green: #ffffff; --series: #0b8a5f; --series-track: #e3ece6; --warn-ink: #8a5a00; --focus: #172121;
+  --green: #096b50; --on-green: #ffffff; --series: #0b8a5f; --series-soft: #7cc4a2; --series-track: #e3ece6; --warn-ink: #8a5a00; --focus: #172121;
   --bad: #b3261e; --bad-bg: #fdecea; --good-bg: #d8f0d8; --warn-bg: #fdecc4; --poor-bg: #f6d6d6;
   --side-bg: #13211d;
 }
@@ -21,7 +21,7 @@
   :root[data-theme='system'] {
     color-scheme: light;
     --ink: #172121; --muted: #586360; --paper: #f4f6f1; --card: #ffffff; --line: #d7dfd8;
-    --green: #096b50; --on-green: #ffffff; --series: #0b8a5f; --series-track: #e3ece6; --warn-ink: #8a5a00; --focus: #172121;
+    --green: #096b50; --on-green: #ffffff; --series: #0b8a5f; --series-soft: #7cc4a2; --series-track: #e3ece6; --warn-ink: #8a5a00; --focus: #172121;
     --bad: #b3261e; --bad-bg: #fdecea; --good-bg: #d8f0d8; --warn-bg: #fdecc4; --poor-bg: #f6d6d6;
     --side-bg: #13211d;
   }
@@ -44,6 +44,7 @@ button { cursor: pointer; }
 .login p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
 .login input { padding: 12px 14px; border: 1.5px solid var(--line); border-radius: 8px; font: inherit; background: var(--card); color: var(--ink); }
 .primary { border: 0; background: var(--green); color: var(--on-green); padding: 12px 16px; border-radius: 8px; font-size: 14px; font-weight: 700; }
+.primary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* The frame: menu left, page right; only the page scrolls. */
 .shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); height: 100dvh; }
@@ -156,7 +157,7 @@ button { cursor: pointer; }
 /* Stat tiles inside a card */
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
 .stats div { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.stats span { font-size: 12px; font-weight: 700; color: var(--muted); }
+.stats > div > span { font-size: 12px; font-weight: 700; color: var(--muted); }
 .stats strong { font-size: 26px; font-weight: 800; letter-spacing: -1px; }
 .stats small { font-size: 11px; color: var(--muted); }
 .stats .highlight { border-color: var(--series); box-shadow: inset 3px 0 0 var(--series); }
@@ -196,11 +197,33 @@ button { cursor: pointer; }
 .chart-grid em { position: absolute; right: calc(100% + 8px); top: -8px; font: normal 11px 'DM Mono', monospace; color: var(--muted); }
 .chart-bars { position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 2px; }
 .chart-bar { flex: 1; height: 100%; display: flex; align-items: flex-end; border: 0; padding: 0; background: transparent; min-width: 0; }
-.chart-bar span { display: block; width: 100%; background: var(--series); border-radius: 4px 4px 0 0; min-height: 0; transition: opacity 120ms; }
-.chart-bars:hover .chart-bar span { opacity: 0.45; }
-.chart-bars .chart-bar.active span { opacity: 1; }
+.chart-bar > span { display: block; width: 100%; background: var(--series); border-radius: 4px 4px 0 0; min-height: 0; transition: opacity 120ms; }
+.chart-bars:hover .chart-bar > span { opacity: 0.45; }
+.chart-bars .chart-bar.active > span { opacity: 1; }
 .chart-bar:focus-visible { outline: 2px solid var(--focus); }
 .chart-axis { display: flex; justify-content: space-between; margin-top: 6px; font: 11px 'DM Mono', monospace; color: var(--muted); }
+/* Stacked months (the Costs page): billed below in --series, estimated on top in --series-soft, a
+   2px gap in the card's colour between the parts and the columns, at most 24px wide, square at the
+   baseline and rounded at the top of the stack only. */
+.chart--stacked { container-type: inline-size; }
+.chart--stacked .chart-axis { display: grid; gap: 2px; text-align: center; }
+.chart--stacked .chart-axis span { min-width: 0; overflow: hidden; }
+/* On a phone every other month is named, each overflowing into the hidden cells beside it so it
+   is not clipped ("Jar" for Jan), and centred under its bar. */
+@container (max-width: 480px) {
+  .chart--stacked .chart-axis span { overflow: visible; display: flex; justify-content: center; white-space: nowrap; }
+  .chart--stacked .chart-axis span:nth-child(even) { visibility: hidden; }
+}
+.chart--stacked .chart-bar { justify-content: center; }
+.chart--stacked .chart-bar > .chart-stack { display: flex; flex-direction: column; gap: 2px; width: 100%; max-width: 24px; background: none; border-radius: 4px 4px 0 0; overflow: hidden; }
+.chart-part { display: block; min-height: 0; flex-basis: 0; }
+.chart-part.billed { background: var(--series); }
+.chart-part.est { background: var(--series-soft); }
+.cost-why { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.chart-legend { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; margin-left: 12px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.chart-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.chart-legend .billed { background: var(--series); }
+.chart-legend .est { background: var(--series-soft); }
 
 /* Ranked lists */
 .ranked-block { min-width: 0; }
@@ -217,6 +240,16 @@ button { cursor: pointer; }
 .tbl-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 10px; }
 .tbl-search input { font: inherit; font-size: 13px; color: var(--ink); background: var(--card); border: 1.5px solid var(--line); border-radius: 999px; padding: 7px 14px; min-height: 36px; width: min(280px, 70vw); }
 .tbl-search input:focus { outline: 2px solid var(--yellow); outline-offset: 1px; }
+/* The budget of a feature, in its opened row on the Costs page. */
+.budget-form { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; margin-top: 14px; }
+.budget-form .budget-group { display: flex; flex-direction: column; gap: 4px; }
+.budget-form label { font-size: 13px; font-weight: 700; }
+.budget-form .budget-field { position: relative; display: inline-flex; align-items: center; }
+.budget-form .budget-field span { position: absolute; left: 12px; color: var(--muted); }
+.budget-form input { font: inherit; font-size: 14px; color: var(--ink); background: var(--card); border: 1.5px solid var(--line); border-radius: 8px; padding: 8px 12px 8px 24px; width: 11ch; min-height: 44px; font-variant-numeric: tabular-nums; }
+.budget-form input:focus { outline: 2px solid var(--yellow); outline-offset: 1px; }
+.budget-form button { min-height: 44px; }
+.budget-form + p, .budget-note { margin: 8px 0 0; font-size: 13px; }
 .tbl-count { font: 12px 'DM Mono', monospace; color: var(--muted); }
 .table-scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -427,6 +460,9 @@ a.team-link:hover { text-decoration: underline; }
 .fd figcaption { margin: 0 0 10px; font-size: 13px; color: var(--muted); line-height: 1.5; }
 .fd-frame { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
 .fd-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 22px; }
+/* A note beside the flow (the meter): quieter than any step, under the lanes, full width. */
+.fd-notes { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 8px; }
+.fd-note { border: 1px dashed var(--line); border-radius: 8px; padding: 8px 12px; font-size: 12px; line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
 .fd-node { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 13px; line-height: 1.4; overflow-wrap: break-word; hyphens: auto; }
 .fd-node.fd-you { background: color-mix(in srgb, var(--yellow) 10%, var(--card)); }
 .fd-node.fd-decision { border-style: dashed; }
