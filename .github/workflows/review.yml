@@ -288,7 +288,8 @@ jobs:
         run: |
           roster="$RUNNER_TEMP/review-roster.mjs"
           if git cat-file -e origin/main:scripts/review-roster.mjs 2>/dev/null; then git show origin/main:scripts/review-roster.mjs > "$roster"; else cp scripts/review-roster.mjs "$roster"; fi
-          git -c core.quotePath=false diff --name-only origin/main...HEAD > "$RUNNER_TEMP/changed.txt"
+          # --no-renames: a rename lists both paths, so moving a rules file away still counts as changing it.
+          git -c core.quotePath=false diff --no-renames --name-only origin/main...HEAD > "$RUNNER_TEMP/changed.txt"
           # The verdicts marker of this workflow's own comment (github-actions[bot]); nobody else's counts.
           gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -q '.[] | select(.user.login == "github-actions[bot]") | .body' > "$RUNNER_TEMP/bot-comments.txt" || true
           marker=$(grep -oE '<!-- team-verdicts [A-Za-z0-9+/=]+ -->' "$RUNNER_TEMP/bot-comments.txt" | tail -n 1 | sed -E 's/<!-- team-verdicts ([A-Za-z0-9+/=]+) -->/\1/' || true)
@@ -298,7 +299,7 @@ jobs:
             prev=$(jq -r '.sha // ""' "$previous" 2>/dev/null || true)
             # Since that commit, only the pull request's own files count (a merge of main brings others).
             if [[ "$prev" =~ ^[0-9a-f]{40}$ ]] && git merge-base --is-ancestor "$prev" HEAD 2>/dev/null; then
-              git -c core.quotePath=false diff --name-only "$prev" HEAD | grep -Fx -f "$RUNNER_TEMP/changed.txt" > "$RUNNER_TEMP/since.txt" || true
+              git -c core.quotePath=false diff --no-renames --name-only "$prev" HEAD | grep -Fx -f "$RUNNER_TEMP/changed.txt" > "$RUNNER_TEMP/since.txt" || true
               since="$RUNNER_TEMP/since.txt"
             fi
           else
@@ -393,7 +394,7 @@ jobs:
           lint=0; npm run lint > "$out/lint.txt" 2>&1 || lint=$?
           echo "npm run lint exited with $lint" >> "$out/lint.txt"
           cov=0; npm run test:coverage -- --coverage.reportsDirectory="$RUNNER_TEMP/cov" > "$out/coverage-run.txt" 2>&1 || cov=$?
-          git -c core.quotePath=false diff --name-only origin/main...HEAD > "$out/changed.txt"
+          git -c core.quotePath=false diff --no-renames --name-only origin/main...HEAD > "$out/changed.txt"
           {
             echo "npm run test:coverage exited with $cov"
             sed 's/\x1b\[[0-9;]*m//g' "$out/coverage-run.txt" | grep -E '(Test Files|Tests|Statements|Branches|Functions|Lines) ' || echo 'No totals in the output: the last lines of the run follow.'

@@ -35,7 +35,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PROJECT: site
         run: |
-          if [ -z "$TOKEN" ]; then echo "::warning::BUILDING_TOKEN is not set; steven.wilssens.com was not told."; exit 0; fi
+          # Fails without the token, so the next run still starts from the last run that did tell the site.
+          if [ -z "$TOKEN" ]; then echo "::error::BUILDING_TOKEN is not set; steven.wilssens.com was not told."; exit 1; fi
           # The write-up's sources (src/articles/sources.json lists the same).
           paths=(CLAUDE.md README.md .claude .github/workflows/review.yml .github/workflows/site-update.yml ':(glob)scripts/*-check.mjs' ':(glob)scripts/*-gate.mjs' ':(glob)scripts/*-compare.mjs' scripts/review-roster.mjs)
           sha=$(git rev-parse HEAD)

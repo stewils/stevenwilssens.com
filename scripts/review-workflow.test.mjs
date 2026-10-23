@@ -291,8 +291,9 @@ describe('the panel: only the reviewers whose part changed, never on a draft', (
 
   it('reads the changed paths unquoted', () => {
     const roster = jobOf('roster')
-    expect(roster).toContain('git -c core.quotePath=false diff --name-only origin/main...HEAD')
-    expect(roster).toContain('git -c core.quotePath=false diff --name-only "$prev" HEAD')
+    expect(roster).toContain('git -c core.quotePath=false diff --no-renames --name-only origin/main...HEAD')
+    expect(roster).toContain('git -c core.quotePath=false diff --no-renames --name-only "$prev" HEAD')
+    expect(roster).not.toMatch(/git (-c \S+ )?diff --name-only/)
   })
 
   it('runs the developer and the security engineer on Opus, the other four on Sonnet', () => {

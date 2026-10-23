@@ -31,7 +31,8 @@ const rules = (path) => path.startsWith('"') || /^(CLAUDE\.md$|vitest\.config\.t
 const parts = {
   'senior-developer': (path) => !docs(path) && !articleFeed(path),
   'senior-tester': (path) => !docs(path) && !articleFeed(path),
-  'security-engineer': (path) => !test(path) && /^(functions\/|scripts\/|migrations\/|public\/_(headers|redirects)$|wrangler\.jsonc$|package(-lock)?\.json$|src\/(ask|admin)\/|src\/webmcp\.ts$|index\.html$|vite\.config\.)/.test(path),
+  // The server, the build, and code that runs in the browser (a write-up's words and numbers aside).
+  'security-engineer': (path) => !test(path) && (/^(functions\/|scripts\/|migrations\/|public\/_(headers|redirects)$|wrangler\.jsonc$|package(-lock)?\.json$|index\.html$|vite\.config\.)/.test(path) || /^src\/.+\.(ts|tsx|js|mjs)$/.test(path) && !articleWords(path) || /^public\/.+\.(js|mjs|html)$/.test(path)),
   'ux-designer': (path) => !test(path) && (/^src\/.+\.(tsx|css)$/.test(path) && !articleWords(path) || /^public\/.+\.(png|jpe?g|svg|webp|ico|css)$/.test(path) || /^(index\.html|scripts\/(resume|og-image)\.mjs)$/.test(path)),
   'senior-recruiter': (path) => !test(path) && (/^src\/(?!admin\/)/.test(path) || /^public\//.test(path) || /^functions\/(api\/ask|_lib\/ask\/|_lib\/assistant-input)/.test(path) || /^scripts\/(resume|assistant)/.test(path)),
   // The PM checks the acceptance criteria: a spec, or code that has to meet one.
@@ -40,7 +41,7 @@ const parts = {
 const reasons = {
   'senior-developer': 'only text changed (specs, Markdown, a write-up\'s numbers)',
   'senior-tester': 'only text changed (specs, Markdown, a write-up\'s numbers)',
-  'security-engineer': 'nothing on the server, in the build, the scripts, the assistant or the admin changed',
+  'security-engineer': 'nothing on the server, in the build, the scripts or the code that runs in the browser changed',
   'ux-designer': 'no page, component, style, image or résumé layout changed',
   'senior-recruiter': 'the recruiter reviews only résumé and website changes, and none changed (pages, the résumé, write-ups, the assistant)',
   'product-manager': 'there is no spec and no code to hold to one',

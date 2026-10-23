@@ -12,11 +12,12 @@ const approved = (...roles) => ({ sha, roles: roles.map((role) => ({ role, verdi
 describe('who reviews', () => {
   it.each([
     ['the MCP server', ['functions/_lib/mcp/plain.ts', 'functions/_lib/mcp/plain.test.ts'], ['senior-developer', 'security-engineer', 'senior-tester', 'product-manager']],
-    ['a page', ['src/pages/About.tsx'], ['senior-developer', 'senior-tester', 'ux-designer', 'senior-recruiter', 'product-manager']],
-    ['a résumé fact on a Site update', ['src/resume.ts', 'public/steven-wilssens-resume-2026.pdf', 'specs/team-size-38.md'], ['senior-developer', 'senior-tester', 'senior-recruiter', 'product-manager']],
+    ['a page', ['src/pages/About.tsx'], ['senior-developer', 'security-engineer', 'senior-tester', 'ux-designer', 'senior-recruiter', 'product-manager']],
+    ['a script served to the browser', ['public/sw.js'], ['senior-developer', 'security-engineer', 'senior-tester', 'senior-recruiter', 'product-manager']],
+    ['a résumé fact on a Site update', ['src/resume.ts', 'public/steven-wilssens-resume-2026.pdf', 'specs/team-size-38.md'], ['senior-developer', 'security-engineer', 'senior-tester', 'senior-recruiter', 'product-manager']],
     ['the words of a write-up refresh', ['src/articles/site/SiteArticle.tsx', 'src/articles/site/feed.json', 'specs/building-site-43.md'], ['senior-developer', 'senior-tester', 'senior-recruiter', 'product-manager']],
     ['only the numbers of a write-up', ['src/articles/site/feed.json'], ['senior-recruiter', 'product-manager']],
-    ['a write-up diagram', ['src/articles/site/Diagrams.tsx'], ['senior-developer', 'senior-tester', 'ux-designer', 'senior-recruiter', 'product-manager']],
+    ['a write-up diagram', ['src/articles/site/Diagrams.tsx'], ['senior-developer', 'security-engineer', 'senior-tester', 'ux-designer', 'senior-recruiter', 'product-manager']],
     ['the admin', ['src/admin/CostsPage.tsx'], ['senior-developer', 'security-engineer', 'senior-tester', 'ux-designer', 'product-manager']],
     ['only a test', ['functions/_lib/mcp/tools.test.ts'], ['senior-developer', 'senior-tester', 'product-manager']],
     ['only the README', ['README.md'], ['senior-developer']],
