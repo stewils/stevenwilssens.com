@@ -271,3 +271,28 @@ describe('the team diagram on /building-this-site', () => {
     expect(sentence).not.toMatch(/\d/)
   })
 })
+
+describe('the assistant section on /building-this-site', () => {
+  it('the assistant section says the dashboard counts the people who asked, kept 90 days, nothing kept when the browser asks not to be tracked', () => {
+    render(<SiteArticle />)
+    const section = document.getElementById('assistant')!.closest('section')!
+    const list = section.querySelector('ul')!
+    // Exactly one paragraph between the list and the report card (shown here while it loads).
+    const after = [...section.children].slice([...section.children].indexOf(list) + 1)
+    const card = after.findIndex((element) => element.matches('.wx-report-wait, .wx-report'))
+    expect(card).toBe(1)
+    expect(after.slice(0, card).map((element) => element.tagName)).toEqual(['P'])
+    const paragraph = after[0] as HTMLElement
+    const text = paragraph.textContent!
+    expect(text).toMatch(/\bI\b|\bmy\b/)
+    for (const said of [/different people/, /once a day/, /what each/, /90[ -]days?/, /Questions, cost, votes and the unanswered questions/, /straight from the database/]) expect(text).toMatch(said)
+    expect(text).toMatch(/I measured what I shipped at Microsoft; the assistant gets the same treatment, including the numbers that do not flatter it\.$/)
+    const link = within(paragraph).getByRole('link', { name: /asks not to be tracked/ })
+    expect(link).toHaveAttribute('href', '/privacy')
+    expect(text).not.toMatch(/ask_log|ask_questions|ask_hits|HASH_SALT|ASK_BUDGET|visitor\.ts|migration|USD|\$/)
+    expect(text).not.toMatch(/anonymous|unique people|deleted/i)
+    expect(text.match(/\d+/g)).toEqual(['90'])
+    // Main's paragraph was 44 words; the refresh may add about 40.
+    expect(text.trim().split(/\s+/).length).toBeLessThanOrEqual(44 + 45)
+  })
+})
