@@ -30,7 +30,7 @@ export function atsScore(findings: { severity: string; lens: string }[]): number
 export function extractPdf(path: string): Promise<{ pages: string[]; text: string; title: string | null; bytes: number; sha256: string }>
 export function commitInfo(): { commit: string | null; commitMessage: string | null }
 export function span(dates: string): { start: number; end: number } | null
-export function dataQuestions(now?: Date): Question[]
+export function dataQuestions(now?: Date, roles?: { key: string; role: string; company: string; dates: string }[]): Question[]
 export function analyzeResume(path?: string, options?: { now?: Date }): Promise<Report>
 export function formatReport(report: Report): string
 export function readBaseline(source: string | null | undefined): Promise<Baseline | null>

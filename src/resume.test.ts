@@ -56,6 +56,28 @@ describe('the resume PDF', () => {
     expect(questions.some((q: { about: string }) => q.about === 'impact')).toBe(false)
   })
 
+  // The real résumé has no overlap, gap or stale last role any more, so made-up roles keep
+  // these three questions tested: latest first, as in src/resume.ts.
+  it('asks about an overlap, a gap and a stale last role in made-up roles, and not about roles that follow on', () => {
+    const roles = [
+      { key: 'latest', role: 'Director', company: 'Acme', dates: 'Jan 2023 - Mar 2025' },
+      { key: 'middle', role: 'Lead', company: 'Beta', dates: 'Jan 2021 - Jun 2023' },
+      { key: 'first', role: 'Engineer', company: 'Gamma', dates: 'Jan 2015 - Dec 2019' },
+    ]
+    const questions = dataQuestions(new Date('2026-10-22'), roles).filter((q: { about: string }) => q.about !== 'impact')
+    expect(questions).toEqual([
+      { about: 'latest', question: 'Director (Jan 2023 - Mar 2025) overlaps with Lead at Beta (Jan 2021 - Jun 2023). Were these consultancy placements, or should the dates change?' },
+      { about: 'latest', question: 'The last role ended Mar 2025, 19 months ago. What have you been doing since, in one line for the resume?' },
+      { about: 'middle', question: 'Engineer at Gamma ended Dec 2019 and Lead started Jan 2021: 12 months in between. What happened? Recruiters ask, so say it or correct the dates.' },
+    ])
+    const followOn = [
+      { key: 'latest', role: 'Director', company: 'Acme', dates: 'Jul 2023 - Sep 2026' },
+      { key: 'middle', role: 'Lead', company: 'Beta', dates: 'Jan 2020 - Jun 2023' },
+      { key: 'first', role: 'Engineer', company: 'Gamma', dates: 'Jan 2015 - Dec 2019' },
+    ]
+    expect(dataQuestions(new Date('2026-10-22'), followOn).filter((q: { about: string }) => q.about !== 'impact')).toEqual([])
+  })
+
   // The workflows compare a new resume with the one on main or on the live site and
   // warn when the score would drop; the comparison itself is pure.
   it('says when a change would lower the score recruiters see today', async () => {

@@ -252,6 +252,40 @@ describe('the parts on their own', () => {
     expect(peopleCounts('a team of 15+ engineers')).toEqual([15])
   })
 
+  it('leaves out the people he worked with, but not the people he led', () => {
+    expect(peopleCounts('About 20 PMs, initially through three people managers, working with more than 100 developers and data scientists.')).toEqual([20])
+    expect(peopleCounts('He led 6 PMs, also with about 20 developers.')).toEqual([6])
+    expect(peopleCounts('He led 12 PMs alongside 40 engineers, partnering with 30 designers and 10 data scientists.')).toEqual([12])
+    expect(peopleCounts('He worked with designers, led 100 developers.')).toEqual([100])
+    expect(peopleCounts('He worked with the platform team and led 100 developers.')).toEqual([100])
+    expect(peopleCounts('He led 100 data scientists.')).toEqual([100])
+  })
+
+  // PR #84: the assistant's answer to "How large a team has he led?", word for word.
+  const answer84 = `Steven has led teams of **10 to 20 product managers**. His largest was at Microsoft as Principal Group Product Manager for Windows & Devices Data (Dec 2024 to Sep 2026):
+
+- **About 20 PMs**, initially through three people managers, working with **more than 100 developers and data scientists**.
+- During Microsoft's cost reductions, he moved it to a **flatter team of about 12**. Roughly half the team was promoted under his leadership.
+
+Earlier roles were smaller:
+
+- **Windows Data (2020 to 2024):** he grew the team from one to five PMs, working with about 20 developers.
+- **Silicon, Graphics, Media (2018 to 2019):** he led six PMs, also with about 20 developers.
+- **Compuware in Belgium (2006):** he led a team of about 15 developers.
+
+The full history is on the [Experience page](https://steven.wilssens.com/experience).`
+  const team = { ...profile, teamSize: '10 to 20 product managers' }
+
+  it("passes #84's answer, which keeps the 100+ developers as people he worked with", () => {
+    expect(peopleCounts(answer84)).toEqual([20, 20, 15])
+    expect(checkAnswer('team', answer84, team)).toEqual({ ok: true, why: 'gives 10 to 20 product managers and no larger team' })
+  })
+
+  it('still fails a team rounded up: 100 developers led, or a team of 25 PMs', () => {
+    expect(checkAnswer('team', 'He has led 10 to 20 product managers, and led 100 developers at Compuware.', team)).toEqual({ ok: false, why: 'rounds the team up to 100 (profile.teamSize: "10 to 20 product managers")' })
+    expect(checkAnswer('team', 'He has led teams of up to 20, including a team of 25 PMs.', team)).toEqual({ ok: false, why: 'rounds the team up to 25 (profile.teamSize: "10 to 20 product managers")' })
+  })
+
   it('needs every word of a fact', () => {
     expect(carries('He is a US permanent resident (green card).', profile.workAuthorization)).toBe(true)
     expect(carries('He holds a green card.', profile.workAuthorization)).toBe(false)

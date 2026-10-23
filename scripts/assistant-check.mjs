@@ -104,8 +104,19 @@ export const carries = (answer, fact) => {
 }
 
 // A number of people: "20 product managers", "a team of 25 PMs", "15+ engineers".
-const PEOPLE = /(\d{1,4})\s*(?:\+|plus)?\s*(?:(?:[a-z-]+)\s+){0,2}(?:people|pms?\b|product managers|managers|reports|engineers|developers|members|employees|staff|direct reports)/gi
-export const peopleCounts = (text) => [...String(text).matchAll(PEOPLE)].map((match) => Number(match[1]))
+const PEOPLE = /(\d{1,4})\s*(?:\+|plus)?\s*(?:(?:[a-z-]+)\s+){0,2}(?:people|pms?\b|product managers|managers|reports|engineers|developers|scientists|members|employees|staff|direct reports)/gi
+// The people he worked with are not his team: "working with more than 100 developers",
+// "alongside 40 engineers". The last cue in the clause before the number decides, so "worked
+// with designers, led 100 developers" still counts the 100.
+const WITH = /\b(?:with|alongside|partnering|partnered|partner)\b/i
+const LED = /\b(?:led|leads?|leading|managed|manages?|managing|team of|teams of|grew|hired|ran|runs)\b/i
+const CUES = new RegExp(`${WITH.source}|${LED.source}`, 'gi')
+const workedWith = (before) => {
+  const cue = [...before.split(/[.,;:!?()\n]/).pop().matchAll(CUES)].pop()
+  return Boolean(cue && WITH.test(cue[0]))
+}
+/** The numbers of people an answer says he led or managed; counts of people he worked with are left out. */
+export const peopleCounts = (text) => [...String(text).matchAll(PEOPLE)].filter((match) => !workedWith(match.input.slice(0, match.index))).map((match) => Number(match[1]))
 
 /** Whether one of the first three answers matches the profile, and why not. */
 export const checkAnswer = (id, answer, profile) => {
