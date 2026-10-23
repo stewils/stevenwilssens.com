@@ -1,7 +1,8 @@
 // @vitest-environment node
 // The assistant check's harness (job B, scripts/assistant-check.mjs): the model is a fetch
 // fake, the inputs are files in a temporary folder, the clock is fake for the time limit.
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
@@ -311,5 +312,39 @@ describe("the checks against the profile lines the assistant's prompt states (#5
     expect(line).toContain(`Team size led: ${live.teamSize}.`)
     const facts = { location: live.location, workAuthorization: live.workAuthorization, availability: live.availability, teamSize: live.teamSize }
     for (const id of ['location', 'team', 'availability']) expect(checkAnswer(id, line, facts), id).toMatchObject({ ok: true })
+  })
+})
+
+// specs/mcp-prs-automation.md, AC-14 (C21): each input only when it is the file its own job built.
+describe('the digests of the two inputs', () => {
+  const sha = (path) => createHash('sha256').update(readFileSync(path)).digest('hex')
+  it('runs when both inputs are the ones their jobs built', async () => {
+    const { branchPath, mainPath } = paths()
+    const result = await run({ branchPath, mainPath, key: 'k', fetchImpl: model().fetchImpl, digests: { branch: sha(branchPath), main: sha(mainPath).toUpperCase() } })
+    expect(result.code).toBe(0)
+  })
+
+  it('a digest mismatch, a missing main input or a missing branch input reads did not run and exits non-zero, never a pass', async () => {
+    const { branchPath, mainPath } = paths()
+    const { fetchImpl, calls } = model()
+    const mismatch = await run({ branchPath, mainPath, key: 'k', fetchImpl, digests: { branch: sha(branchPath), main: sha(branchPath) } })
+    expect(mismatch.code).toBe(1)
+    expect(mismatch.text).toMatch(/Result: did not run \(the main input is not the one its job built \(its sha256 differs from the job's output\)\.\)/)
+    const empty = await run({ branchPath, mainPath, key: 'k', fetchImpl, digests: { branch: '', main: sha(mainPath) } })
+    expect(empty.text).toMatch(/Result: did not run \(the branch input is not the one its job built/)
+    const noMain = await run({ branchPath, mainPath: join(dir, 'gone-main.json'), key: 'k', fetchImpl, digests: { branch: sha(branchPath), main: sha(mainPath) } })
+    expect(noMain).toMatchObject({ code: 1, text: expect.stringMatching(/Result: did not run \(the main input is missing/) })
+    const noBranch = await run({ branchPath: join(dir, 'gone-branch.json'), mainPath, key: 'k', fetchImpl, digests: { branch: sha(branchPath), main: sha(mainPath) } })
+    expect(noBranch).toMatchObject({ code: 1, text: expect.stringMatching(/Result: did not run \(the branch input is missing/) })
+    expect(calls).toHaveLength(0)
+  })
+
+  it('the command line passes --branch-digest and --main-digest on', async () => {
+    const { branchPath, mainPath } = paths()
+    const written = {}
+    const out = join(dir, 'digest-report.md')
+    const code = await main(['--branch', branchPath, '--main', mainPath, '--out', out, '--branch-digest', sha(branchPath), '--main-digest', 'f'.repeat(64)], { env: { ANTHROPIC_API_KEY: 'k' }, fetchImpl: model().fetchImpl, write: (path, text) => { written[path] = text }, log: () => {} })
+    expect(code).toBe(1)
+    expect(written[out]).toMatch(/the main input is not the one its job built/)
   })
 })

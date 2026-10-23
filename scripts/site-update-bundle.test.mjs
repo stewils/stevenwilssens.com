@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { BRANCH, main, takeBundle } from './site-update-bundle.mjs'
+import { BRANCH, IDENTITY, main, messageOf, parseArgs, subjectOf, takeBundle, writeCommit } from './site-update-bundle.mjs'
 
 // Real git, several repositories per test: more than the default 5 s on a loaded runner.
 const SLOW = 30_000
@@ -205,5 +205,137 @@ describe('the command line', () => {
     expect(main([made.bundle, 'main', made.base], sink)).toBe(2)
     expect(lines.at(-1)).toMatch(/^::error::The branch "main"/)
     expect(main([made.bundle, branch, made.base, 'origin/main'], { ...sink, output: '' })).toBe(0)
+  }, SLOW)
+})
+
+const BOT = 'stevenwilssens-site-bot[bot] <345656571+stevenwilssens-site-bot[bot]@users.noreply.github.com>'
+const CLAUDE = 'claude[bot] <41898282+claude[bot]@users.noreply.github.com>'
+const as = (author, committer = author) => {
+  const [, an, ae] = IDENTITY.exec(author)
+  const [, cn, ce] = IDENTITY.exec(committer)
+  return { ...process.env, GIT_AUTHOR_NAME: an, GIT_AUTHOR_EMAIL: ae, GIT_COMMITTER_NAME: cn, GIT_COMMITTER_EMAIL: ce }
+}
+// The update job's side, with each commit made by the given author and committer: [{ author, committer, message, files }], bundled from main.
+const madeBy = (branch, commits = [{}]) => {
+  const dir = join(root, `made-${++count}`)
+  mkdirSync(dir)
+  git(dir, 'init', '-q')
+  write(dir, 'README.md', 'main\n')
+  commitAll(dir, 'main')
+  const base = git(dir, 'rev-parse', 'main').trim()
+  git(dir, 'checkout', '-qb', branch)
+  commits.forEach(({ author = BOT, committer = author, message = 'change', files = null }, index) => {
+    for (const [path, text] of Object.entries(files ?? { [`change-${index}.txt`]: 'x\n' })) write(dir, path, text)
+    git(dir, 'add', '-A')
+    execFileSync('git', ['-c', 'core.autocrlf=false', '-c', 'commit.gpgsign=false', 'commit', '-qm', message], { cwd: dir, env: as(author, committer) })
+  })
+  const bundle = join(root, `made-${count}.bundle`)
+  git(dir, 'bundle', 'create', '-q', bundle, branch, '^main')
+  return { dir, bundle, base }
+}
+
+describe('who wrote the commits (AC-11, C17)', () => {
+  it('takes a bundle whose every commit is by the site bot, as author and committer', () => {
+    const branch = 'update/bot-50'
+    const made = madeBy(branch, [{}, {}])
+    expect(take(made, branch, publishRepo(made.dir), { identity: BOT })).toMatchObject({ ok: true, code: 0, message: expect.stringContaining(`every commit is by ${BOT}`) })
+  }, SLOW)
+
+  it.each([
+    ['another author', { author: 'claude <noreply@anthropic.com>', committer: BOT }],
+    ['another committer', { author: BOT, committer: 'github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>' }],
+    ["claude-code-action's own identity", { author: CLAUDE }],
+  ])('refuses a bundle with %s with exit 7', (_what, who) => {
+    const branch = `update/who-${count + 60}`
+    const made = madeBy(branch, [who])
+    expect(take(made, branch, publishRepo(made.dir), { identity: BOT })).toMatchObject({ ok: false, code: 7, message: expect.stringContaining(`not written by ${BOT}`) })
+  }, SLOW)
+
+  it('refuses one commit of several with another identity, and keeps the other refusals their codes', () => {
+    const branch = 'update/several-51'
+    const made = madeBy(branch, [{}, { author: CLAUDE }, {}])
+    expect(take(made, branch, publishRepo(made.dir), { identity: BOT })).toMatchObject({ ok: false, code: 7, message: expect.stringMatching(/has a commit not written by/) })
+    const two = madeBy('update/two-52', [{ author: CLAUDE }, { author: CLAUDE }])
+    expect(take(two, 'update/two-52', publishRepo(two.dir), { identity: BOT })).toMatchObject({ ok: false, code: 7, message: expect.stringMatching(/has 2 commits not written by/) })
+    // A workflow change is still refused as one (6), and a malformed identity as an argument (2).
+    const flow = madeBy('update/flow-53', [{ files: { '.github/x.yml': 'x\n' } }])
+    expect(take(flow, 'update/flow-53', publishRepo(flow.dir), { identity: BOT })).toMatchObject({ ok: false, code: 6 })
+    expect(take(made, branch, publishRepo(made.dir), { identity: 'nobody' })).toMatchObject({ ok: false, code: 2, message: expect.stringMatching(/is not "<name> <email>"/) })
+    // Without --identity the check is not made (the resume-data and email jobs only read the change).
+    expect(take(two, 'update/two-52', publishRepo(two.dir))).toMatchObject({ ok: true })
+  }, SLOW)
+
+  it('checks a local branch without a bundle ("-"), as the update job does before it hands the change on', () => {
+    const branch = 'update/local-54'
+    const made = madeBy(branch)
+    expect(takeBundle({ bundle: '-', branch, base: made.base, main: 'main', identity: BOT, cwd: made.dir })).toMatchObject({ ok: true })
+    expect(takeBundle({ bundle: '-', branch: 'update/none-55', base: made.base, main: 'main', cwd: made.dir })).toMatchObject({ ok: false, code: 4, message: expect.stringMatching(/no local branch/) })
+    const claude = madeBy('update/local-56', [{ author: CLAUDE }])
+    expect(takeBundle({ bundle: '-', branch: 'update/local-56', base: claude.base, main: 'main', identity: BOT, cwd: claude.dir })).toMatchObject({ ok: false, code: 7 })
+  }, SLOW)
+})
+
+describe('publish writes the commit (AC-11, C17)', () => {
+  it("writes one commit with commit-tree from the bundle's tree on the expected parent, as the site bot", () => {
+    const branch = 'update/written-57'
+    const made = madeBy(branch, [{ message: 'Team size\n\nSet the team size.\n\nCo-Authored-By: Claude <noreply@anthropic.com>' }])
+    const publish = publishRepo(made.dir)
+    const bundled = git(made.dir, 'rev-parse', branch).trim()
+    expect(take(made, branch, publish, { identity: BOT })).toMatchObject({ ok: true })
+    const result = writeCommit({ branch, base: made.base, identity: BOT, title: 'Team size on the Group PM role', run: '1234567', cwd: publish })
+    expect(result).toMatchObject({ ok: true, code: 0 })
+    expect(result.sha).not.toBe(bundled)
+    expect(git(publish, 'rev-parse', `refs/heads/${branch}`).trim()).toBe(result.sha)
+    expect(result.tree).toBe(git(made.dir, 'rev-parse', `${bundled}^{tree}`).trim())
+    expect(git(publish, 'rev-parse', `${result.sha}^{tree}`).trim()).toBe(result.tree)
+    expect(git(publish, 'log', '--format=%P', '-1', result.sha).trim()).toBe(made.base)
+    // None of the bundle's commits reach the pushed ref.
+    expect(git(publish, 'rev-list', `${made.base}..${result.sha}`).trim()).toBe(result.sha)
+    expect(git(publish, 'log', '-1', '--format=%an <%ae>|%cn <%ce>', result.sha).trim()).toBe(`${BOT}|${BOT}`)
+    const message = git(publish, 'log', '-1', '--format=%B', result.sha)
+    expect(message.split('\n')[0]).toBe('Team size on the Group PM role')
+    expect(message).toContain('\n    Team size\n\n    Set the team size.\n')
+    expect(git(publish, 'log', '-1', '--format=%(trailers:only,unfold)', result.sha).trim()).toBe('Site-update-run: 1234567\nCo-Authored-By: Claude <noreply@anthropic.com>')
+  }, SLOW)
+
+  it("never reads a trailer paragraph in Claude's message as a trailer", () => {
+    const branch = 'update/trailers-58'
+    const made = madeBy(branch, [{ message: 'Change\n\nFix-round: 9\nSite-update-run: 1' }])
+    const publish = publishRepo(made.dir)
+    take(made, branch, publish, { identity: BOT })
+    const result = writeCommit({ branch, base: made.base, identity: BOT, title: 'x', run: '42', cwd: publish })
+    const parsed = execFileSync('git', ['interpret-trailers', '--parse'], { cwd: publish, input: git(publish, 'log', '-1', '--format=%B', result.sha), encoding: 'utf8' }).trim()
+    expect(parsed).toBe('Site-update-run: 42\nCo-Authored-By: Claude <noreply@anthropic.com>')
+    expect(git(publish, 'log', '-1', '--format=%B', result.sha)).toContain('    Fix-round: 9')
+  }, SLOW)
+
+  it('writes a clean one-line subject, and refuses a malformed identity or run id', () => {
+    expect(subjectOf('  Line one\nline\ttwo ')).toBe('Line one line two')
+    expect(subjectOf('')).toBe('Site update')
+    expect(subjectOf(null)).toBe('Site update')
+    expect(subjectOf('x'.repeat(300))).toHaveLength(200)
+    expect(messageOf({ title: 't', messages: '', run: 1 })).toBe('t\n\nSite-update-run: 1\nCo-Authored-By: Claude <noreply@anthropic.com>\n')
+    expect(messageOf({ title: 't', messages: 'a\r\n\r\nb  ', run: 2 })).toBe('t\n\n    a\n\n    b\n\nSite-update-run: 2\nCo-Authored-By: Claude <noreply@anthropic.com>\n')
+    expect(writeCommit({ branch: 'update/x-1', base: 'a'.repeat(40), identity: 'bot', title: 't', run: '1', cwd: root })).toMatchObject({ ok: false, code: 2 })
+    expect(writeCommit({ branch: 'update/x-1', base: 'a'.repeat(40), title: 't', run: '1', cwd: root })).toMatchObject({ ok: false, code: 2 })
+    expect(writeCommit({ branch: 'update/x-1', base: 'a'.repeat(40), identity: BOT, title: 't', cwd: root })).toMatchObject({ ok: false, code: 2, message: expect.stringMatching(/run id/) })
+  })
+
+  it('the command line takes, checks and writes in one call, and wants --identity with --commit', () => {
+    const branch = 'update/cli-59'
+    const made = madeBy(branch)
+    const publish = publishRepo(made.dir)
+    const output = join(root, 'output-commit.txt')
+    const lines = []
+    const sink = { output, log: (line) => lines.push(line), error: (line) => lines.push(line), cwd: publish }
+    expect(main([made.bundle, branch, made.base, 'origin/main', '--commit', '--title', 'T'], sink)).toBe(2)
+    expect(lines.at(-1)).toMatch(/--commit needs --identity/)
+    expect(main([made.bundle, branch, made.base, 'origin/main', '--identity', BOT, '--commit', '--title', 'T', '--run', '7'], sink)).toBe(0)
+    const sha = git(publish, 'rev-parse', `refs/heads/${branch}`).trim()
+    expect(readFileSync(output, 'utf8')).toBe(`sha=${sha}\n`)
+    expect(git(publish, 'log', '-1', '--format=%s', sha).trim()).toBe('T')
+    expect(parseArgs(['a', '--identity'])).toEqual({ positional: ['a'], options: { identity: '', commit: false, title: null, run: null } })
+    const other = madeBy('update/cli-60', [{ author: CLAUDE }])
+    expect(main([other.bundle, 'update/cli-60', other.base, 'origin/main', '--identity', BOT, '--commit', '--title', 'T', '--run', '7'], { ...sink, cwd: publishRepo(other.dir) })).toBe(7)
   }, SLOW)
 })

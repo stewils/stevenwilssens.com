@@ -17,6 +17,7 @@
 //
 // Exit 0: passed. Exit 1: failed (an answer does not match) or did not run (no key, an input
 // that is not one, a model error, the time limit). "Did not run" is never a pass.
+import { createHash } from 'node:crypto'
 import { readFileSync, statSync, writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
@@ -60,13 +61,19 @@ class DidNotRun extends Error {}
 const isText = (value, max) => typeof value === 'string' && value.length > 0 && value.length <= max
 const isCount = (value, max) => Number.isInteger(value) && value > 0 && value <= max
 
-/** Reads and checks one input file; throws DidNotRun with the reason when it is not one. */
-export const readInput = (path, label) => {
+/**
+ * Reads and checks one input file; throws DidNotRun with the reason when it is not one. With a digest (the sha256
+ * the job that built it gave as its output, specs/mcp-prs-automation.md AC-14), the file must be that one exactly:
+ * the branch's job could upload a file under main's name, and only its job's output says which one is main's.
+ */
+export const readInput = (path, label, digest = null) => {
   let size
   try { size = statSync(path).size } catch { throw new DidNotRun(`the ${label} input is missing (${path}).`) }
   if (size > MAX_INPUT_BYTES) throw new DidNotRun(`the ${label} input is ${size} bytes, over the ${MAX_INPUT_BYTES} the check reads.`)
+  const bytes = readFileSync(path)
+  if (digest !== null && createHash('sha256').update(bytes).digest('hex') !== String(digest).trim().toLowerCase()) throw new DidNotRun(`the ${label} input is not the one its job built (its sha256 differs from the job's output).`)
   let input
-  try { input = JSON.parse(readFileSync(path, 'utf8')) } catch { throw new DidNotRun(`the ${label} input is not JSON.`) }
+  try { input = JSON.parse(bytes.toString('utf8')) } catch { throw new DidNotRun(`the ${label} input is not JSON.`) }
   if (!input || input.schema !== SCHEMA) throw new DidNotRun(`the ${label} input is not an assistant input (${SCHEMA}).`)
   if (typeof input.model !== 'string' || !MODEL.test(input.model)) throw new DidNotRun(`the ${label} input names a model that is not a Claude model id.`)
   if (!isText(input.system, MAX_SYSTEM)) throw new DidNotRun(`the ${label} input's system prompt is missing or over ${MAX_SYSTEM} characters.`)
@@ -208,7 +215,7 @@ export const liveModel = (path = AGENT) => {
   return match[1]
 }
 
-export const run = async ({ branchPath, mainPath, key, fetchImpl = fetch, timeLimitMs = TIME_LIMIT_MS, agentPath = AGENT }) => {
+export const run = async ({ branchPath, mainPath, key, fetchImpl = fetch, timeLimitMs = TIME_LIMIT_MS, agentPath = AGENT, digests = {} }) => {
   if (!key) return { code: 1, text: report({ result: 'did not run', reason: 'no ANTHROPIC_API_KEY in this job' }) }
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeLimitMs)
@@ -216,7 +223,7 @@ export const run = async ({ branchPath, mainPath, key, fetchImpl = fetch, timeLi
   const notes = []
   let calls = 0
   try {
-    const inputs = { branch: readInput(branchPath, 'branch'), main: readInput(mainPath, 'main') }
+    const inputs = { branch: readInput(branchPath, 'branch', digests.branch ?? null), main: readInput(mainPath, 'main', digests.main ?? null) }
     const model = liveModel(agentPath)
     const request = requestOf(inputs.main, model)
     for (const side of ['branch', 'main']) if (inputs[side].model !== model) notes.push(`${side === 'branch' ? "the branch's" : "main's"} input names the model ${inputs[side].model}; both sides were asked with the one main's code names, ${model}.`)
@@ -240,12 +247,14 @@ export const run = async ({ branchPath, mainPath, key, fetchImpl = fetch, timeLi
 }
 
 export const main = async (argv, { env = process.env, fetchImpl = fetch, write = writeFileSync, log = console.log } = {}) => {
-  const { values } = parseArgs({ args: argv, options: { branch: { type: 'string' }, main: { type: 'string' }, out: { type: 'string' } } })
+  const { values } = parseArgs({ args: argv, options: { branch: { type: 'string' }, main: { type: 'string' }, out: { type: 'string' }, 'branch-digest': { type: 'string' }, 'main-digest': { type: 'string' } } })
   if (!values.branch || !values.main || !values.out) {
-    log('Usage: node scripts/assistant-check.mjs --branch <branch.json> --main <main.json> --out <report.md>')
+    log('Usage: node scripts/assistant-check.mjs --branch <branch.json> --main <main.json> --out <report.md> [--branch-digest <sha256>] [--main-digest <sha256>]')
     return 2
   }
-  const { code, text } = await run({ branchPath: values.branch, mainPath: values.main, key: env.ANTHROPIC_API_KEY, fetchImpl })
+  // A digest flag that is given but empty (a job that wrote no output) is a mismatch, never "not checked".
+  const digests = { branch: values['branch-digest'] ?? null, main: values['main-digest'] ?? null }
+  const { code, text } = await run({ branchPath: values.branch, mainPath: values.main, key: env.ANTHROPIC_API_KEY, fetchImpl, digests })
   write(values.out, text)
   log(text.split('\n').slice(0, 3).join('\n'))
   return code

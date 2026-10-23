@@ -3,6 +3,7 @@
 // fails when the two drift, so a content change never ships without a new resume.
 import { describe, expect, it } from 'vitest'
 import appSource from './App.tsx?raw'
+import resumeSource from './resume.ts?raw'
 import { analyzeResume, atsScore, compareScores, dataQuestions, extractPdf, formatComparison, lenses, readBaseline, resumePath } from '../scripts/resume-check.mjs'
 import { about, experiences, profile, selectedWork } from './resume'
 
@@ -170,6 +171,17 @@ describe('the early career', () => {
 
 describe('the selected work', () => {
   const work = (key: string) => selectedWork.find((item) => item.key === key)!
+
+  // specs/mcp-prs-automation.md, AC-16: the comment above the list says what it holds now.
+  it('the comment above selectedWork names as many cases as the list holds', () => {
+    const comment = /((?:\/\/.*\n)+)export type Work\b/.exec(resumeSource.replace(/\r\n/g, '\n'))?.[1] ?? ''
+    const words = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
+    const named = /Selected work, (\w+) cases/.exec(comment)?.[1]
+    expect(named, comment).toBe(words[selectedWork.length - 1])
+    const chapter = /(\w+) from the data and AI chapter/.exec(comment)?.[1]
+    expect(chapter).toBe(words[selectedWork.filter((item) => /^20(2[0-6])/.test(item.period) && item.role !== 'general').length - 1])
+    expect(comment).not.toMatch(/the two earlier stories/)
+  })
 
   it('windows-quality ends on the measured outcome and has no source', () => {
     const item = work('windows-quality')

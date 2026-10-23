@@ -66,7 +66,8 @@ export class D1AskStore implements AskStore {
   }
 
   async countAllHits(since: number) {
-    const row = await this.db.prepare('SELECT COUNT(*) AS n FROM ask_hits WHERE ts >= ?').bind(since).first<{ n: number }>()
+    // Reads of /api/notes are counted for their own limit only, never toward the assistant's human check.
+    const row = await this.db.prepare("SELECT COUNT(*) AS n FROM ask_hits WHERE ts >= ? AND ip_hash NOT LIKE '%:notes'").bind(since).first<{ n: number }>()
     return row?.n ?? 0
   }
 
@@ -178,7 +179,7 @@ export class MemoryAskStore implements AskStore {
   entries: LogEntry[] = []
 
   async countHits(ipHash: string, since: number) { return this.hits.filter((hit) => hit.ipHash === ipHash && hit.ts >= since).length }
-  async countAllHits(since: number) { return this.hits.filter((hit) => hit.ts >= since).length }
+  async countAllHits(since: number) { return this.hits.filter((hit) => hit.ts >= since && !hit.ipHash.endsWith(':notes')).length }
   async addHit(ipHash: string, now: number) { this.hits.push({ ipHash, ts: now }) }
   async spentMicroSince(day: string) { return this.rows.filter((row) => row.day >= day).reduce((sum, row) => sum + row.costMicro, 0) }
 

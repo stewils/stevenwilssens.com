@@ -898,6 +898,38 @@ describe('this repository', () => {
     for (const words of ['recheck', '`project`', '`sourceSha`']) expect(mcp, words).toContain(words)
   })
 
+  // specs/mcp-prs-automation.md, AC-23: A0 changes the rules in words, not the flow a reader sees.
+  it("step 8 says publish writes the commit as the site bot and the bot's text counts only unedited; the chart is main's", () => {
+    const team = committed('.claude/team.md').replace(/\r\n/g, '\n')
+    const step8 = JSON.stringify(generate({ root: repoRoot }).flow.steps.find((step) => step.n === 8)).replace(/\s+/g, ' ')
+    for (const words of ['publish writes its commit as the site bot', "the bot's text counts only while nobody else edited it"]) expect(step8, words).toContain(words)
+    const chartOf = (text) => /```mermaid\n([\s\S]*?)```/.exec(text.replace(/\r\n/g, '\n'))?.[1]
+    let main = null
+    try { main = execFileSync('git', ['show', 'origin/main:.claude/team.md'], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }) } catch { /* a clone without origin/main: nothing to compare */ }
+    // Pull request A changes the chart (and this line) on purpose; until then it is main's, node for node.
+    if (main !== null) expect(chartOf(team)).toBe(chartOf(main))
+  })
+
+  it("CLAUDE.md's team section says the same in its GitHub paragraph, and its MCP server section that an edited marker is never redone from", () => {
+    const claude = committed('CLAUDE.md').replace(/\r\n/g, '\n')
+    const rules = cutSection(claude, 'The team').replace(/\s+/g, ' ')
+    for (const words of ['written by its `publish` job, as the site\'s App', "Claude's own commits never reach GitHub", 'counts only while nobody else has edited it', 'the label `hold` is lifted only by Steven, and no workflow removes it']) expect(rules, words).toContain(words)
+    const mcp = cutSection(claude, 'The MCP server').replace(/\s+/g, ' ')
+    for (const words of ['an edited marker is never redone from', 'the old way']) expect(mcp, words).toContain(words)
+  })
+
+  it("lists the App's rules as a checker, their tests as ignored, and the write-up watches them", () => {
+    expect(entryFor('functions/_lib/site-update/app.ts')).toMatchObject({ section: 'checks' })
+    expect(entryFor('functions/_lib/site-update/app.test.ts')).toBeNull()
+    expect(AUDITED).toContain('functions/_lib/site-update/**')
+    const notify = readFileSync(join(repoRoot, '.github/workflows/building-notify.yml'), 'utf8')
+    // The daily refresh's sources: a bash array of paths (a folder covers what is in it) and ':(glob)' pathspecs.
+    const paths = /^ *paths=\((.*)\)$/m.exec(notify)[1].split(/\s+/)
+    expect(paths).toContain('functions/_lib/site-update')
+    const sources = JSON.parse(readFileSync(join(repoRoot, 'src/articles/sources.json'), 'utf8'))
+    expect(sources.site.sources).toContain('functions/_lib/site-update')
+  })
+
   it('lists the assistant check harness as a checker, which the write-up also watches (AC-14)', () => {
     expect(entryFor('scripts/assistant-check.mjs')).toMatchObject({ section: 'checks' })
     const notify = readFileSync(join(repoRoot, '.github/workflows/building-notify.yml'), 'utf8')

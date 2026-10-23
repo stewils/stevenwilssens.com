@@ -107,3 +107,18 @@ describe('what Steven hears', () => {
     expect(speakPlainly).toMatch(/Never mention pull request numbers, runs, branches, workflows or merges unless he asks/)
   })
 })
+
+describe('what Steven hears from A0 (specs/mcp-prs-automation.md)', () => {
+  it("waitingToStart, oldWay and cannotRedo are the designer's lines", () => {
+    expect(say.waitingToStart('Team size update')).toBe("Your Team size update is waiting to start; another update is being made first. I'll tell you when it's ready.")
+    expect(say.oldWay('Team size update')).toBe("Your Team size update was made the old way, so it can't go live by itself. Want me to make it again so it can?")
+    expect(say.cannotRedo('Team size update')).toBe("Your Team size update clashes with an update that went live, and I can't make it again by itself: its description was changed by hand. Want me to start it fresh from what you asked for?")
+  })
+
+  it('the status names queued and old-way updates, one or several', () => {
+    const none = { ready: [], checking: [], making: [], held: [], clashing: [], lowering: [] }
+    expect(say.status({ ...none, queued: ['A update'] })).toBe('Your A update is waiting to start; another update is being made first.')
+    expect(say.status({ ...none, queued: ['A update', 'B update'] })).toBe('2 updates are waiting to start (A update and B update); another update is being made first.')
+    expect(say.status({ ...none, oldWay: ['A update', 'B update'] })).toBe("2 updates were made the old way (A update and B update), so they can't go live by themselves; I can make them again so they can.")
+  })
+})

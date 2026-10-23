@@ -6,7 +6,8 @@ import { encodeUpdateRequest, GitHubError, noChangeStep, previewUrl, resumeScore
 import { about, experiences, impact, profile } from '../../../src/resume'
 import { handleMcp } from './server'
 import { MemoryStore } from './store'
-import { quotedReason, recruiterLens, runOutcome } from './tools'
+import { quotedReason, recruiterLens, runOutcome, tools } from './tools'
+import { say } from './plain'
 
 // A fixed About page of three paragraphs, so Steven's own About changes never turn these
 // tests red (the live copy is checked on its own in about.test.ts). The rest of src/resume.ts is real.
@@ -37,9 +38,9 @@ const pull = (number: number, extra: Partial<PullRequest> = {}, body = ''): Pull
 // Like GitHub: a dispatched run's branch is main, and its number ends the branch it pushes (update/<slug>-<number>).
 const run = (id: number, extra: Partial<WorkflowRun> = {}): WorkflowRun => ({ id, number: id, event: 'workflow_dispatch', status: 'completed', conclusion: 'success', createdAt: new Date(now).toISOString(), url: `https://github.com/x/runs/${id}`, branch: 'main', title: `Summary line ${letter(id)}`, ...extra })
 
-type Options = { checks?: Record<string, CheckState | null> | 'error'; teamReview?: string | null; runs?: WorkflowRun[]; pulls?: PullRequest[]; failures?: Record<number, RunFailure | null>; single?: (number: number, calls: number) => PullRequest | null; merge?: () => Promise<{ merged: boolean; message: string; sha?: string }>; branchDeleted?: boolean; findsRun?: boolean; status?: (number: number) => import('../github').PullStatus; heads?: Record<string, string | null> }
+type Options = { checks?: Record<string, CheckState | null> | 'error'; teamReview?: string | null; runs?: WorkflowRun[]; pulls?: PullRequest[]; failures?: Record<number, RunFailure | null>; single?: (number: number, calls: number) => PullRequest | null; merge?: () => Promise<{ merged: boolean; message: string; sha?: string }>; branchDeleted?: boolean; findsRun?: boolean; status?: (number: number) => import('../github').PullStatus; heads?: Record<string, string | null>; edited?: number[] }
 const fakeGitHub = (options: Options = {}) => {
-  const calls = { dispatched: [] as Record<string, string>[], merged: [] as number[], shas: [] as (string | null)[], closed: [] as number[], single: 0, failures: [] as number[], pages: [] as number[], reopened: [] as number[], events: [] as { type: string; payload: Record<string, unknown> }[], status: [] as number[], heads: [] as string[] }
+  const calls = { dispatched: [] as Record<string, string>[], merged: [] as number[], shas: [] as (string | null)[], closed: [] as number[], single: 0, failures: [] as number[], pages: [] as number[], reopened: [] as number[], events: [] as { type: string; payload: Record<string, unknown> }[], status: [] as number[], heads: [] as string[], markers: [] as number[] }
   const runs = options.runs ?? []
   const pulls = options.pulls ?? []
   const github: GitHub = {
@@ -62,6 +63,10 @@ const fakeGitHub = (options: Options = {}) => {
       if (options.findsRun !== false) runs.unshift(run(200 + calls.events.length, { status: 'queued', conclusion: null, event: 'repository_dispatch', title: `Refresh the Building write-up about ${String(payload.project)}` }))
     },
     headOf: async (repository) => { calls.heads.push(repository); return options.heads?.[repository] ?? null },
+    // The marker as the site bot wrote it, unless the test says someone else edited the body (AC-22).
+    requestOf: async (number) => { calls.markers.push(number); const item = options.single ? options.single(number, calls.single) : pulls.find((p) => p.number === number); if (!item) return null; const edited = options.edited?.includes(number); return { request: edited ? null : item.request, trusted: !edited, author: 'stevenwilssens-site-bot', editor: edited ? 'stewils' : null } },
+    pullCommits: async () => null,
+    activity: async () => null,
     allPulls: async () => pulls,
   }
   return { github, calls, runs, pulls }
@@ -487,7 +492,8 @@ describe('site updates', () => {
     expect(calls.dispatched).toHaveLength(1)
     // While it is being made again, site_update_status neither offers the old one nor lists it as a conflict.
     const making = (await call(store, 'site_update_status', {}, { github })).json!
-    expect(making.say).toBe('Your Foresight summary update is still being made.')
+    // The redo's run is queued behind the workflow's concurrency group: waiting to start, never "has not run" (AC-13).
+    expect(making.say).toBe('Your Foresight summary update is waiting to start; another update is being made first.')
     expect(making).not.toHaveProperty('conflicts')
     expect((making.pullRequests as { mergeTrouble: string }[])[0].mergeTrouble).toMatch(/^Being made again/)
     // Once the new version is open, a yes to the old one points to it, and status offers only the new one.
@@ -869,7 +875,11 @@ describe('what became of a run (AC-5, AC-6, AC-13)', () => {
   const elsewhere: RunFailure = { step: 'Check and commit', noChange: false, reason: null }
 
   it.each([
-    ['queued', { status: 'queued', conclusion: null }, null, null, 'running'],
+    ['queued', { status: 'queued', conclusion: null }, null, null, 'queued'],
+    ['waiting', { status: 'waiting', conclusion: null }, null, null, 'queued'],
+    ['pending', { status: 'pending', conclusion: null }, null, null, 'queued'],
+    ['requested', { status: 'requested', conclusion: null }, null, null, 'queued'],
+    ['in progress', { status: 'in_progress', conclusion: null }, null, null, 'running'],
     ['in progress', { status: 'in_progress', conclusion: null }, null, null, 'running'],
     ['a pull request', { status: 'completed', conclusion: 'success' }, pull(1), null, 'pull-request'],
     ['a pull request, failed later', { status: 'completed', conclusion: 'failure' }, pull(1), elsewhere, 'pull-request'],
@@ -1179,5 +1189,164 @@ describe('the About page', () => {
     expect(instruction).toContain(`Proposal #${proposal.id}: add in a new paragraph of the About page (about.paragraphs in src/resume.ts), placed right after the paragraph quoted as "Goes after".`)
     expect(instruction).toContain(`  Goes after: ${JSON.stringify(first)}`)
     expect(instruction).toContain('  New text: "Since October 2026, I \\"build\\" AI products."')
+  })
+})
+
+// specs/mcp-prs-automation.md, A0.
+describe('a queued check or run reads as waiting to start (AC-13)', () => {
+  it('a queued required check reads waiting to start in site_update_status and merge_site_update, never has not run, and offers no recheck', async () => {
+    const result = await causesOf(statusOf({ checks: [green('check')], queued: ['gates', 'team'] }))
+    expect(result.text).toBe('"Summary line I update" is waiting to start: "gates" and "team" are queued on GitHub behind other runs and have not started yet. Tell Steven: "Your Summary line I update is waiting to start; another update is being made first. I\'ll tell you when it\'s ready." Never offer a recheck while it is queued; ask again in a few minutes.')
+    expect(result.text).not.toMatch(/has not run/)
+    expect(result.recheck).toBe(false)
+    const store = new MemoryStore()
+    const fake = fakeGitHub({ pulls: [blocked(60)], status: () => statusOf({ checks: [green('check')], queued: ['team'] }) })
+    const listed = (await call(store, 'site_update_status', {}, { github: fake.github })).json!
+    expect(listed.say).toBe('Your Summary line I update is waiting to start; another update is being made first.')
+    expect((listed.pullRequests as { queued?: boolean }[])[0].queued).toBe(true)
+    // A recheck while it is queued would only send it to the back of the queue: refused, as while it runs.
+    const recheck = await call(store, 'merge_site_update', { number: 60, recheck: true }, { github: fake.github })
+    expect(recheck.text).toMatch(/still running on its latest commit, and a recheck now would cancel them/)
+    expect(fake.calls.reopened).toEqual([])
+  })
+
+  it('a missing one still offers recheck', async () => {
+    const result = await causesOf(statusOf({ checks: [green('check')], queued: [] }))
+    expect(result.text).toMatch(/have not run on its latest commit/)
+    expect(result.recheck).toBe(true)
+  })
+
+  it('wait_for_site_update says a queued run is waiting to start, and a queued check on its pull request too', async () => {
+    const store = new MemoryStore()
+    const queuedRun = fakeGitHub({ runs: [run(12, { status: 'queued', conclusion: null })] })
+    const waiting = (await call(store, 'wait_for_site_update', { run_id: 12, seconds: 5 }, { github: queuedRun.github })).json!
+    expect(waiting).toMatchObject({ done: false, queued: true, say: "Your Summary line M update is waiting to start; another update is being made first. I'll tell you when it's ready." })
+    expect(waiting.next).toMatch(/^Waiting to start/)
+    const runningRun = fakeGitHub({ runs: [run(12, { status: 'in_progress', conclusion: null })] })
+    const making = (await call(store, 'wait_for_site_update', { run_id: 12, seconds: 5 }, { github: runningRun.github })).json!
+    expect(making).toMatchObject({ done: false, say: 'Your Summary line M update is still being made.' })
+    expect(making).not.toHaveProperty('queued')
+    const done = fakeGitHub({ runs: [run(60)], pulls: [blocked(60)], status: () => statusOf({ checks: [green('gates')], queued: ['team', 'check'] }) })
+    const ready = (await call(store, 'wait_for_site_update', { run_id: 60 }, { github: done.github })).json!
+    expect(ready.say).toBe("Your Summary line I update is waiting to start; another update is being made first. I'll tell you when it's ready.")
+    expect(ready).not.toHaveProperty('recheck')
+  })
+})
+
+describe('updates made the old way (AC-11)', () => {
+  const old = (number: number) => pull(number, { author: 'github-actions[bot]', branch: `update/old-${number}`, mergeable: false, mergeableState: 'dirty' }, encodeUpdateRequest({ title: `Old ${letter(number)}`, instruction: 'Do it', proposals: [], supersedes: null }))
+  it('site_update_status lists #69, #72, #75 and #76 with the oldWay line and offers to make them again; nothing acts on them by itself', async () => {
+    const store = new MemoryStore()
+    const fake = fakeGitHub({ pulls: [old(69), old(72), old(75), old(76)], edited: [69, 72, 75, 76] })
+    const status = (await call(store, 'site_update_status', {}, { github: fake.github })).json!
+    expect(status.say).toBe("4 updates were made the old way (Old R update, Old U update, Old X update and Old Y update), so they can't go live by themselves; I can make them again so they can.")
+    expect((status.pullRequests as { madeTheOldWay?: boolean }[]).every((item) => item.madeTheOldWay)).toBe(true)
+    expect(status.oldWayNote).toMatch(/None of these tools fixes, redoes or merges one of them by itself/)
+    expect(status.say).not.toMatch(/needs to be made again before/)
+    // No redo and no recheck is offered for one of them, and none is listed as a conflict to redo.
+    const listed = status.pullRequests as { mergeTrouble: string; recheck?: boolean; queued?: boolean }[]
+    for (const item of listed) {
+      expect(item.mergeTrouble).toMatch(/^It was made the old way, before the site's bot made the updates, so it is never made again, fixed or put live by itself/)
+      expect(item.mergeTrouble).not.toMatch(/redo: \d|recheck|redoes it by itself/)
+      expect(item).not.toHaveProperty('recheck')
+    }
+    expect(status).not.toHaveProperty('conflicts')
+    expect(status).not.toHaveProperty('tip')
+    expect(fake.calls.status).toEqual([])
+    // Steven's yes to one of them neither redoes nor merges it, and says why truthfully: made the old way, not changed by hand.
+    const merged = await call(store, 'merge_site_update', { number: 69, confirm: true }, { github: fake.github })
+    expect(merged.json).toMatchObject({ madeTheOldWay: true, redone: false, merged: false, say: "Your Old R update was made the old way, so it can't go live by itself. Want me to make it again so it can?" })
+    expect(merged.json!.next).toMatch(/call request_site_update with a title and that instruction \(no redo\); then close_site_update #69/)
+    expect(JSON.stringify(merged.json)).not.toMatch(/by hand/)
+    const redo = await call(store, 'request_site_update', { redo: 72 }, { github: fake.github })
+    expect(redo.isError).toBe(true)
+    expect(redo.text).toMatch(/^#72 is not made again by itself\. It was made the old way/)
+    expect(redo.text).toContain(`Tell Steven: "Your Old U update was made the old way, so it can't go live by itself. Want me to make it again so it can?"`)
+    expect(redo.text).not.toMatch(/by hand/)
+    // The refusal comes from who opened it; its marker is not even read again.
+    expect(fake.calls.markers).toEqual([])
+    expect(fake.calls.dispatched).toEqual([])
+    expect(fake.calls.events).toEqual([])
+    expect(fake.calls.merged).toEqual([])
+    const one = (await call(store, 'site_update_status', {}, { github: fakeGitHub({ pulls: [old(69)] }).github })).json!
+    expect(one.say).toBe("Your Old R update was made the old way, so it can't go live by itself; I can make it again so it can.")
+  })
+
+  it('the say line for one is the designer\'s oldWay line', () => {
+    expect(say.oldWay('Team size update')).toBe("Your Team size update was made the old way, so it can't go live by itself. Want me to make it again so it can?")
+  })
+})
+
+describe("a marker counts only when the site bot wrote it and nobody edited it (AC-22)", () => {
+  const marked = encodeUpdateRequest({ title: 'Headline', instruction: 'Do it', proposals: [3], supersedes: null })
+  it("merge_site_update's redo refuses an edited marker and says it cannot be made again by itself, offering to start fresh", async () => {
+    const store = new MemoryStore()
+    const fake = fakeGitHub({ pulls: [pull(5, { mergeable: false, mergeableState: 'dirty' }, marked)], edited: [5] })
+    const result = await call(store, 'merge_site_update', { number: 5, confirm: true }, { github: fake.github })
+    expect(result.json).toMatchObject({ editedMarker: true, redone: false, merged: false, say: "Your Headline update clashes with an update that went live, and I can't make it again by itself: its description was changed by hand. Want me to start it fresh from what you asked for?" })
+    expect(result.json!.next).toMatch(/written or last edited by stewils rather than the site's bot/)
+    expect(fake.calls.markers).toEqual([5])
+    expect(fake.calls.dispatched).toEqual([])
+    expect(fake.calls.events).toEqual([])
+    // A marker that cannot be read again at all starts nothing either.
+    const gone = fakeGitHub({ single: (number) => (number === 5 ? pull(5, { mergeable: false, mergeableState: 'dirty' }, marked) : null) })
+    gone.github.requestOf = async () => null
+    const unreadable = await call(store, 'merge_site_update', { number: 5, confirm: true }, { github: gone.github })
+    expect(unreadable.json).toMatchObject({ editedMarker: true })
+    expect(unreadable.json!.next).toMatch(/was not readable/)
+    expect(gone.calls.dispatched).toEqual([])
+    const viaRequest = await call(store, 'request_site_update', { redo: 5 }, { github: gone.github })
+    expect(viaRequest.text).toMatch(/^#5 cannot be made again by itself: its description was not readable/)
+  })
+
+  it("marks proposals applied on a merge only from the site bot's unedited marker", async () => {
+    const store = new MemoryStore()
+    const proposal = await store.insertProposal({ role: 'headline', field: null, kind: 'replace', currentText: 'a', proposedText: 'b', rationale: 'r', basedOn: null }, 1)
+    await store.decideProposal(proposal.id, 'approved', null, 2)
+    const body = encodeUpdateRequest({ title: 'Headline', instruction: 'Do it', proposals: [proposal.id], supersedes: null })
+    const edited = fakeGitHub({ pulls: [pull(5, {}, body)], edited: [5] })
+    const merged = await call(store, 'merge_site_update', { number: 5, sha: 'sha-5', confirm: true }, { github: edited.github })
+    expect(merged.json).toMatchObject({ merged: true })
+    expect(merged.json).not.toHaveProperty('proposalsApplied')
+    expect((await store.listProposals())[0].status).toBe('approved')
+    const own = fakeGitHub({ pulls: [pull(5, {}, body)] })
+    expect((await call(store, 'merge_site_update', { number: 5, sha: 'sha-5', confirm: true }, { github: own.github })).json).toMatchObject({ proposalsApplied: [proposal.id] })
+    // A marker GitHub cannot give again marks nothing; the merge itself stands.
+    const failing = fakeGitHub({ pulls: [pull(6, {}, body)] })
+    failing.github.requestOf = async () => { throw new Error('GitHub 502 on /graphql') }
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect((await call(store, 'merge_site_update', { number: 6, sha: 'sha-6', confirm: true }, { github: failing.github })).json).toMatchObject({ merged: true })
+    error.mockRestore()
+  })
+
+  it('merge_site_update has no option that removes hold', () => {
+    const merge = tools.find((tool) => tool.name === 'merge_site_update')!
+    expect(Object.keys(merge.inputSchema.properties)).not.toContain('hold')
+    for (const tool of tools) expect(JSON.stringify(tool.inputSchema), tool.name).not.toMatch(/unhold|liftHold|removeHold/i)
+  })
+})
+
+describe('the interview no longer asks what the résumé answers (AC-16)', () => {
+  it('the cosmos angle no longer asks about the Info Support to Cosmos move', () => {
+    const angles = recruiterLens('cosmos').angles.join(' ')
+    expect(angles).not.toMatch(/Info Support|overlap|timeline/i)
+    expect(experiences.find((role) => role.key === 'cosmos')!.summary).toMatch(/Joined as a consultant from Info Support, then hired full-time/)
+  })
+
+  it('the general question no longer asks remote, hybrid or relocation, and still asks start date and compensation', () => {
+    const angles = recruiterLens('general').angles.join(' ')
+    expect(angles).not.toMatch(/remote|hybrid|relocat/i)
+    expect(angles).toMatch(/Start date and compensation expectations/)
+    expect(profile.workArrangement).toMatch(/remote/i)
+  })
+})
+
+describe('a recheck is never offered while a check is queued (AC-13)', () => {
+  it('the guard holds when another check would offer one: queued team, missing check', async () => {
+    const result = await causesOf(statusOf({ checks: [green('gates')], queued: ['team'] }))
+    // "check" has not run, which alone offers a recheck; with team queued, closing and reopening would cancel it.
+    expect(result.text).toMatch(/waiting to start/)
+    expect(result.text).toMatch(/"check" has not run on its latest commit/)
+    expect(result.recheck).toBe(false)
   })
 })

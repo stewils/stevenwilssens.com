@@ -38,7 +38,7 @@ jobs:
           # Fails without the token, so the next run still starts from the last run that did tell the site.
           if [ -z "$TOKEN" ]; then echo "::error::BUILDING_TOKEN is not set; steven.wilssens.com was not told."; exit 1; fi
           # The write-up's sources (src/articles/sources.json lists the same).
-          paths=(CLAUDE.md README.md .claude .github/workflows/review.yml .github/workflows/site-update.yml ':(glob)scripts/*-check.mjs' ':(glob)scripts/*-gate.mjs' ':(glob)scripts/*-compare.mjs' scripts/review-roster.mjs)
+          paths=(CLAUDE.md README.md .claude .github/workflows/review.yml .github/workflows/site-update.yml ':(glob)scripts/*-check.mjs' ':(glob)scripts/*-gate.mjs' ':(glob)scripts/*-compare.mjs' scripts/review-roster.mjs functions/_lib/site-update)
           sha=$(git rev-parse HEAD)
           # Since the commit the last successful run saw, so a late or missed run neither skips nor repeats a
           # change; the last day when there is none (the first run, or history rewritten).
