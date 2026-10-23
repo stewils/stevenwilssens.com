@@ -576,7 +576,7 @@ jobs:
                 gh pr close "$older" --delete-branch || gh pr close "$older" || true
               done
           fi
-          echo "### Pull request: $url" >> "$GITHUB_STEP_SUMMARY\"
+          echo "### Pull request: $url" >> "$GITHUB_STEP_SUMMARY"
           echo "Preview (a few minutes after the Deploy workflow for the branch finishes): https://$alias.stevenwilssens.pages.dev" >> "$GITHUB_STEP_SUMMARY"
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "number=${url##*/}" >> "$GITHUB_OUTPUT"

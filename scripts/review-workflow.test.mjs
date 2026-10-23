@@ -264,3 +264,18 @@ describe('the panel: only the reviewers whose part changed, never on a draft', (
     expect(stepOf(team, 'The team reviews the pull request')).toContain("claude_args: '--model claude-sonnet-5-5 ")
   })
 })
+
+describe('every shell step parses', () => {
+  // A `run: |` block, as bash reads it: the lines indented deeper than its key, the indent taken off.
+  const blocks = (text) => [...text.replace(/\r\n/g, '\n').matchAll(/^( *)(?:- )?run: \|\n((?:\1 {2,}.*\n|\n)+)/gm)].map((match) => {
+    const lines = match[2].split('\n')
+    const indent = Math.min(...lines.filter((line) => line.trim()).map((line) => line.match(/^ */)[0].length))
+    return lines.map((line) => line.slice(indent)).join('\n')
+  })
+  it.each(['.github/workflows/review.yml', '.github/workflows/site-update.yml', '.github/workflows/building-notify.yml'])('%s', (path) => {
+    const found = blocks(readFileSync(join(root, path), 'utf8'))
+    expect(found.length).toBeGreaterThan(0)
+    for (const script of found) expect(() => execFileSync('bash', ['-n'], { input: script, stdio: ['pipe', 'pipe', 'pipe'] }), script.slice(0, 120)).not.toThrow()
+  })
+})
+

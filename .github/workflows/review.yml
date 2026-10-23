@@ -626,7 +626,7 @@ jobs:
             jq -n --argjson r "$ROSTER" --arg sha "${HEAD_SHA::7}" '{approved: true, roles: [], comment: ("## Team review: approved\n\nNothing any reviewer checks changed since their approval, so no reviewer ran on `" + $sha + "`; their verdicts carry over.\n\n| Role | Verdict | Note |\n|---|---|---|\n" + ([$r.carried[], $r.skipped[]] | map("| " + .role + " | " + .verdict + " | " + (.summary | gsub("[|\n]"; " ")) + " |") | join("\n")))}' > .review/result.json
           fi
           if [ ! -f .review/result.json ]; then
-            echo "::error::The team review wrote no result.\"
+            echo "::error::The team review wrote no result."
             # Say why: the tool calls Claude Code refused (names and inputs only).
             jq -c '.[] | select(.type == "result") | .permission_denials[]? | {tool: .tool_name, input: .tool_input}' "$RUNNER_TEMP/claude-execution-output.json" 2>/dev/null | head -20 | tee .review/permission-denials.jsonl || true
             exit 1
