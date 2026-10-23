@@ -104,6 +104,7 @@ h3 { margin: 0; font-size: 10.8pt; font-weight: 700; letter-spacing: -0.2pt; lin
 /* The compact layout, used only when the roomier one runs past two pages. */
 body.compact { font-size: 9.2pt; line-height: 1.25; }
 body.compact section { margin-top: 7px; }
+body.compact .facts { padding: 7px 0 3px; line-height: 1.25; }
 body.compact .summary-text { font-size: 9.5pt; line-height: 1.38; }
 body.compact .summary { font-size: 9.1pt; }
 body.compact .role { padding: 4px 0 4px; }
@@ -125,7 +126,7 @@ body.compact .foot { font-size: 8.7pt; }
   </div>
 </header>
 <div class="facts">
-  <div><span class="mono">Looking for</span>${esc(profile.lookingFor)} · ${esc(profile.availability.toLowerCase())}</div>
+  <div><span class="mono">Looking for</span>${esc(profile.lookingFor)} · ${esc(profile.availability.toLowerCase())}<br>${esc(profile.workArrangement)}</div>
   <div><span class="mono">Scope</span>Led teams of ${esc(profile.teamSize)}; telemetry from 1.6B+ Windows devices</div>
   <div><span class="mono">Background</span>Product leader since 2008, software engineer and team lead before that</div>
 </div>

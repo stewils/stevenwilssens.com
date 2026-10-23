@@ -371,6 +371,7 @@ export const tools: Tool[] = [
         headline: `${profile.headline}. Most recently Principal Group Product Manager, Windows & Devices Data, at Microsoft: the data, experimentation and ML products behind decisions across more than 1.6 billion Windows devices.`,
         status: `Building in AI while choosing his next role. Looking for: ${profile.lookingFor.toLowerCase()}. ${profile.availability}.`,
         location: `${profile.location} · ${profile.workAuthorization}`,
+        workArrangement: profile.workArrangement,
         teamSize: `Led teams of ${profile.teamSize}`,
         contact,
         education: `${education.degree}, ${education.school} (${education.dates})`,
@@ -447,7 +448,7 @@ export const tools: Tool[] = [
       str(args, 'job_description', 12_000, true)
       const entries = await ctx.store.list({ visibility: 'public' })
       return {
-        howTo: 'Go through the posting requirement by requirement and put each in exactly one of three lists. Covered: a fact in the record names it; cite the role or page. Partly covered: the record shows something related; say what is missing. Not shown: the record is silent; do not infer it, even when it is probably true. Then list up to four questions an interviewer should ask Steven to settle the open points. Never infer level, compensation, visa status, clearance or willingness to relocate; he answers those himself. Quote his numbers as written.',
+        howTo: 'Go through the posting requirement by requirement and put each in exactly one of three lists. Covered: a fact in the record names it; cite the role or page. Partly covered: the record shows something related; say what is missing. Not shown: the record is silent; do not infer it, even when it is probably true. Then list up to four questions an interviewer should ask Steven to settle the open points. Never infer level, compensation, visa status or clearance, and never go beyond the work arrangement the record states (remote, hybrid, on-site, travel, relocation): quote it as written and infer nothing past it; he answers those himself. Quote his numbers as written.',
         record: dossierText(entries),
         contact,
       }
@@ -654,7 +655,7 @@ export const tools: Tool[] = [
       summary: profile.summary,
       // Owner only, as deployed (never a proposal): the exact current text for an About proposal.
       ...(ctx.mode === 'owner' ? { about: { intro: about.intro, paragraphs: about.paragraphs } } : {}),
-      profile: { lookingFor: profile.lookingFor, location: profile.location, workAuthorization: profile.workAuthorization, availability: profile.availability, teamSize: profile.teamSize },
+      profile: { lookingFor: profile.lookingFor, location: profile.location, workArrangement: profile.workArrangement, workAuthorization: profile.workAuthorization, availability: profile.availability, teamSize: profile.teamSize },
       keyAchievements: impact.map((item) => ({ ...achievementOf(item), asProposalText: JSON.stringify(achievementOf(item)) })),
       skills,
       roles: experiences.map((item) => ({ key: item.key, role: item.role, company: item.company, dates: item.dates, location: item.location, summary: item.summary, points: item.points })),
@@ -1057,7 +1058,7 @@ export const publicToolNames = ['about_steven', 'get_resume', 'get_role', 'read_
 export const publicInstructions = `This is the public, read-only MCP server of Steven Wilssens, a principal product leader for data and AI (nearly 20 years at Microsoft, most recently leading Windows & Devices Data product management; now building in AI while choosing his next leadership role). It serves recruiters, hiring managers and their assistants: everything here is what Steven published on steven.wilssens.com, plus notes he wrote for this purpose. Nothing can be changed through it.
 Start with about_steven. get_resume has the résumé as published; get_role has one role with its bullets and public notes; read_site_page reads the pages as Markdown (llms-full for all of them); get_recommendations and get_patents_and_press have what others said and what is on record; search_dossier finds his public notes by keyword.
 For a job description, call check_fit with the posting and follow its instructions: say which requirements his record covers (with the role or page), which it covers partly, which it does not show, and what to ask him. Be strict and honest; the record is silent on more than it covers, and saying so is the point.
-Never invent, extrapolate or round up a number, title, date, team size or result. Never infer compensation, visa status, clearance or willingness to relocate. When something is not covered, say that Steven has not published it and point to steven@wilssens.com or his LinkedIn. Calls are logged by tool name and query so Steven can see what assistants ask; no IP address is kept.`
+Never invent, extrapolate or round up a number, title, date, team size or result. Never infer compensation, visa status or clearance. Quote his work arrangement (remote, hybrid, travel, relocation) as about_steven gives it and never go beyond it. When something is not covered, say that Steven has not published it and point to steven@wilssens.com or his LinkedIn. Calls are logged by tool name and query so Steven can see what assistants ask; no IP address is kept.`
 
 // What the client is told at initialize: the owner's instructions with a line on what
 // waits from the site, or the public ones.

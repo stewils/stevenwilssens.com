@@ -6,7 +6,7 @@ import { diffResume, fallbackSummary, mailPlan, pairEdits, renderEmail, scoreOf,
 
 const role = (overrides = {}) => ({ key: 'windows-devices-data', role: 'Principal Group Product Manager - Windows & Devices Data', company: 'Microsoft', dates: 'Dec 2024 - Sep 2026', location: 'Redmond, Washington', summary: 'Led product management for Windows & Devices Data.', points: ['Led a team of 10 to 20 product managers.', 'Set the direction for experimentation across Windows.'], ...overrides })
 const resume = (overrides = {}) => ({
-  profile: { name: 'Steven Wilssens', headline: 'Principal product leader for data and AI', summary: 'Principal product leader with nearly 20 years at Microsoft.', location: 'Seattle, Washington' },
+  profile: { name: 'Steven Wilssens', headline: 'Principal product leader for data and AI', summary: 'Principal product leader with nearly 20 years at Microsoft.', location: 'Seattle, Washington', workArrangement: 'Seattle-based, open to remote or hybrid.' },
   experiences: [role()],
   impact: [{ value: '1.6B+', label: 'Windows devices informing product decisions', backing: 'windows-devices-data' }],
   skills: ['Product strategy and roadmaps', 'Experimentation and A/B testing'],
@@ -32,7 +32,7 @@ describe('diffResume', () => {
 
   it('reports a new role with its bullets, a removed role, changed dates and a changed summary', () => {
     const after = resume({
-      profile: { ...resume().profile, summary: 'Principal product leader with nearly 20 years at Microsoft, most recently in AI.' },
+      profile: { ...resume().profile, summary: 'Principal product leader with nearly 20 years at Microsoft, most recently in AI.', workArrangement: 'Open to remote only.' },
       experiences: [
         { key: 'independent-ai-builder', role: 'Independent AI Product Builder', company: 'Independent', dates: 'Oct 2026 - Present', location: 'Seattle, Washington', summary: 'Building AI products independently.', points: ['Building AI Breaker.'] },
         role({ dates: 'Dec 2024 - Aug 2026' }),
@@ -41,11 +41,13 @@ describe('diffResume', () => {
     const changes = diffResume(resume(), after)
     expect(changes.map((change) => [change.section, change.kind, change.what])).toEqual([
       ['Profile', 'changed', 'The summary changed'],
+      ['Profile', 'changed', 'The work arrangement changed'],
       ['Independent AI Product Builder at Independent', 'added', 'A new role was added'],
       ['Principal Group Product Manager - Windows & Devices Data at Microsoft', 'changed', 'The dates changed'],
     ])
-    expect(changes[1].to).toContain('Oct 2026 - Present')
-    expect(changes[1].to).toContain('• Building AI Breaker.')
+    expect(changes[1]).toMatchObject({ from: 'Seattle-based, open to remote or hybrid.', to: 'Open to remote only.' })
+    expect(changes[2].to).toContain('Oct 2026 - Present')
+    expect(changes[2].to).toContain('• Building AI Breaker.')
     expect(diffResume(after, resume()).find((change) => change.kind === 'removed')).toMatchObject({ section: 'Independent AI Product Builder at Independent', what: 'The role was removed' })
   })
 

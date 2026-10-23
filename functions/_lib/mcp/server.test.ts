@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { profile } from '../../../src/resume'
 import type { Env } from '../env'
 import { escapeHtml, handleMcp, resolveMode } from './server'
 import { MemoryStore } from './store'
@@ -99,6 +100,12 @@ describe('what is already there', () => {
     expect((about.roles as { key: string }[]).map((role) => role.key)).toContain('windows-devices-data')
     expect((about.contact as { email: string }).email).toBe('steven@wilssens.com')
     expect(about.sitePages).toEqual(sitePages)
+    // The work arrangement is a field of its own; location keeps its "place · authorization" shape.
+    expect(about.workArrangement).toBe(profile.workArrangement)
+    expect(about.workArrangement).toBe('Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.')
+    expect(about.location).toBe(`${profile.location} · ${profile.workAuthorization}`)
+    const resume = parse((await call(store, 'get_resume')).text)
+    expect((resume.profile as { workArrangement: string }).workArrangement).toBe(profile.workArrangement)
     const role = parse((await call(store, 'get_role', { role: 'spatial-audio-lead' })).text)
     expect(role.role).toContain('Principal Product Manager Lead')
     expect(role.entries).toEqual([])
@@ -377,7 +384,9 @@ describe('the public server', () => {
     expect(about.dossier).toEqual({ publicNotes: 1 })
     expect(about.waitingFromTheSite).toBeUndefined()
     expect(about.howToUse).toContain('check_fit')
-    const write = await publicCall(store, 'save_entry', { role: 'csx-data', topic: 'scope', title: 't', body: 'b' })
+    expect(about.workArrangement).toBe(profile.workArrangement)
+    expect(parse((await publicCall(new MemoryStore(), 'get_resume')).text).profile).toMatchObject({ workArrangement: profile.workArrangement })
+    const write =await publicCall(store, 'save_entry', { role: 'csx-data', topic: 'scope', title: 't', body: 'b' })
     expect(write.body.error?.code).toBe(-32602)
     expect((await publicCall(store, 'site_questions')).body.error?.code).toBe(-32602)
     const posting = 'Director of Product, Data Platform. Requirements: led PM teams; experimentation at scale; hands-on SQL.'
@@ -385,6 +394,14 @@ describe('the public server', () => {
     expect(fit.howTo).toContain('Not shown')
     expect(fit.record).toContain('Nine PMs')
     expect(fit.record).not.toContain('Internal numbers')
+    expect(fit.record).toContain(`Work arrangement: ${profile.workArrangement}`)
+    // AC-4b: the stated arrangement may be quoted, never extended.
+    expect(fit.howTo).toContain('never go beyond the work arrangement the record states (remote, hybrid, on-site, travel, relocation): quote it as written and infer nothing past it')
+    expect(fit.howTo).toContain('Never infer level, compensation, visa status or clearance')
+    expect(fit.howTo).not.toContain('willingness to relocate')
+    expect(publicInstructions).toContain('Quote his work arrangement (remote, hybrid, travel, relocation) as about_steven gives it and never go beyond it.')
+    expect(publicInstructions).toContain('Never infer compensation, visa status or clearance.')
+    expect(publicInstructions).not.toContain('willingness to relocate')
     expect((await publicCall(store, 'check_fit', {})).text).toContain('job_description is required')
     expect(store.calls.map((entry) => entry.tool)).toEqual(['get_role', 'search_dossier', 'about_steven', 'check_fit', 'check_fit'])
     expect(store.calls[0]).toMatchObject({ role: 'csx-data', query: 'csx-data', country: 'US', asOrg: 'Example Recruiting' })

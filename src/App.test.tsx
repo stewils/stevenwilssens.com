@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { about, experiences } from './resume'
+import { about, experiences, profile } from './resume'
 
 const setPath = (path: string) => {
   window.history.pushState({}, '', path)
@@ -50,10 +50,18 @@ describe('resume site', () => {
 
   it('moves the honors into the About sidebar with the hiring logistics', () => {
     setPath('/about')
-    render(<App />)
+    const { container } = render(<App />)
 
     expect(screen.getByText('US permanent resident (green card)')).toBeInTheDocument()
     expect(screen.getByText('Seattle, Washington')).toBeInTheDocument()
+    // The work arrangement sits between where he is and whether he can be hired there.
+    const note = container.querySelector('.side-note')!
+    const labels = [...note.querySelectorAll(':scope > span')].map((label) => label.textContent)
+    const at = labels.indexOf('Work arrangement')
+    expect(labels.slice(at - 1, at + 2)).toEqual(['Based in', 'Work arrangement', 'Work authorization'])
+    const label = [...note.querySelectorAll(':scope > span')][at]
+    expect(label.nextElementSibling?.tagName).toBe('STRONG')
+    expect(label.nextElementSibling?.textContent).toBe(profile.workArrangement)
     expect(within(screen.getByRole('list', { name: 'Honors and awards' })).getAllByRole('listitem')).toHaveLength(4)
   })
 
