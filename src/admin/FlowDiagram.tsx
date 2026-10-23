@@ -5,6 +5,8 @@ import type { DiagramNode, Flow } from './team-types'
 // manifest): an ordered list of the chart's nodes in a figure, laid out with CSS. Wide cards
 // get two lanes (You above, Team below) in the order of the chart; below 1000px of card
 // width (where a node gets narrower than about 120px), or from 11 nodes, one node per row.
+// A note beside the flow (the chart's dotted-only nodes, such as the meter) is one quiet
+// full-width row under the lanes, never a step.
 // Every word comes from the manifest; this file only knows the four shapes (a node, a
 // decision, a parallel group, a loop back). The
 // screen reader hears each node as a sentence; arrows and lanes are decoration. Nothing in
@@ -14,6 +16,7 @@ const stepWords = (steps: number[]) => (steps.length === 0 ? '' : steps.length =
 // Class names come from here, never from the manifest.
 const shapeClass: Record<string, string> = { start: 'fd-start', box: 'fd-box', decision: 'fd-decision', group: 'fd-parallel' }
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
+const listOf = (items: string[]) => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`)
 // A long name (a file path, a domain) may wrap after a dot or a slash inside it, never
 // inside a word, and never after the slash of a command (/feature).
 const breakable = (text: string) => text.split(/(?<=\w[./])(?=\w)/).flatMap((part, index) => (index ? [<wbr key={index} />, part] : [part]))
@@ -72,7 +75,17 @@ export function FlowDiagram({ flow, changed, labelledBy }: { flow: Flow; changed
     )
   }
   const nodes = flow.diagram.nodes
+  const notes = flow.diagram.notes ?? []
   const labelOf = (id: string) => nodes.find((node) => node.id === id)?.label ?? id
+  // A note names the steps it runs alongside by number (the numbers on the nodes above), and a
+  // node without a step by its label.
+  const alongsideOf = (labels: string[]) => {
+    const found = labels.map((label) => nodes.find((node) => node.label === label))
+    const numbers = [...new Set(found.flatMap((node) => node?.steps ?? []))].sort((a, b) => a - b)
+    const unnumbered = labels.filter((_, index) => !found[index]?.steps.length)
+    const steps = numbers.length === 0 ? [] : [`${numbers.length === 1 ? 'step' : 'steps'} ${listOf(numbers.map(String))}`]
+    return listOf([...steps, ...unnumbered])
+  }
   const teamCount = nodes.filter((node) => node.lane !== 'you').length
   const place = placeNodes(nodes, teamCount)
   // A team node whose arrow would point at the next team node it does not lead to (the pull
@@ -113,6 +126,17 @@ export function FlowDiagram({ flow, changed, labelledBy }: { flow: Flow; changed
             )
           })}
         </ol>
+        {notes.length > 0 && (
+          <ul className="fd-notes" aria-label="Alongside the steps">
+            {notes.map((note) => (
+              <li className="fd-note" key={note.label}>
+                {note.label}
+                {note.alongside.length > 0 && <span className="fd-note-along"><span aria-hidden="true"> · </span><span className="visually-hidden">, </span>alongside {alongsideOf(note.alongside)}</span>}
+                <span className="visually-hidden">.</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </figure>
   )

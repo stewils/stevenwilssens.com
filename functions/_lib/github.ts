@@ -36,7 +36,8 @@ export type UpdateRequest = { title: string; instruction: string; proposals: num
 // protection), dirty (conflicts with main), unknown (still being computed), or null
 // when it was not asked for (the list endpoint does not compute it). headRepo is the
 // repository the branch lives in (owner/name): a fork's pull request can carry any branch name.
-export type PullRequest = { number: number; title: string; url: string; branch: string; headRepo: string | null; draft: boolean; state: 'open' | 'closed'; merged: boolean; createdAt: string; previewUrl: string; mergeable: boolean | null; mergeableState: string | null; resumeScore: ResumeScore | null; request: UpdateRequest | null }
+// mergeCommit: the merge commit's full SHA once merged (GitHub's merge_commit_sha; null otherwise).
+export type PullRequest = { number: number; title: string; url: string; branch: string; headRepo: string | null; draft: boolean; state: 'open' | 'closed'; merged: boolean; mergeCommit: string | null; createdAt: string; previewUrl: string; mergeable: boolean | null; mergeableState: string | null; resumeScore: ResumeScore | null; request: UpdateRequest | null }
 export type MergeResult = { merged: boolean; message: string; sha?: string }
 
 export class GitHubError extends Error { constructor(message: string, public status: number) { super(message) } }
@@ -51,6 +52,8 @@ export type GitHub = {
   // The newest pull requests first, 20 unless a larger page (at most 100) is asked for.
   pulls(state?: 'open' | 'closed' | 'all', limit?: number): Promise<PullRequest[]>
   pull(number: number): Promise<PullRequest | null>
+  // Every pull request in any state, newest first, 100 a page and at most `pages` pages (the admin's costs).
+  allPulls(pages?: number): Promise<PullRequest[]>
   // How many closed pull requests from branches with this prefix were merged (the site's own Building feed).
   mergedPulls(branchPrefix: string): Promise<number>
   merge(number: number): Promise<MergeResult>
@@ -107,9 +110,11 @@ const shapePull = (pull: Record<string, unknown>): PullRequest => {
   const head = pull.head as { ref: string; repo?: { full_name?: string } | null }
   const body = pull.body as string | null
   const request = updateRequestFromBody(body)
+  const merged = Boolean(pull.merged ?? pull.merged_at)
+  const sha = pull.merge_commit_sha
   return {
     number: pull.number as number, title: pull.title as string, url: pull.html_url as string, branch: head.ref, headRepo: typeof head.repo?.full_name === 'string' ? head.repo.full_name : null, draft: Boolean(pull.draft),
-    state: pull.state === 'closed' ? 'closed' : 'open', merged: Boolean(pull.merged ?? pull.merged_at), createdAt: pull.created_at as string, previewUrl: previewUrl(head.ref),
+    state: pull.state === 'closed' ? 'closed' : 'open', merged, mergeCommit: merged && typeof sha === 'string' && /^[0-9a-f]{40}$/.test(sha) ? sha : null, createdAt: pull.created_at as string, previewUrl: previewUrl(head.ref),
     mergeable: typeof pull.mergeable === 'boolean' ? pull.mergeable : null, mergeableState: typeof pull.mergeable_state === 'string' ? pull.mergeable_state : null,
     resumeScore: resumeScoreFromBody(body), request: request ? { ...request, title: request.title || (pull.title as string) } : null,
   }
@@ -162,6 +167,15 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
     },
     pulls: async (state = 'open', limit = 20) => ((await api(`/pulls?state=${state}&per_page=${Math.min(Math.max(limit, 1), 100)}&sort=created&direction=desc`)) as unknown as Record<string, unknown>[]).map(shapePull),
     pull: async (number) => { try { return shapePull((await api(`/pulls/${number}`)) as Record<string, unknown>) } catch (error) { if (notFound(error)) return null; throw error } },
+    allPulls: async (pages = 5) => {
+      const all: PullRequest[] = []
+      for (let page = 1; page <= pages; page++) {
+        const batch = (await api(`/pulls?state=all&per_page=100&page=${page}&sort=created&direction=desc`)) as unknown as Record<string, unknown>[]
+        all.push(...batch.map(shapePull))
+        if (batch.length < 100) break
+      }
+      return all
+    },
     mergedPulls: async (branchPrefix) => {
       const closed = (await api(`/pulls?state=closed&per_page=100&sort=created&direction=desc`)) as unknown as Record<string, unknown>[]
       return closed.filter((pull) => pull.merged_at && String((pull.head as Record<string, unknown>)?.ref ?? '').startsWith(branchPrefix)).length

@@ -18,4 +18,8 @@ export type Env = {
   ASK_CHECK_AFTER_USD?: string      // the human check switches on once the day's spend passes this, default 10
   TURNSTILE_SECRET_KEY?: string     // with TURNSTILE_SITE_KEY: a human check when the assistant looks under attack
   TURNSTILE_SITE_KEY?: string
+  // The write-only key the Review and Site update workflows and Steven's Claude Code hook post
+  // their development costs with (POST /api/costs). A Production-only secret, 32 characters or
+  // more, never the admin token; it opens nothing else.
+  COSTS_INGEST_TOKEN?: string
 }

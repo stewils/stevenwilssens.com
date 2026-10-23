@@ -39,6 +39,11 @@ describe('DataTable', () => {
     expect(table).not.toHaveClass('stack')
   })
 
+  it('stacks a narrow table into cards on a phone when asked', () => {
+    render(<DataTable columns={columns} rows={rows.slice(0, 2)} rowKey={(row) => row.name} label="Organizations" stack />)
+    expect(screen.getByRole('table', { name: 'Organizations' })).toHaveClass('stack')
+  })
+
   it('sorts numbers high to low first, then low to high, then back to its own order; empty cells stay last', () => {
     render(<DataTable columns={columns} rows={rows} rowKey={(row) => row.name} />)
     const header = screen.getByRole('button', { name: 'Visitors' })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dayAxis, formatAgo, formatDuration, formatVital, niceMax, periodBefore, projectMonth, rateVital, trendOf } from './format'
+import { dayAxis, formatAgo, formatCost, formatDuration, formatUsd, formatUsdAxis, formatVital, niceMax, periodBefore, projectMonth, rateVital, trendOf } from './format'
 
 describe('chart and comparison helpers', () => {
   it('rounds an axis up to a clean maximum', () => {
@@ -47,5 +47,36 @@ describe('formatting for the tables', () => {
     expect(dayAxis([{ day: '2026-10-01' }, { day: '2026-10-02' }, { day: '2026-10-03' }])).toEqual(['Oct 1', 'Oct 2', 'Oct 3'])
     expect(dayAxis([{ day: '2026-10-01' }])).toEqual(['Oct 1'])
     expect(dayAxis([])).toEqual([])
+  })
+})
+
+describe('a development cost', () => {
+  it('shows billed plainly, an estimate with ≈ and an unknown billing with ?, each with its words', () => {
+    expect(formatCost(3_200_000)).toEqual({ text: '$3.20', words: '$3.20' })
+    expect(formatCost(3_200_000, 'estimated')).toEqual({ text: '≈$3.20', words: 'estimated $3.20' })
+    expect(formatCost(3_200_000, 'unknown')).toEqual({ text: '?$3.20', words: 'billing unknown, $3.20' })
+  })
+
+  it('ends a sum that leaves out unpriced runs in +, says nothing as —, under a cent as <$0.01, and groups thousands', () => {
+    expect(formatCost(4_100_000, 'estimated', true)).toEqual({ text: '≈$4.10+', words: 'estimated $4.10, plus unpriced runs' })
+    expect(formatCost(0)).toEqual({ text: '—', words: 'none' })
+    expect(formatCost(0, 'billed', true)).toEqual({ text: '+', words: 'unpriced runs only' })
+    expect(formatCost(4_000)).toEqual({ text: '<$0.01', words: 'less than $0.01' })
+    expect(formatCost(9_999_990_000)).toEqual({ text: '$9,999.99', words: '$9,999.99' })
+  })
+})
+
+describe('dollars', () => {
+  it('shows cents, and on a chart axis drops them only when they are zero', () => {
+    expect(formatUsd(100_000_000)).toBe('$100.00')
+    expect(formatUsdAxis(100_000_000)).toBe('$100')
+    expect(formatUsdAxis(1_234_000_000)).toBe('$1,234')
+    expect(formatUsdAxis(0)).toBe('$0')
+    // The mid line of a $25 or a $5 axis, and a month under $1.
+    expect(formatUsdAxis(12_500_000)).toBe('$12.50')
+    expect(formatUsdAxis(2_500_000)).toBe('$2.50')
+    expect(formatUsdAxis(500_000)).toBe('$0.50')
+    expect(formatUsdAxis(250_000)).toBe('$0.25')
+    expect(formatUsdAxis(1_250_500_000)).toBe('$1,250.50')
   })
 })
