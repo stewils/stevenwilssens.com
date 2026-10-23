@@ -3,7 +3,7 @@
 // the site-update tools against a GitHub that is slow, conflicted, closed or refusing.
 import { describe, expect, it, vi } from 'vitest'
 import { encodeUpdateRequest, noChangeStep, previewUrl, resumeScoreFromBody, updateRequestFromBody, type GitHub, type PullRequest, type RunFailure, type WorkflowRun } from '../github'
-import { about, experiences, impact } from '../../../src/resume'
+import { about, experiences, impact, profile } from '../../../src/resume'
 import { handleMcp } from './server'
 import { MemoryStore } from './store'
 import { quotedReason, recruiterLens, runOutcome } from './tools'
@@ -622,6 +622,9 @@ describe('the About page', () => {
     await store.decideProposal(waiting.id, 'approved', null, 2)
     const publicResume = await call(store, 'get_resume', {}, { mode: 'public' })
     expect(Object.keys(publicResume.json!)).toEqual(['headline', 'summary', 'profile', 'keyAchievements', 'skills', 'roles', 'selectedWork', 'education', 'languages', 'honors', 'pdf', 'pages', 'note'])
+    const { lookingFor, location, workAuthorization, citizenship, availability, workArrangement, employers, relocation, teamSize } = profile
+    expect(publicResume.json!.profile).toEqual({ lookingFor, location, workAuthorization, citizenship, availability, workArrangement, employers, relocation, teamSize })
+    expect(Object.keys(publicResume.json!.profile as object)).toEqual(['lookingFor', 'location', 'workAuthorization', 'citizenship', 'availability', 'workArrangement', 'employers', 'relocation', 'teamSize'])
     expect(publicResume.text).not.toContain('A secret new intro.')
     const ownerResume = await call(store, 'get_resume')
     expect(ownerResume.json!.about).toEqual({ intro: about.intro, paragraphs: about.paragraphs })

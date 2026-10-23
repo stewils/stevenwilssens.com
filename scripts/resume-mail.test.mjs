@@ -49,6 +49,15 @@ describe('diffResume', () => {
     expect(diffResume(after, resume()).find((change) => change.kind === 'removed')).toMatchObject({ section: 'Independent AI Product Builder at Independent', what: 'The role was removed' })
   })
 
+  it('names each logistics fact in plain words when it is added', () => {
+    for (const [field, label] of [['citizenship', 'citizenship'], ['workArrangement', 'work arrangement'], ['employers', 'employers'], ['relocation', 'relocation']]) {
+      const changes = diffResume(resume(), resume({ profile: { ...resume().profile, [field]: 'Stated' } }))
+      expect(changes, field).toHaveLength(1)
+      expect(changes[0].section).toBe('Profile')
+      expect(changes[0].what, field).toContain(label)
+    }
+  })
+
   it('covers skills, key numbers, honors, education, languages and recommendations', () => {
     const after = resume({
       skills: ['Product strategy and roadmaps', 'Machine learning and AI products'],

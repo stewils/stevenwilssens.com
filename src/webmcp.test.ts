@@ -59,6 +59,11 @@ describe('WebMCP', () => {
     expect(about.headline).toBe(profile.headline)
     expect(about.lookingFor).toBe(profile.lookingFor)
     expect(about.workAuthorization).toBe(profile.workAuthorization)
+    expect(about).toMatchObject({ citizenship: profile.citizenship, availability: profile.availability, workArrangement: profile.workArrangement, employers: profile.employers, relocation: profile.relocation })
+    // The logistics in one order everywhere: where, allowed to work, when, how, for whom, would he move.
+    const keys = Object.keys(about)
+    expect(keys.slice(keys.indexOf('location'), keys.indexOf('relocation') + 1)).toEqual(['location', 'workAuthorization', 'citizenship', 'availability', 'workArrangement', 'employers', 'relocation'])
+    expect(tool('about_steven').description).toMatch(/work authorization, citizenship, availability, work arrangement, employers and relocation/)
     expect(about.contact).toEqual({ email: profile.email, linkedin: profile.linkedin, site: profile.site, resumePdf: `https://steven.wilssens.com${profile.resumePdf}` })
     expect(about.roles.map((role: { key: string }) => role.key)).toEqual(experiences.map((item) => item.key))
     expect(about.keyNumbers[0]).toEqual({ value: '250%+', label: 'growth in monthly active spatial-audio devices', backedByRole: 'spatial-audio-lead' })

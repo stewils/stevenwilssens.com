@@ -117,7 +117,12 @@ export const profile = {
   lookingFor: 'Product leadership roles building new products, where data, experimentation and AI are tools rather than the job',
   location: 'Seattle, Washington',
   workAuthorization: 'US permanent resident (green card)',
+  citizenship: 'Belgian citizen (EU)',
   availability: 'Available now',
+  // How he works, for whom and whether he would move, each its own field next to when (availability): Steven's words, 2026-10-22.
+  workArrangement: 'Hybrid or remote, across time zones',
+  employers: 'Open to employers outside the US',
+  relocation: 'Not relocating',
   teamSize: '10 to 20 product managers',
   email: 'steven@wilssens.com',
   phone: '425.533.7722',

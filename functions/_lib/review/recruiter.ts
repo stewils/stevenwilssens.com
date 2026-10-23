@@ -58,10 +58,13 @@ export const reviewForRecruiters = ({ pages, resumeReport, linkedin, now }: Revi
   })
 
   // 4. Hiring logistics.
-  for (const [field, label] of [['location', 'location'], ['workAuthorization', 'work authorization'], ['availability', 'availability'], ['lookingFor', 'the role you are looking for']] as const) {
+  for (const [field, label] of [['location', 'location'], ['workAuthorization', 'work authorization'], ['availability', 'availability'], ['workArrangement', 'work arrangement'], ['lookingFor', 'the role you are looking for']] as const) {
     if (!profile[field]) findings.push({ area: `logistics:${field}`, severity: 'high', finding: `The ${label} is not stated.`, why: 'Recruiters filter on location and authorization before reading a word; leaving them out gets the profile skipped, not asked.', fix: `Set profile.${field} in src/resume.ts.` })
   }
-  if (!/remote|hybrid|on-site|relocat/i.test(`${profile.lookingFor} ${profile.availability} ${text('about')}`)) questions.push({ about: 'general', question: 'Remote, hybrid or on-site, and would you relocate? The site says Seattle but not how flexible that is.', whyItMatters: 'Work arrangement is the second filter after location.' })
+  // A stated arrangement (remote, hybrid or on-site alike) answers how he works; only relocation can still be open.
+  if (!profile.workArrangement) {
+    if (!/remote|hybrid|on-site|relocat/i.test(`${profile.lookingFor} ${profile.availability} ${text('about')}`)) questions.push({ about: 'general', question: 'Remote, hybrid or on-site, and would you relocate? The site says Seattle but not how flexible that is.', whyItMatters: 'Work arrangement is the second filter after location.' })
+  } else if (!profile.relocation && !/relocat/i.test(text('about'))) questions.push({ about: 'general', question: 'Would you relocate? The site says where you are based and how you work, but not whether you would move.', whyItMatters: 'Roles that come with a move filter on it before a first call.' })
 
   // 5. Proof points to the right chapter.
   const recent = selectedWork.filter((item) => /20(2[0-9]|3\d)/.test(item.period))

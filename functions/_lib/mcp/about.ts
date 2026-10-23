@@ -81,12 +81,17 @@ export const checkAboutText = (about: About): string[] => {
   return refusals
 }
 
-// The side-note facts (recruiter guard 1): a sentence about location, work authorization or
-// availability must say what profile says; a job title must be one of the roles.
+// The side-note facts (recruiter guard 1): a sentence about location, work authorization,
+// citizenship, availability, work arrangement or relocation must say what profile says; a
+// job title must be one of the roles. "Belgian" is a citizenship word but "Belgium" is not,
+// so the About copy can say where he worked.
 const sideNote: { pattern: RegExp; value: (resume: ResumeData) => string }[] = [
-  { pattern: /\b(?:based in|live in|living in|located in|relocat\w*|moving to)\b/i, value: (resume) => resume.profile.location },
-  { pattern: /\b(?:green card|visas?|H-1B|sponsor\w*|citizen\w*|permanent resident|authori[sz]ed to work)\b/i, value: (resume) => resume.profile.workAuthorization },
+  { pattern: /\b(?:based in|live in|living in|located in|moving to)\b/i, value: (resume) => resume.profile.location },
+  { pattern: /\b(?:green card|visas?|H-1B|sponsor\w*|permanent resident|authori[sz]ed to work|right to work|work permits?)\b/i, value: (resume) => resume.profile.workAuthorization },
+  { pattern: /\b(?:citizen\w*|nationality|nationals?|passports?|Belgian|European Union|EU)\b/i, value: (resume) => resume.profile.citizenship },
   { pattern: /\b(?:available (?:from|in|now|immediately|starting)|start date|notice period)\b/i, value: (resume) => resume.profile.availability },
+  { pattern: /\b(?:remote|hybrid|on-?site|in[- ]office|in[- ]person|work(?:ing)? from home|time ?zones?|commut\w*)\b/i, value: (resume) => resume.profile.workArrangement },
+  { pattern: /\brelocat\w*\b/i, value: (resume) => resume.profile.relocation },
 ]
 const titleStart = /\b(?:Head of|Vice President|Principal|Senior|Group|Lead|Chief|Director|VP)\b(?: (?:[A-Z][\w&-]*|of|and|&))*/g
 const titleEnd = /^(.*\b(?:Product Manager|Manager|Director|Officer|Engineer|Lead|VP|Vice President))\b/
@@ -130,9 +135,10 @@ export const checkAboutProposal = (p: AboutChange, resume: ResumeData): AboutChe
   const roles = resume.experiences.map((item) => item.role.toLowerCase())
   for (const sentence of sentencesOf(result)) {
     const lower = sentence.toLowerCase()
-    const fact = sideNote.find(({ pattern, value }) => pattern.test(sentence) && !lower.includes(norm(value(resume)).toLowerCase()))
+    // An empty profile value states nothing, so it backs no sentence ('' is in every string).
+    const fact = sideNote.find(({ pattern, value }) => { const stated = norm(value(resume)).toLowerCase(); return pattern.test(sentence) && (!stated || !lower.includes(stated)) })
     const title = titlesIn(sentence).find((name) => !roles.some((role) => role.includes(name.toLowerCase())))
-    if (fact || title) refusals.push(`"${sentence}" states ${title ? `the title "${title}"` : 'a location, work authorization or availability'} that the résumé does not: ${sideNoteRefusal}`)
+    if (fact || title) refusals.push(`"${sentence}" states ${title ? `the title "${title}"` : 'a location, work authorization, citizenship, availability, work arrangement or relocation'} that the résumé does not: ${sideNoteRefusal}`)
   }
   const flags = sentenceFlags(texts, resume)
   // Recruiter guard 6: what a recruiter's search and a hiring manager's skim look for.

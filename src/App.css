@@ -123,7 +123,7 @@ nav a, .nav-measure span { white-space: nowrap; }
 .nav-panel a:hover, .nav-panel a.active { color: var(--green); border-color: var(--green); }
 nav a:focus-visible, .nav-more > button:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 2px; }
 @media (max-width: 800px) { nav, .nav-more { position: static; } nav, .nav-measure { gap: 18px; } nav a, .nav-more > button, .nav-measure span { padding: 22px 0 19px; } .nav-panel { top: 100%; left: 0; right: 0; min-width: 0; } .nav-panel a { padding: 14px 20px; } }
-@media (max-width: 520px) { .header-contact .text-link { display: none; }.hero-facts { grid-template-columns: 1fr; gap: 12px; } }
+@media (max-width: 520px) { .header-contact .text-link { display: none; }.hero-facts { grid-template-columns: 1fr; gap: 12px; }.profile-hero { gap: 20px; }.spatial-field, .hero-mark { width: 88px; height: 88px; }.spatial-rings span { width: calc(88px + var(--ring) * 32px); height: calc(88px + var(--ring) * 32px); margin: calc((88px + var(--ring) * 32px) / -2); }.spatial-rings .spatial-wave { width: 88px; height: 88px; margin: -44px; } }
 /* Patents: grouped by status, each invention with a plain-language summary and its Justia records. */
 .patent-group + .patent-group { margin-top: 76px; }
 .patent-group h2 { margin: 0 0 18px; font-size: 24px; letter-spacing: -.6px; }
@@ -136,6 +136,9 @@ nav a:focus-visible, .nav-more > button:focus-visible { outline: 2px solid var(-
 .patent-records a { min-width: 128px; }
 .about-portrait { width: 124px; height: 124px; margin-bottom: 18px; border: 6px solid var(--halo); border-radius: 50%; object-fit: cover; }
 .hero-kicker h1 { display: inline; margin: 0; font: inherit; letter-spacing: inherit; }
+/* The work arrangement is the kicker's second line at every width; the separator stays in the HTML for the Markdown copy and no-CSS reading. */
+.kicker-sep { display: none; }
+.hero-arrangement { display: block; }
 /* Skip link: hidden until focused from the keyboard. */
 .skip-link { position: absolute; z-index: 30; top: 12px; left: 12px; padding: 10px 14px; border-radius: 3px; background: var(--green); color: var(--on-green); font-size: 13px; font-weight: 700; text-decoration: none; transform: translateY(-160%); transition: transform .15s; }
 .skip-link:focus-visible { transform: none; }

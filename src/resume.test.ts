@@ -1,10 +1,12 @@
 // @vitest-environment node
 // The resume PDF is generated from src/resume.ts (npm run resume:build). This test
 // fails when the two drift, so a content change never ships without a new resume.
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import appSource from './App.tsx?raw'
 import { analyzeResume, atsScore, compareScores, dataQuestions, extractPdf, formatComparison, lenses, readBaseline, resumePath } from '../scripts/resume-check.mjs'
-import { about, experiences } from './resume'
+import { about, experiences, profile } from './resume'
 
 const pointsOf = (key: string) => experiences.find((item) => item.key === key)!.points
 // The PDF's text the way resume-check reads it: one line, straight quotes and hyphens, lower case.
@@ -16,7 +18,7 @@ describe('the resume PDF', () => {
     const report = await analyzeResume()
     const errors = report.findings.filter((finding: { severity: string }) => finding.severity === 'error').map((finding: { message: string }) => finding.message)
     expect(errors, 'run npm run resume:build after changing src/resume.ts').toEqual([])
-    expect(report.pages).toBeLessThanOrEqual(2)
+    expect(report.pages).toBe(2)
     expect(report.score).toBeGreaterThanOrEqual(70)
     expect(report.findings.every((finding: { lens: string }) => finding.lens in lenses)).toBe(true)
     expect(report.ats.errors).toBe(0)
@@ -38,6 +40,21 @@ describe('the resume PDF', () => {
     expect(heading).toBeGreaterThan(-1)
     expect(perfectDay).toBeGreaterThan(heading)
     expect(perfectDay).toBeLessThan(next)
+  }, 30_000)
+
+  // Header line 2, under the location an ATS parses; the facts for a close read stay off the PDF.
+  it('prints the work arrangement in the PDF, "hybrid" and "remote" as words', async () => {
+    const { text: raw } = await extractPdf(resumePath)
+    const text = normalize(raw)
+    expect(text).toContain(normalize(profile.workArrangement))
+    for (const value of [profile.citizenship, profile.employers, profile.relocation]) expect(text).not.toContain(normalize(value))
+    expect(raw).toMatch(/\bhybrid\b/i)
+    expect(raw).toMatch(/\bremote\b/i)
+    const lines = raw.split('\n').map(normalize)
+    const at = lines.findIndex((line) => line.includes('seattle, washington'))
+    expect(lines[at]).not.toMatch(/hybrid|remote/)
+    expect(lines[at + 1]).toBe(normalize(profile.workArrangement))
+    expect((await analyzeResume()).findings.filter((finding: { id: string }) => finding.id.startsWith('contact-'))).toEqual([])
   }, 30_000)
 
   // The score is what an applicant tracking system makes of the PDF: what a recruiter
@@ -99,6 +116,37 @@ describe('the Windows Data roles', () => {
       'Partnered with engineering, data science, and research leadership across telemetry from more than 1.6 billion Windows devices.',
     ])
     expect(points[0]).toContain('Microsoft’s')
+  })
+})
+
+// Steven's words of 2026-10-22, each its own field: how he works next to when, citizenship
+// next to authorization. Every surface reads them from here, so no other source types them.
+describe('the hiring logistics', () => {
+  it('states the logistics in Steven\'s words, each in its own field', () => {
+    expect(profile.location).toBe('Seattle, Washington')
+    expect(experiences.find((item) => item.key === 'independent-ai-builder')!.location).toBe(profile.location)
+    expect(profile.workAuthorization).toBe('US permanent resident (green card)')
+    expect(profile.citizenship).toBe('Belgian citizen (EU)')
+    expect(profile.availability).toBe('Available now')
+    expect(profile.workArrangement).toBe('Hybrid or remote, across time zones')
+    expect(profile.workArrangement).toHaveLength(35)
+    expect(profile.employers).toBe('Open to employers outside the US')
+    expect(profile.relocation).toBe('Not relocating')
+    const keys = Object.keys(profile)
+    expect(keys.slice(keys.indexOf('workAuthorization'), keys.indexOf('relocation') + 1)).toEqual(['workAuthorization', 'citizenship', 'availability', 'workArrangement', 'employers', 'relocation'])
+  })
+
+  it('types the logistics values only in src/resume.ts', () => {
+    const values = [profile.citizenship, profile.workArrangement, profile.employers, profile.relocation].map((value) => value.toLowerCase())
+    const sources = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) return entry.name === 'node_modules' ? [] : sources(path)
+      return /\.(ts|tsx|mjs)$/.test(entry.name) && !/\.test\./.test(entry.name) ? [path] : []
+    })
+    const files = ['src', 'functions', 'scripts'].flatMap(sources)
+    expect(files).toContain(join('functions', '_lib', 'ask', 'prompt.ts'))
+    const hits = files.filter((file) => file !== join('src', 'resume.ts')).filter((file) => { const text = readFileSync(file, 'utf8').toLowerCase(); return values.some((value) => text.includes(value)) })
+    expect(hits).toEqual([])
   })
 })
 
