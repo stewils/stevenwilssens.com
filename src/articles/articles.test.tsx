@@ -8,6 +8,7 @@ import { TeamFlowDiagram } from './site/Diagrams'
 import JuniorTrackCyclingArticle from './juniortrackcycling/JuniorTrackCyclingArticle'
 import LeoArticle from './leo/LeoArticle'
 import { Stats } from './wilssens/Stats'
+import { feedDate } from './wilssens/article'
 import sources from './sources.json'
 import wilssensFeed from './wilssens/feed.json'
 import siteFeed from './site/feed.json'
@@ -244,5 +245,28 @@ describe('the team diagram on /building-this-site', () => {
     const sentence = step.textContent!.match(/[^.]*unread updates[^.]*\./)![0].trim()
     expect(sentence).toBe('Changes to the agent team itself reach me in my admin as unread updates until I have seen them.')
     expect(sentence).not.toMatch(/\d/)
+  })
+
+  it('says Steven is told about each update in plain words and only the version he previewed goes live, in one sentence without a number or an internal name', () => {
+    const { container } = render(<SiteArticle />)
+    const step = within(document.getElementById('loop')!.closest('section')!).getByText('Put every change past a team.').closest('li')!
+    const text = step.textContent!
+    const sentence = text.match(/I read the preview and merge[^.]*\./)![0]
+    // "From the same conversation" bounds the claim: the GitHub merge button pins no version.
+    expect(sentence).toBe('I read the preview and merge from the same conversation: Claude tells me about each update in plain words, not pull requests, and only the version I previewed goes live, never one still being checked.')
+    expect(sentence).not.toMatch(/\d/)
+    expect(sentence).not.toMatch(/\bMCP\b|\bsha\b|_site_update|check runs|safely|seamlessly|metered|unread updates/i)
+    expect(sentence.split(/\s+/).length).toBeLessThanOrEqual(35)
+    expect(text).not.toContain('I read the preview and merge, from the same conversation if I like.')
+    // One sentence between its neighbours, and the sentences before it unchanged.
+    expect(text).toContain(`runs the team review on the pull request. ${sentence} Changes to the agent team itself`)
+    for (const before of [
+      'Every change, mine included, goes through Claude Code agents in six roles: a product manager, a recruiter, a designer, a developer, a security engineer and a tester.',
+      'The recruiter holds the bar that the site never gets worse for recruiters.',
+      'Reviewers that did not write the code check every change, for at most three rounds, and my open questions are asked once per round.',
+      'On GitHub a required Review check runs the team review on the pull request.',
+    ]) expect(text).toContain(before)
+    // The closing date comes from the feed, never typed in.
+    expect(container.querySelector('[data-feed-date]')).toHaveTextContent(`${feedDate(siteFeed.asOf)}.`)
   })
 })
