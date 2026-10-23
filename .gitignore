@@ -43,3 +43,7 @@ screenshots
 # The assistant check's bundled export (Review workflow, job A): built inside the checkout so it resolves node_modules.
 .assistant-export
 .assistant-export-test
+
+# What the dev-costs hook has not sent yet (.claude/hooks/dev-costs.mjs), and local Claude Code settings
+.dev-costs-queue.jsonl*
+.claude/settings.local.json

@@ -113,7 +113,8 @@ describe('the assistant check (AC-9)', () => {
   })
 
   it('the key is in job B and in the existing team step only', () => {
-    const uses = [...workflow.matchAll(/secrets\.ANTHROPIC_API_KEY/g)].map((match) => match.index)
+    // The costs job reads only whether the key is set (`!= ''`), never its value (specs/dev-costs.md).
+    const uses = [...workflow.matchAll(/secrets\.ANTHROPIC_API_KEY(?! != '')/g)].map((match) => match.index)
     expect(uses).toHaveLength(2)
     const inCheck = workflow.indexOf(check)
     const inPrompt = workflow.indexOf(prompt)

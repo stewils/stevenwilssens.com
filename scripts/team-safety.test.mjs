@@ -56,7 +56,8 @@ describe('the flow diagram lays itself out from the card width', () => {
   it('has two lanes only in a container of 1000px or more, and never from 11 nodes', () => {
     const css = readFileSync(join(root, 'src/admin/admin.css'), 'utf8')
     expect(css).toMatch(/\.fd \{[^}]*container-type: inline-size/)
-    expect(css.match(/@container[^{]*/g)).toEqual(['@container (min-width: 1000px) '])
+    // The diagram's one container query (the Costs chart has its own, on .chart--stacked).
+    expect(css.match(/@container[^{]*\{\s*\.fd\b/g)).toEqual([expect.stringMatching(/^@container \(min-width: 1000px\) \{/)])
     const wide = css.slice(css.indexOf('@container (min-width: 1000px)'))
     expect(wide).toMatch(/^@container \(min-width: 1000px\) \{\s+\.fd:not\(\.fd-long\) \.fd-steps \{ grid-template-columns/)
     // In the lanes: no word broken with a hyphen, a group's branches read out but not

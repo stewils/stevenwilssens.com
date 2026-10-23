@@ -38,6 +38,17 @@ describe('GET /api/building/<project>', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
+  it('answers the same with or without development cost rows in the database (they are admin only)', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+    const without = await (await get('site', fakeD1())).json() as { asOf: string }
+    const db = fakeD1()
+    db.sqlite.exec(`INSERT INTO dev_cost_runs (source, run_key, branch, role, batch, batch_at, model, billing, output_tokens, reported_micro, started_at, ended_at, received_at) VALUES ('github', 'github:1:1:team', 'x', 'review-workflow', 0, 1, 'reported', 'billed', 0, 5000000, 1, 1, 1)`)
+    db.sqlite.exec(`INSERT INTO dev_cost_budgets (branch, budget_micro, updated_at) VALUES ('x', 1, 1)`)
+    const withCosts = await (await get('site', db)).json() as { asOf: string }
+    expect({ ...withCosts, asOf: null }).toEqual({ ...without, asOf: null })
+    expect(db.queries.some((sql) => /dev_cost/.test(sql))).toBe(false)
+  })
+
   it('adds the merged site-update pull requests when the GitHub token is set, from the default repository or the one configured', async () => {
     const pulls = [{ merged_at: '2026-10-01', head: { ref: 'update/x' } }, { merged_at: '2026-10-02', head: { ref: 'update/y' } }, { merged_at: null, head: { ref: 'update/z' } }, { merged_at: '2026-10-03', head: { ref: 'feature' } }]
     const fetch = vi.fn(async (_input: RequestInfo | URL) => jsonResponse(pulls))

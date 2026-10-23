@@ -94,6 +94,28 @@ describe('BarChart', () => {
     expect(screen.getByText('Peak 3')).toBeInTheDocument()
   })
 
+  it('stacks an estimated part on top of the billed one, from zero, with a legend, a readout and its own axis format', () => {
+    const months = [
+      { key: '2026-09', label: 'September', value: 20_000_000, estimated: 43_100_000, detail: '$20.00 billed, estimated $43.10, 3 features' },
+      { key: '2026-10', label: 'October so far', value: 12_000_000, estimated: 0, detail: '$12.00 billed, estimated $0.00, 5 features' },
+      { key: '2026-11', label: 'November', value: 0, estimated: 5_000_000, detail: 'none' },
+    ]
+    const { container } = render(<BarChart title="Months" bars={months} axisLabels={['Sep', 'Oct', 'Nov']} max={100_000_000} format={(micro) => `$${micro / 1_000_000}`} readout="Last full month ≈$63.10" legend={<span className="chart-legend">billed estimated</span>} />)
+    expect(container.querySelector('figure')).toHaveClass('chart--stacked')
+    expect(screen.getByText('$100')).toBeInTheDocument()
+    expect(screen.getByText('$50')).toBeInTheDocument()
+    expect(screen.getByText('Last full month ≈$63.10')).toBeInTheDocument()
+    expect(screen.getByText('billed estimated')).toBeInTheDocument()
+    const september = screen.getByRole('button', { name: 'September: $20.00 billed, estimated $43.10, 3 features' })
+    expect(september.querySelector<HTMLElement>('.chart-stack')!.style.height).toBe('63.1%')
+    expect([...september.querySelectorAll<HTMLElement>('.chart-part')].map((part) => [part.className, part.style.flexGrow])).toEqual([['chart-part est', '43100000'], ['chart-part billed', '20000000']])
+    // A part with nothing in it is not drawn.
+    expect(screen.getByRole('button', { name: /^October so far/ }).querySelectorAll('.chart-part')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: /^November/ }).querySelector('.chart-part')).toHaveClass('est')
+    fireEvent.focus(september)
+    expect(screen.getByText('September · $20.00 billed, estimated $43.10, 3 features')).toBeInTheDocument()
+  })
+
   it('keeps a fixed maximum when given one', () => {
     render(<BarChart title="Hours" bars={bars} axisLabels={[]} max={10} />)
     expect(screen.getByText('10')).toBeInTheDocument()

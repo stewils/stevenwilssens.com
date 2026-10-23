@@ -29,7 +29,7 @@ const call = async (store: MemoryStore, name: string, args: Record<string, unkno
 }
 
 const pull = (number: number, extra: Partial<PullRequest> = {}, body = ''): PullRequest => ({
-  number, title: `PR ${number}`, url: `https://github.com/x/pull/${number}`, branch: `update/pr-${number}`, headRepo: 'stewils/stevenwilssens.com', draft: false, state: 'open', merged: false, createdAt: '2026-10-17T00:00:00Z',
+  number, title: `PR ${number}`, url: `https://github.com/x/pull/${number}`, branch: `update/pr-${number}`, headRepo: 'stewils/stevenwilssens.com', draft: false, state: 'open', merged: false, mergeCommit: null, createdAt: '2026-10-17T00:00:00Z',
   previewUrl: previewUrl(`update/pr-${number}`), mergeable: true, mergeableState: 'clean', resumeScore: resumeScoreFromBody(body), request: updateRequestFromBody(body), ...extra,
 })
 // Like GitHub: a dispatched run's branch is main, and its number ends the branch it pushes (update/<slug>-<number>).
@@ -58,6 +58,7 @@ const fakeGitHub = (options: Options = {}) => {
       if (options.findsRun !== false) runs.unshift(run(200 + calls.events.length, { status: 'queued', conclusion: null, event: 'repository_dispatch', title: `Refresh the Building write-up about ${String(payload.project)}` }))
     },
     headOf: async (repository) => { calls.heads.push(repository); return options.heads?.[repository] ?? null },
+    allPulls: async () => pulls,
   }
   return { github, calls, runs, pulls }
 }

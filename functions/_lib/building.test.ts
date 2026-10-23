@@ -16,6 +16,7 @@ const fakeGitHub = (merged: number | Error): GitHub => ({
   runs: async () => [],
   pulls: async () => [],
   pull: async () => null,
+  allPulls: async () => [],
   run: async () => null,
   runFailure: async () => null,
   close: async () => ({ closed: false, branchDeleted: false }),

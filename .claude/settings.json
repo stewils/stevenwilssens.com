@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 5,
+            "command": "[ \"$GITHUB_ACTIONS\" = true ] || node \"$CLAUDE_PROJECT_DIR/.claude/hooks/dev-costs.mjs\""
+          }
+        ]
+      }
+    ]
+  }
+}

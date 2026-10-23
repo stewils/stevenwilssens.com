@@ -1,6 +1,6 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { makeAsk, makeMcp, makeResume, makeStats, makeTeamManifest, makeTeamReads, NOW, sha } from '../test/admin-fixtures'
+import { makeAsk, makeCosts, makeMcp, makeResume, makeStats, makeTeamManifest, makeTeamReads, NOW, sha } from '../test/admin-fixtures'
 import { computeNeeds, computeSummaries } from './needs'
 import { Overview } from './Overview'
 import type { AdminData, ResumeReport } from './types'
@@ -32,13 +32,22 @@ describe('Overview', () => {
     expect(screen.getByRole('img', { name: /Last 7 days: visitors per day/ })).toBeInTheDocument()
   })
 
+  it('has a Costs tile with this month’s cost, linking to #costs, and the line for a feature over its budget', () => {
+    show(full({ costs: { info: makeCosts(), error: '' } }))
+    const tiles = screen.getByRole('heading', { name: 'Go to' }).closest('section')!
+    const tile = within(tiles).getByRole('link', { name: /^Costs/ })
+    expect(tile).toHaveAttribute('href', '#costs')
+    expect(tile).toHaveTextContent('≈$41.20 this month ($12.00 billed) · 1 over budget')
+    expect(screen.getByRole('link', { name: /feature is over its budget: dev-costs, ≈\$12\.40 of \$10\.00/ })).toHaveTextContent('Costs →')
+  })
+
   it('links what needs Steven to the page it is on, and gives every page a tile', () => {
     show(full())
     const need = screen.getByRole('link', { name: /device type fails Core Web Vitals/ })
     expect(need).toHaveAttribute('href', '#speed')
     expect(need).toHaveTextContent('Page speed →')
     const tiles = screen.getByRole('heading', { name: 'Go to' }).closest('section')!
-    expect(within(tiles).getAllByRole('link')).toHaveLength(10)
+    expect(within(tiles).getAllByRole('link')).toHaveLength(11)
     expect(within(tiles).getByRole('link', { name: /Links/ })).toHaveTextContent('Every address for running the site')
     expect(within(tiles).getByRole('link', { name: /Traffic/ })).toHaveTextContent('40 visitors · 120 pageviews · 6 résumé downloads')
   })

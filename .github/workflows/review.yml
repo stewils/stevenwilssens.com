@@ -262,6 +262,10 @@ jobs:
     if: ${{ !cancelled() && needs.gates.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 75
+    outputs:
+      micro: ${{ steps.cost.outputs.micro }}
+      turns: ${{ steps.cost.outputs.turns }}
+      ms: ${{ steps.cost.outputs.ms }}
     permissions:
       contents: read
       pull-requests: write
@@ -438,6 +442,7 @@ jobs:
           if [ -f "$report" ]; then head -n 3 "$report"; else echo "The change does not reach the assistant: no assistant check."; fi
 
       - name: The team reviews the pull request
+        id: team
         if: steps.who.outputs.dependabot != 'true'
         uses: anthropics/claude-code-action@v1
         with:
@@ -490,8 +495,32 @@ jobs:
             push, commit, merge or edit any file outside .review/. Always finish by writing .review/result.json
             as the skill says, even when a reviewer failed or ran out of turns (that role then counts as
             CHANGES_REQUESTED with the reason); its "comment" is posted on the pull request for Steven.
+          # No hooks run on GitHub: the costs hook's own guard is the first safeguard, this the second (specs/dev-costs.md S-4).
+          settings: '{"disableAllHooks":true}'
           claude_args: '--max-turns 300 --allowedTools "Agent,Task,Read,Glob,Grep,Write(.review/**),Edit(.review/**),Write(/${{ github.workspace }}/.review/**),Edit(/${{ github.workspace }}/.review/**),Bash(npm run lint*),Bash(npm test*),Bash(npm run test:coverage*),Bash(npm run check:recruiter*),Bash(npm run check:site*),Bash(npm run screenshots*),Bash(npm audit*),Bash(node scripts/resume-check.mjs*),Bash(node scripts/recruiter-check.mjs*),Bash(node scripts/screenshots.mjs*),Bash(node scripts/site-check.mjs*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(git status*),Bash(gh pr view*),Bash(gh pr diff*),Bash(ls*),Bash(cat*),Bash(head*),Bash(tail*),Bash(wc*),Bash(grep*),Bash(sort*),Bash(diff*),Bash(md5sum*),Bash(sha256sum*),Bash(jq*),Bash(git rev-parse*),Bash(git ls-files*),Bash(git cat-file*),Bash(git merge-base*),Bash(git blame*),Bash(npx vitest*),Bash(npx tsc*),Bash(npx oxlint*),Bash(mkdir -p .review*),Bash(sed -n*)"'
 
+      # What the run cost, for /admin#costs (specs/dev-costs.md): only three numbers leave this job, as job
+      # outputs, each only when it is a plain number; the execution file itself (the whole session) is never
+      # uploaded, posted or printed. A cancelled or timed-out Claude step writes no file, so it is not recorded.
+      - name: Read what the run cost
+        id: cost
+        if: always() && steps.who.outputs.dependabot != 'true'
+        env:
+          EXECUTION_FILE: ${{ steps.team.outputs.execution_file }}
+        run: |
+          file="${EXECUTION_FILE:-$RUNNER_TEMP/claude-execution-output.json}"
+          if [ ! -s "$file" ]; then echo "::warning::No execution file from the Claude step: this run's cost is not recorded."; exit 0; fi
+          # The cost goes on as whole micro-dollars: Claude Code sums it as a float, which can print with 17 digits.
+          if ! result=$(/usr/bin/jq -c '[.[] | select(.type == "result")] | last // empty | {micro: (.total_cost_usd | if type == "number" then . * 1000000 | round else . end), turns: .num_turns, ms: .duration_ms}' "$file" 2>/dev/null) || [ -z "$result" ]; then
+            echo "::warning::The execution file has no result: this run's cost is not recorded."; exit 0
+          fi
+          for key in micro turns ms; do
+            value=$(printf '%s' "$result" | /usr/bin/jq -r --arg key "$key" '.[$key] // empty | tostring' 2>/dev/null || true)
+            # What /api/costs takes: at most 10^9 micro-dollars ($1,000), turns and milliseconds of 9 digits at most.
+            if [[ "$value" =~ ^(0|[1-9][0-9]{0,8})$ ]] || [[ "$key" = micro && "$value" = 1000000000 ]]; then echo "$key=$value" >> "$GITHUB_OUTPUT"
+            elif [[ "$key" = micro && "$value" =~ ^[1-9][0-9]{9,}$ ]]; then echo "::warning::The run cost more than \$1,000, more than the costs page takes: it is not recorded."
+            else echo "::warning::The run's $key is not a plain number: it is not recorded."; fi
+          done
       - name: Post the sign-offs and pass or fail
         if: ${{ !cancelled() && steps.who.outputs.dependabot != 'true' }}
         env:
@@ -542,3 +571,57 @@ jobs:
             !.review/cov-*
           include-hidden-files: true
           if-no-files-found: ignore
+
+  # Posts what the Claude run cost to /admin#costs (specs/dev-costs.md). Its own job on a fresh runner, after
+  # the job that ran the code under review is gone: no checkout, no npm, no action, nothing but the runner's
+  # jq and curl, no permissions. COSTS_INGEST_TOKEN is in this one step's env and nowhere else. Every value
+  # reaches the script through env and is checked again; the body is built by jq; any problem is one
+  # warning and the run still passes.
+  # Not for Dependabot's own dependency updates (the same opener, branch, actor and triggering actor as the
+  # team job's first step; its runs have no Claude step and no secrets); everything else is recorded.
+  costs:
+    needs: team
+    if: always() && needs.team.result != 'skipped' && !(github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' && github.triggering_actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Record what the run cost
+        env:
+          COSTS_INGEST_TOKEN: ${{ secrets.COSTS_INGEST_TOKEN }}
+          # Billed or estimated, from the credentials the Claude step is given: Claude Code uses ANTHROPIC_API_KEY
+          # before CLAUDE_CODE_OAUTH_TOKEN, and always when it is set in non-interactive mode, as the action runs it
+          # (https://code.claude.com/docs/en/authentication). Only whether each is set crosses, never its value.
+          HAS_API_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          HAS_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+          MICRO: ${{ needs.team.outputs.micro }}
+          TURNS: ${{ needs.team.outputs.turns }}
+          DURATION: ${{ needs.team.outputs.ms }}
+          WORKFLOW: review
+          JOB: team
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          PR: ${{ github.event.pull_request.number || inputs.pr }}
+        run: |
+          warn() { echo "::warning::This run's cost is not recorded: $1"; exit 0; }
+          [[ ( "$MICRO" =~ ^(0|[1-9][0-9]{0,8})$ || "$MICRO" = 1000000000 ) && "$TURNS" =~ ^(0|[1-9][0-9]{0,8})$ && "$DURATION" =~ ^(0|[1-9][0-9]{0,8})$ ]] || warn "the Claude step reported no cost (cancelled, timed out or skipped)."
+          [[ "$RUN_ID" =~ ^[1-9][0-9]{0,12}$ && "$RUN_ATTEMPT" =~ ^[1-9][0-9]?$ ]] || warn "the run id is not a number."
+          # The branch rule of /api/costs; a Site update branch always starts with update/.
+          [[ "$BRANCH" =~ ^[A-Za-z0-9._/-]{1,200}$ && "$BRANCH" != *..* && "$BRANCH" != *//* && "$BRANCH" != [-/]* && "$BRANCH" != */ && "$BRANCH" != *.lock ]] || warn "the branch name is not one the costs page takes."
+          if [ "$WORKFLOW" = site-update ] && [[ "$BRANCH" != update/* ]]; then warn "a Site update branch starts with update/."; fi
+          if [ -n "$PR" ] && ! [[ "$PR" =~ ^[1-9][0-9]{0,5}$ ]]; then warn "the pull request is not a number."; fi
+          if [ "$HAS_API_KEY" = true ]; then billing=billed; elif [ "$HAS_OAUTH" = true ]; then billing=estimated; else billing=unknown; fi
+          [ -n "$COSTS_INGEST_TOKEN" ] || warn "the COSTS_INGEST_TOKEN secret is not set."
+          body=$(/usr/bin/jq -cn --arg workflow "$WORKFLOW" --arg job "$JOB" --arg branch "$BRANCH" --arg billing "$billing" --arg pr "$PR" \
+            --argjson costMicro "$MICRO" --argjson runId "$RUN_ID" --argjson runAttempt "$RUN_ATTEMPT" --argjson numTurns "$TURNS" --argjson durationMs "$DURATION" --argjson endedAt "$(date +%s)000" \
+            '{v: 1, source: "github", workflow: $workflow, job: $job, runId: $runId, runAttempt: $runAttempt, branch: $branch, billing: $billing,
+              costMicro: $costMicro, numTurns: $numTurns, durationMs: $durationMs, endedAt: $endedAt} + (if $pr == "" then {} else {pr: ($pr | tonumber)} end)') || warn "the body could not be built."
+          # The token goes to curl in a header file, never on its command line.
+          header="$RUNNER_TEMP/costs-header"
+          printf 'Authorization: Bearer %s\n' "$COSTS_INGEST_TOKEN" > "$header"
+          if printf '%s' "$body" | /usr/bin/curl --fail --silent --show-error --max-time 10 -X POST -H @"$header" -H 'Content-Type: application/json' --data-binary @- -o /dev/null https://steven.wilssens.com/api/costs; then
+            rm -f "$header"; echo "Recorded: $billing, $MICRO millionths of a dollar as the Claude step reported them, $TURNS turns."
+          else
+            rm -f "$header"; warn "the post to /api/costs failed."
+          fi
