@@ -64,7 +64,7 @@ describe('what Steven hears', () => {
     expect(say.checksFailed(name, [])).toBe("Your Foresight summary update isn't ready to go live: the team's checks haven't passed.")
     expect(say.checksFailed(name, ['team', 'gates'])).toBe("Your Foresight summary update isn't ready to go live: the team's review and the résumé score check haven't passed. The team may have a question for you.")
     expect(say.checksFailed(name, ['check'])).toBe("Your Foresight summary update isn't ready to go live: the site checks haven't passed.")
-    expect(say.checksFailed(name, ['deploy', 'lint'])).toBe("Your Foresight summary update isn't ready to go live: the preview build and another check haven't passed.")
+    expect(say.checksFailed(name, ['deploy', 'lint'])).toBe("Your Foresight summary update isn't ready to go live: the preview and another check haven't passed.")
     expect(say.checking(name, 'https://preview.example')).toBe("Your Foresight summary update is ready to look at while the team finishes checking it; I'll tell you when it can go live. Preview: https://preview.example")
     expect(say.checksFailed(name, ['team'])).not.toMatch(/want it live/i)
     expect(say.notReadyYet(name)).not.toMatch(/want it live/i)

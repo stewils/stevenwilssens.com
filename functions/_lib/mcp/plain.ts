@@ -43,7 +43,7 @@ const yours = (name: string) => `your ${name}`
 const Yours = (name: string) => `Your ${name}`
 
 // The checks GitHub names, in words Steven knows. The team's review also stops while it waits for his answer.
-const checkWords: Record<string, string> = { team: "the team's review", gates: 'the résumé score check', check: 'the site checks', deploy: 'the preview build' }
+const checkWords: Record<string, string> = { team: "the team's review", gates: 'the résumé score check', check: 'the site checks', deploy: 'the preview' }
 const list = (names: string[]) => (names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`)
 export const describeChecks = (names: string[]) => {
   const words = [...new Set(names.map((name) => checkWords[name] ?? 'another check'))]
@@ -63,7 +63,7 @@ export const say = {
   // Checks still running: he can look already, it just cannot go live yet.
   checking: (name: string, preview: string) => `${Yours(name)} is ready to look at while the team finishes checking it; I'll tell you when it can go live. Preview: ${preview}`,
   checksFailed: (name: string, failed: string[]) => `${Yours(name)} isn't ready to go live: ${describeChecks(failed)}.${failed.includes('team') ? ' The team may have a question for you.' : ''}`,
-  notReadyYet: (name: string) => `${Yours(name)} isn't ready to go live yet: the team's checks on it are still running or haven't passed.`,
+  notReadyYet: (name: string) => `${Yours(name)} isn't ready to go live yet: it waits for the team's checks to pass. I'll tell you when it can.`,
   clashes: (name: string) => `${Yours(name)} clashes with an update that went live since. Say yes and I'll make it again on top of that one and show you the new version; it takes about 10 minutes.`,
   alreadyLive: (name: string) => `${Yours(name)} is already live on your site.`,
   setAside: (name: string) => `${Yours(name)} was set aside and is not on your site. Want me to make it again?`,
@@ -75,7 +75,7 @@ export const say = {
   notLiveYet: (name: string) => `${Yours(name)} didn't go live yet; I'll try again in a moment.`,
   changedSince: (name: string, preview: string) => `${Yours(name)} changed after you looked at it, so I didn't put it live. Have a look at the newer version first. Preview: ${preview}`,
   redoing: (name: string) => `${Yours(name)} clashed with an update that just went live, so I'm making it again on top of that one. About 10 minutes; I'll tell you when it's ready to check.`,
-  remade: (name: string, preview: string) => `${Yours(name)} was already made again on top of what is live. Want the new version live? Preview: ${preview}`,
+  remade: (name: string, preview: string) => `There's already a new version of ${yours(name)}, made on top of what is live. Want it live? Preview: ${preview}`,
   closed: (name: string, waiting: number) => `I've set aside ${yours(name)}; nothing on your site changed.${waiting ? ` ${waiting === 1 ? 'The change you approved waits' : 'The changes you approved wait'} for the next update.` : ''}`,
   alreadyClosed: (name: string) => `${Yours(name)} was already set aside.`,
   // site_update_status: what is ready, being made, held back by checks, clashing, scoring lower.

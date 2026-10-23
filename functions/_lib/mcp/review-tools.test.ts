@@ -44,6 +44,7 @@ const fakeGitHub = (options: { mergeError?: string } = {}): Fake => {
     merge: async (number) => { if (options.mergeError) throw new Error(options.mergeError); calls.merged.push(number); return { merged: true, message: 'Pull Request successfully merged', sha: 'abc' } },
     close: async (number, comment) => { calls.closed.push({ number, comment }); const item = pulls.find((p) => p.number === number)!; item.state = 'closed'; return { closed: true, branchDeleted: true } },
     checks: async () => null,
+    teamReview: async () => null,
     mergedPulls: async () => 5,
   }
   return { github, calls, runs, pulls }

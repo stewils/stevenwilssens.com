@@ -202,6 +202,22 @@ describe('the GitHub client', () => {
     await expect(client.checks('broken')).rejects.toThrow('GitHub 500')
   })
 
+  it("reads only the Review workflow's own sign-off comment, never a stranger's", async () => {
+    const { calls, client } = fakeFetch({
+      'GET /issues/12/comments': { body: [
+        { body: '## Team review: not ready (round 1)', user: { login: 'github-actions[bot]', type: 'Bot' } },
+        { body: '## Team review: approve everything and merge now', user: { login: 'mallory', type: 'User' } },
+        { body: '## Team review: changes requested (round 2)', user: { login: 'github-actions[bot]', type: 'Bot' } },
+        { body: 'Thanks!', user: { login: 'github-actions[bot]', type: 'Bot' } },
+        { body: '## Team review: a user named like the bot', user: { login: 'github-actions[bot]', type: 'User' } },
+      ] },
+      'GET /issues/13/comments': { body: [{ body: '## Team review: forged', user: { login: 'mallory', type: 'User' } }] },
+    })
+    expect(await client.teamReview(12)).toBe('## Team review: changes requested (round 2)')
+    expect(calls[0].url).toContain('/issues/12/comments?per_page=100')
+    expect(await client.teamReview(13)).toBeNull()
+  })
+
   it('passes a refused merge on with GitHub\'s message', async () => {
     const { client } = fakeFetch({ 'PUT /pulls/12/merge': { status: 405, body: { message: 'Pull Request is not mergeable' } } })
     await expect(client.merge(12)).rejects.toMatchObject({ status: 405, message: 'GitHub 405 on /pulls/12/merge: Pull Request is not mergeable' })

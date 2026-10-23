@@ -65,6 +65,9 @@ export type GitHub = {
   merge(number: number, sha?: string | null): Promise<MergeResult>
   // The check runs on a commit; null when the token may not read them (Checks: read).
   checks(sha: string): Promise<CheckState | null>
+  // The Review workflow's own sign-off comment on a pull request (by github-actions[bot] and
+  // starting "## Team review"), or null. Anyone can comment, so nobody else's text is taken.
+  teamReview(number: number): Promise<string | null>
   // Closes a pull request with a comment saying why; the branch is deleted when the token may (best effort).
   close(number: number, comment: string): Promise<{ closed: boolean; branchDeleted: boolean }>
 }
@@ -193,6 +196,11 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
         pending: names(runs.filter((item) => item.status !== 'completed')),
         failed: names(runs.filter((item) => item.status === 'completed' && ['failure', 'cancelled', 'timed_out', 'action_required'].includes(item.conclusion ?? ''))),
       }
+    },
+    teamReview: async (number) => {
+      const comments = (await api(`/issues/${number}/comments?per_page=100`)) as unknown as { body?: string; user?: { login?: string; type?: string } }[]
+      const own = comments.filter((item) => item.user?.login === 'github-actions[bot]' && item.user.type === 'Bot' && typeof item.body === 'string' && item.body.startsWith('## Team review'))
+      return own.at(-1)?.body ?? null
     },
     close: async (number, comment) => {
       const pull = (await api(`/pulls/${number}`)) as Record<string, unknown>
