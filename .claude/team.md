@@ -139,12 +139,11 @@ with what had to be redone and a budget per change; a cancelled or timed-out Git
    Branch protection on main requires `gates`, `team` and `check`, from runs the pull
    request itself started. In the Site update workflow the `publish` job opens the pull
    request with the site's App, from a runner that runs nothing from the branch, so its
-   events start Review, Site checks and Deploy on the pull request. `publish` writes the
-   commit itself, as the site bot (author and committer), and the bot's markers and
-   comments count only when nobody else edited them. The Review workflow
-   also runs the assistant check in CI on a change to the assistant, the résumé or a
-   write-up, for the recruiter. When a check did not start, `recheck: true` (the MCP's
-   `merge_site_update`) closes and reopens the pull request.
+   events start Review, Site checks and Deploy on the pull request; `publish` writes its
+   commit as the site bot, and the bot's text counts only while nobody else edited it.
+   The Review workflow also runs the assistant check in CI on a change to the assistant,
+   the résumé or a write-up. When a check did not start, `recheck: true`
+   (`merge_site_update`) closes and reopens the pull request.
 9. **Merge**: only when every sign-off is `APPROVE`, CI is green and Steven says so.
    Always a merge commit (`gh pr merge --merge`) whose message says what changed for the
    reader.

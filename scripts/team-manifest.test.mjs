@@ -902,7 +902,7 @@ describe('this repository', () => {
   it("step 8 says publish writes the commit as the site bot and the bot's text counts only unedited; the chart is main's", () => {
     const team = committed('.claude/team.md').replace(/\r\n/g, '\n')
     const step8 = JSON.stringify(generate({ root: repoRoot }).flow.steps.find((step) => step.n === 8)).replace(/\s+/g, ' ')
-    for (const words of ['publish writes the commit itself, as the site bot (author and committer)', "the bot's markers and comments count only when nobody else edited them"]) expect(step8, words).toContain(words)
+    for (const words of ['publish writes its commit as the site bot', "the bot's text counts only while nobody else edited it"]) expect(step8, words).toContain(words)
     const chartOf = (text) => /```mermaid\n([\s\S]*?)```/.exec(text.replace(/\r\n/g, '\n'))?.[1]
     let main = null
     try { main = execFileSync('git', ['show', 'origin/main:.claude/team.md'], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }) } catch { /* a clone without origin/main: nothing to compare */ }
