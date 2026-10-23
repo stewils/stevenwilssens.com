@@ -8,6 +8,7 @@ import { LoopDiagram, TeamFlowDiagram } from './site/Diagrams'
 import JuniorTrackCyclingArticle from './juniortrackcycling/JuniorTrackCyclingArticle'
 import LeoArticle from './leo/LeoArticle'
 import { Stats } from './wilssens/Stats'
+import { feedDate } from './wilssens/article'
 import sources from './sources.json'
 import wilssensFeed from './wilssens/feed.json'
 import siteFeed from './site/feed.json'
@@ -193,7 +194,7 @@ describe('the team diagram on /building-this-site', () => {
     const images = screen.getAllByRole('img', { name: 'How a change reaches the site: a team of AI agents, and Steven deciding' })
     expect(images.map((image) => image.getAttribute('class'))).toEqual(['wx-flow-wide', 'wx-flow-tall'])
     for (const image of images) {
-      expect(image).toHaveAccessibleDescription(/The reviews run in parallel, by fresh agents that did not write the code, and only for the parts the change touches.*a change to the rules or the team gets every role but the recruiter, who reviews only changes to the résumé and the site\. Changes go back to the developer for at most three rounds, and only the reviewers who asked, or whose part the fix touched, review again\. When all approve, the pull request runs its own required checks on GitHub: main’s gates, the team review, which also tries the assistant when a change touches it, and the site checks\. Steven merges, and the site deploys\. The agents’ runs, on GitHub and in Steven’s own Claude Code sessions, are metered/)
+      expect(image).toHaveAccessibleDescription(/The reviews run in parallel, by fresh agents that did not write the code, and only for the parts the change touches.*a change to the rules or the team gets every role but the recruiter, who reviews only changes to the résumé and the site\. Changes go back to the developer for at most three rounds, and only the reviewers who asked, or whose part the fix touched, review again\. When all approve, the pull request runs its own required checks on GitHub: main’s gates, the team review, which also tests the assistant on a change to the assistant, the résumé or a write-up, and the site checks\. Steven merges, and the site deploys\. The agents’ runs, on GitHub and in Steven’s own Claude Code sessions, are metered/)
       for (const label of ['Spec', 'My questions', 'Build', 'Reviews, for the parts it touches', 'fresh agents; approvals carry over', 'tests, 90% a file', 'recruiter: not worse', 'PM: acceptance', 'all approve', 'Pull request', 'I merge', 'Deploy']) expect(within(image).getByText(label)).toBeInTheDocument()
     }
   })
@@ -233,6 +234,37 @@ describe('the team diagram on /building-this-site', () => {
     expect(item.textContent).not.toMatch(/\d/)
     const paragraph = within(loop).getByText(/^The agent never pushes to production\./)
     expect(paragraph.textContent).toBe('The agent never pushes to production. It has a short list of allowed tools, a turn limit, and the instructions I follow myself: never invent a number, leave a question in a comment when a fact is missing. Of the first six runs, two failed and made nothing and four opened pull requests; the header counts how many are merged by now. The failures cost minutes and showed me where the instructions were vague. The team reviewed its own setup first and found real problems: a pull request could rewrite the rules of its own review, the screenshots showed the dark theme for “light”, and the review would have refused the bot that opens the site’s pull requests. All three were fixed in the same pull request.')
+  })
+
+  it('the pull request item says the site’s own GitHub App opens the pull request, so its required checks count, and that the MCP says what holds a change (specs/building-steven-wilssens-com-merge-mcp-p-43.md, AC-5)', () => {
+    render(<SiteArticle />)
+    const loop = document.getElementById('loop')!.closest('section')!
+    const text = within(loop).getByText('Change the site, through a pull request.').closest('li')!.textContent!
+    for (const phrase of ['GitHub App', 'runs nothing from the branch', 'required checks', 'what holds it', 'preview', 'email']) expect(text).toContain(phrase)
+    // The sentence that opens the pull request names the App, never Claude Code.
+    const opens = text.split(/(?<=\.)\s+/).filter((sentence) => /opens (the|a) pull request/.test(sentence))
+    expect(opens).toHaveLength(1)
+    expect(opens[0]).toContain('GitHub App')
+    expect(opens[0]).not.toContain('Claude Code')
+    expect(text.match(/in plain words/g)).toHaveLength(1)
+    expect(text).not.toContain("'")
+    expect(text).not.toMatch(/token|secret|permission|environment|bundle|publish|read-only|workflow_dispatch/i)
+  })
+
+  it('the closing date comes from the feed, never typed into the article (specs/building-steven-wilssens-com-merge-mcp-p-43.md, AC-2)', () => {
+    const date = /\b\d{1,2} (January|February|March|April|May|June|July|August|September|October|November|December) \d{4}\b/g
+    const { container } = render(<SiteArticle />)
+    const span = container.querySelector('[data-feed-date]')!
+    expect(span.textContent).toBe(`${feedDate(siteFeed.asOf)}.`)
+    // The closing section shows one date, the feed's.
+    expect(span.closest('section')!.textContent!.match(date)).toEqual([feedDate(siteFeed.asOf)])
+    // And it is rendered, not typed: a typed date equal to today's feed fails too. The lede's
+    // go-live date is a fact of its own and stays typed.
+    const source = Object.values(import.meta.glob<string>('./site/SiteArticle.tsx', { query: '?raw', import: 'default', eager: true }))[0]
+    const closing = source.split('\n').filter((line) => line.includes('data-feed-date'))
+    expect(closing).toHaveLength(1)
+    expect(closing[0]).toContain('{feedDate(feed.asOf)}')
+    expect(closing[0]).not.toMatch(date)
   })
 
   it('sits in the loop section, with the step it explains', () => {
