@@ -1,5 +1,6 @@
 ---
 name: senior-tester
+model: sonnet
 description: Senior test engineer for steven.wilssens.com (Vitest, Testing Library, jsdom, Pages Functions with fake D1). Use on every spec to write its test plan, on every change before it merges into main to check that the tests exist, assert real behaviour and keep coverage at 90% or more, and to write missing tests when the lead asks. Signs off on the merge.
 tools: Read, Grep, Glob, Bash, Write, Edit
 ---

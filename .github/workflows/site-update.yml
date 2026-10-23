@@ -272,6 +272,7 @@ jobs:
             ${{ needs.brief.outputs.instruction }}
 
             How the team works on it (.claude/team.md, .claude/skills/feature/SKILL.md steps 0 to 3; Steven is not here to ask, so nothing waits for him):
+            0. Small changes take the short path. When the instruction only applies approved résumé proposals, or only refreshes a Building write-up, start no spec agents: write the short spec of team.md step 4 yourself (problem, acceptance criteria, recruiter impact, sign-offs), then go to step 3. Everything else follows steps 1 to 4.
             1. Spec first. Start `product-manager`, `senior-recruiter` and `ux-designer` in parallel with the Agent tool to write ${{ steps.branch.outputs.spec }} from specs/TEMPLATE.md for this instruction (the PM: problem, outcome, acceptance criteria, out of scope, open questions; the recruiter: Recruiter impact with today's baseline scores; the designer: Design, or why nothing renders differently). Then `security-engineer`, `senior-tester` and `senior-developer` (feasibility only, no code) in parallel add the threat model, the test plan and the technical approach. Then the PM reconciles, once. A Building write-up refresh may use the short spec of team.md step 4 (problem, acceptance criteria, recruiter impact, sign-offs).
             2. Questions only Steven can answer (a fact about him, a trade-off between readers, a cost) go under "Open questions for Steven" in the spec, each with the team's recommendation; the workflow copies them into the pull request. Build what can be built without the answer; never guess a fact to fill the gap (a `TODO(steven): <question>` comment where the fact belongs is fine).
             3. Build. `senior-developer` in BUILD mode implements the spec with its tests on this branch (already checked out; tell it not to commit or create branches), then fills the spec's status (built) and the Sign-offs table's Spec column with the verdicts the spec roles gave. The merge review is the Review workflow's, on the pull request; do not run it here.
@@ -293,7 +294,7 @@ jobs:
           # Background tasks off: an agent cannot outlive the lead's turn, which ends the run. No hooks run on
           # GitHub: the costs hook's own guard is the first safeguard, this the second (specs/dev-costs.md S-4).
           settings: '{"env":{"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1"},"disableAllHooks":true}'
-          claude_args: '--max-turns 400 --allowedTools "Agent,Task,Read,Edit,Write,MultiEdit,Glob,Grep,Bash(npm run *),Bash(npm test*),Bash(node scripts/*),Bash(npx vitest*),Bash(git diff*),Bash(git status*),Bash(git log*),Bash(git show*),Bash(ls*),Bash(mkdir -p specs*)"'
+          claude_args: '--model claude-sonnet-5-5 --max-turns 400 --allowedTools "Agent,Task,Read,Edit,Write,MultiEdit,Glob,Grep,Bash(npm run *),Bash(npm test*),Bash(node scripts/*),Bash(npx vitest*),Bash(git diff*),Bash(git status*),Bash(git log*),Bash(git show*),Bash(ls*),Bash(mkdir -p specs*)"'
 
       # What the run cost, for /admin#costs (specs/dev-costs.md): only three numbers leave this job, as job
       # outputs, each only when it is a plain number; the execution file itself (the whole session) is never
@@ -561,7 +562,21 @@ jobs:
               echo "::warning::#$SUPERSEDES is not an open Site update pull request of the site bot ($old): it is left as it is."
             fi
           fi
-          echo "### Pull request: $url" >> "$GITHUB_STEP_SUMMARY"
+          # A newer refresh of the same write-up replaces the older ones still open: the same checks as a redo
+          # (an open Site update pull request of this repository, by the site bot), matched by the title the brief
+          # gives every refresh ("Building <project name>: ...").
+          if [ -n "$PROJECT" ] && [[ "$TITLE" == "Building "*": "* ]]; then
+            prefix="${TITLE%%: *}: "
+            gh pr list --state open --limit 50 --json number,title,headRefName,isCrossRepository,author,url 2>/dev/null \
+              | jq -r --arg prefix "$prefix" --arg url "$url" --arg slug "app/$SLUG" \
+              '.[] | select((.title | startswith($prefix)) and .url != $url and (.isCrossRepository | not) and (.headRefName | test("^update/[a-z0-9-]+-[0-9]+$")) and (.author.login == $slug or .author.login == "app/github-actions")) | .number' \
+              2>/dev/null | while read -r older; do
+                [[ "$older" =~ ^[0-9]+$ ]] || continue
+                gh pr comment "$older" --body "Replaced by $url: a newer refresh of the same write-up." || true
+                gh pr close "$older" --delete-branch || gh pr close "$older" || true
+              done
+          fi
+          echo "### Pull request: $url" >> "$GITHUB_STEP_SUMMARY\"
           echo "Preview (a few minutes after the Deploy workflow for the branch finishes): https://$alias.stevenwilssens.pages.dev" >> "$GITHUB_STEP_SUMMARY"
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "number=${url##*/}" >> "$GITHUB_OUTPUT"

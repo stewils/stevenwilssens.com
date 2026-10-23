@@ -256,10 +256,64 @@ jobs:
           path: ${{ runner.temp }}/assistant-check
           if-no-files-found: ignore
 
+  roster:
+    # Who reviews (scripts/review-roster.mjs): only the roles whose part of the site changed, and an approval
+    # from this workflow's own last comment carries over when nothing in that role's part changed since. A job of
+    # its own that runs nothing from the pull request, with main's copy of the script (the pull request that
+    # first adds it runs its own), so a pull request can neither pick its reviewers nor rewrite the answer: the
+    # team job reads it as this job's output. Never on a draft (see team).
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      PR: ${{ github.event.pull_request.number || inputs.pr }}
+    outputs:
+      run: ${{ steps.roster.outputs.run }}
+      json: ${{ steps.roster.outputs.json }}
+    steps:
+      - name: The pull request number is a number
+        run: '[[ "$PR" =~ ^[0-9]+$ ]] || { echo "::error::pr must be a pull request number"; exit 1; }'
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Who reviews
+        id: roster
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          roster="$RUNNER_TEMP/review-roster.mjs"
+          if git cat-file -e origin/main:scripts/review-roster.mjs 2>/dev/null; then git show origin/main:scripts/review-roster.mjs > "$roster"; else cp scripts/review-roster.mjs "$roster"; fi
+          git diff --name-only origin/main...HEAD > "$RUNNER_TEMP/changed.txt"
+          # The verdicts marker of this workflow's own comment (github-actions[bot]); nobody else's counts.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -q '.[] | select(.user.login == "github-actions[bot]") | .body' > "$RUNNER_TEMP/bot-comments.txt" || true
+          marker=$(grep -oE '<!-- team-verdicts [A-Za-z0-9+/=]+ -->' "$RUNNER_TEMP/bot-comments.txt" | tail -n 1 | sed -E 's/<!-- team-verdicts ([A-Za-z0-9+/=]+) -->/\1/' || true)
+          previous="$RUNNER_TEMP/previous.json"
+          since=-
+          if [ -n "$marker" ] && printf '%s' "$marker" | base64 -d > "$previous" 2>/dev/null; then
+            prev=$(jq -r '.sha // ""' "$previous" 2>/dev/null || true)
+            # Since that commit, only the pull request's own files count (a merge of main brings others).
+            if [[ "$prev" =~ ^[0-9a-f]{40}$ ]] && git merge-base --is-ancestor "$prev" HEAD 2>/dev/null; then
+              git diff --name-only "$prev" HEAD | grep -Fx -f "$RUNNER_TEMP/changed.txt" > "$RUNNER_TEMP/since.txt" || true
+              since="$RUNNER_TEMP/since.txt"
+            fi
+          else
+            : > "$previous"
+          fi
+          node "$roster" "$RUNNER_TEMP/changed.txt" "$BRANCH" "$previous" "$since" > "$RUNNER_TEMP/roster.json"
+          jq . "$RUNNER_TEMP/roster.json"
+          echo "run=$(jq -r '.run | join(" ")' "$RUNNER_TEMP/roster.json")" >> "$GITHUB_OUTPUT"
+          echo "json=$(jq -c . "$RUNNER_TEMP/roster.json")" >> "$GITHUB_OUTPUT"
+
   team:
-    needs: [gates, assistant-input, assistant]
-    # Also when the assistant check failed or was skipped: the team then reads that it did not run.
-    if: ${{ !cancelled() && needs.gates.result == 'success' }}
+    needs: [gates, assistant-input, assistant, roster]
+    # Also when the assistant check failed or was skipped: the team then reads that it did not run. Never on a
+    # draft: a draft cannot merge, and marking it ready for review starts this run (ready_for_review).
+    if: ${{ !cancelled() && needs.gates.result == 'success' && needs.roster.result == 'success' && github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 75
     outputs:
@@ -271,6 +325,8 @@ jobs:
       pull-requests: write
     env:
       PR: ${{ github.event.pull_request.number || inputs.pr }}
+      PANEL: ${{ needs.roster.outputs.run }}
+      ROSTER: ${{ needs.roster.outputs.json }}
     steps:
       - name: Dependabot's own dependency update?
         id: who
@@ -318,14 +374,14 @@ jobs:
       - if: steps.who.outputs.dependabot != 'true'
         run: npm run build
       - name: Browser and local database for the designer's screenshots
-        if: steps.who.outputs.dependabot != 'true'
+        if: steps.who.outputs.dependabot != 'true' && contains(needs.roster.outputs.run, 'ux-designer')
         run: |
           npx playwright-core install chromium
           { echo 'ADMIN_TOKEN=ci-check-token'; echo 'HASH_SALT=ci-check-salt'; } > .dev.vars
           npx wrangler d1 migrations apply stevenwilssens-analytics --local
       - name: Main's build for the before screenshots (best effort)
         id: main
-        if: steps.who.outputs.dependabot != 'true'
+        if: steps.who.outputs.dependabot != 'true' && contains(needs.roster.outputs.run, 'ux-designer')
         continue-on-error: true
         run: |
           # main, built in a worktree and served on port 8790 (scripts/screenshots.mjs serves the branch on 8789).
@@ -381,7 +437,9 @@ jobs:
           # Whatever .review/ the pull request carries (a committed result.json, say) is thrown away.
           rm -rf .review screenshots
           mkdir -p .review/screenshots
-          if [ "$MAIN_BUILD" != success ]; then
+          if [ "$MAIN_BUILD" = skipped ]; then
+            : # the designer is not on this panel
+          elif [ "$MAIN_BUILD" != success ]; then
             echo "main's build is not served on 8790 (step outcome: $MAIN_BUILD); compare the public pages with https://steven.wilssens.com." > .review/main-unavailable
             echo "::warning::main's build is not available for the before screenshots; the designer compares with the live site."
           fi
@@ -402,6 +460,22 @@ jobs:
                 | select(.author.login == $owner and (.editor == null or .editor.login == $owner))
                 | "### " + .createdAt + "\n\n" + .body + "\n"' > .review/steven-replies.md
           echo "Replies from $OWNER on #$PR: $(grep -c '^### ' .review/steven-replies.md || true)"
+
+      - name: Lint and coverage once, for the whole panel
+        if: steps.who.outputs.dependabot != 'true' && needs.roster.outputs.run != ''
+        run: |
+          # gates already passed them; the reviewers read these files instead of each running the suite again.
+          printf '%s\n' "$ROSTER" | jq . > .review/roster.json
+          npm run lint > .review/lint.txt 2>&1 || true
+          npm run test:coverage -- --coverage.reportsDirectory="$RUNNER_TEMP/cov" > "$RUNNER_TEMP/coverage-run.txt" 2>&1 || true
+          git diff --name-only origin/main...HEAD > "$RUNNER_TEMP/changed.txt"
+          {
+            grep -E '^ *(Test Files|Tests|Statements|Branches|Functions|Lines) ' "$RUNNER_TEMP/coverage-run.txt" || true
+            echo
+            echo 'Per changed file (lines, branches):'
+            jq -r --arg root "$PWD/" --rawfile changed "$RUNNER_TEMP/changed.txt" '($changed | split("\n")) as $files | to_entries[] | (.key | ltrimstr($root)) as $file | select($files | index($file)) | "\($file) \(.value.lines.pct)% \(.value.branches.pct)%"' "$RUNNER_TEMP/cov/coverage-summary.json" || true
+          } > .review/coverage.txt
+          cat .review/coverage.txt
 
       - name: The assistant check's answers
         if: steps.who.outputs.dependabot != 'true' && needs.assistant-input.outputs.run == 'true'
@@ -452,7 +526,7 @@ jobs:
 
       - name: The team reviews the pull request
         id: team
-        if: steps.who.outputs.dependabot != 'true'
+        if: steps.who.outputs.dependabot != 'true' && needs.roster.outputs.run != ''
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -496,17 +570,27 @@ jobs:
               assistant's files (functions/api/ask*, functions/_lib/ask/, functions/_lib/assistant-input.ts,
               scripts/assistant-export.ts, src/resume.ts, src/patents.ts, src/articles/) the assistant part is not
               applicable; when it does, it counts as "did not run".
-            Start the six reviewers in one message with the Agent tool, each with run_in_background: false, so
-            they run in parallel and you get every verdict back before you go on. Never end your turn while a
-            reviewer is still running. Tell every reviewer: the shell here allows only listed commands, one per
+            - The panel is in .review/roster.json: "run" lists the only reviewers you start, by their agent names.
+              "carried" are approvals from the previous review that still hold, and "skipped" the roles whose part
+              did not change: you neither start nor change them; the workflow adds them to the result, and you list
+              them in the comment's table as they are.
+            - Lint, tests and coverage passed in gates and ran once more here: .review/lint.txt and
+              .review/coverage.txt (the totals and each changed file). Tell every reviewer to read them and not to run
+              the whole suite or coverage again; a reviewer may run single test files with `npx vitest run <file>`.
+            Start the reviewers in "run" in one message with the Agent tool, each with run_in_background: false, so
+            they run in parallel and you get every verdict back before you go on. Give each the diff
+            (`git diff origin/main...HEAD`), the spec and what it needs from this list, so it does not explore the
+            repository from scratch. Never end your turn while a reviewer is still running. Tell every reviewer: the shell here allows only listed commands, one per
             call: no &&, ||, ;, pipes, redirects, subshells, cd or background runs; read files with the Read,
             Grep and Glob tools rather than cat or sed; run tests in the foreground and wait for them. Never
             push, commit, merge or edit any file outside .review/. Always finish by writing .review/result.json
             as the skill says, even when a reviewer failed or ran out of turns (that role then counts as
-            CHANGES_REQUESTED with the reason); its "comment" is posted on the pull request for Steven.
+            CHANGES_REQUESTED with the reason); its "roles" are the reviewers in "run", each under its agent name
+            (senior-developer, security-engineer, senior-tester, ux-designer, senior-recruiter, product-manager),
+            and its "comment" is posted on the pull request for Steven.
           # No hooks run on GitHub: the costs hook's own guard is the first safeguard, this the second (specs/dev-costs.md S-4).
           settings: '{"disableAllHooks":true}'
-          claude_args: '--max-turns 300 --allowedTools "Agent,Task,Read,Glob,Grep,Write(.review/**),Edit(.review/**),Write(/${{ github.workspace }}/.review/**),Edit(/${{ github.workspace }}/.review/**),Bash(npm run lint*),Bash(npm test*),Bash(npm run test:coverage*),Bash(npm run check:recruiter*),Bash(npm run check:site*),Bash(npm run screenshots*),Bash(npm audit*),Bash(node scripts/resume-check.mjs*),Bash(node scripts/recruiter-check.mjs*),Bash(node scripts/screenshots.mjs*),Bash(node scripts/site-check.mjs*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(git status*),Bash(gh pr view*),Bash(gh pr diff*),Bash(ls*),Bash(cat*),Bash(head*),Bash(tail*),Bash(wc*),Bash(grep*),Bash(sort*),Bash(diff*),Bash(md5sum*),Bash(sha256sum*),Bash(jq*),Bash(git rev-parse*),Bash(git ls-files*),Bash(git cat-file*),Bash(git merge-base*),Bash(git blame*),Bash(npx vitest*),Bash(npx tsc*),Bash(npx oxlint*),Bash(mkdir -p .review*),Bash(sed -n*)"'
+          claude_args: '--model claude-sonnet-5-5 --max-turns 300 --allowedTools "Agent,Task,Read,Glob,Grep,Write(.review/**),Edit(.review/**),Write(/${{ github.workspace }}/.review/**),Edit(/${{ github.workspace }}/.review/**),Bash(npm run lint*),Bash(npm test*),Bash(npm run test:coverage*),Bash(npm run check:recruiter*),Bash(npm run check:site*),Bash(npm run screenshots*),Bash(npm audit*),Bash(node scripts/resume-check.mjs*),Bash(node scripts/recruiter-check.mjs*),Bash(node scripts/screenshots.mjs*),Bash(node scripts/site-check.mjs*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(git status*),Bash(gh pr view*),Bash(gh pr diff*),Bash(ls*),Bash(cat*),Bash(head*),Bash(tail*),Bash(wc*),Bash(grep*),Bash(sort*),Bash(diff*),Bash(md5sum*),Bash(sha256sum*),Bash(jq*),Bash(git rev-parse*),Bash(git ls-files*),Bash(git cat-file*),Bash(git merge-base*),Bash(git blame*),Bash(npx vitest*),Bash(npx tsc*),Bash(npx oxlint*),Bash(mkdir -p .review*),Bash(sed -n*)"'
 
       # What the run cost, for /admin#costs (specs/dev-costs.md): only three numbers leave this job, as job
       # outputs, each only when it is a plain number; the execution file itself (the whole session) is never
@@ -536,8 +620,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
+          if [ -z "$PANEL" ]; then
+            # Every approval holds and no other role's part changed: nobody ran, the earlier verdicts stand.
+            mkdir -p .review
+            jq -n --argjson r "$ROSTER" --arg sha "${HEAD_SHA::7}" '{approved: true, roles: [], comment: ("## Team review: approved\n\nNothing any reviewer checks changed since their approval, so no reviewer ran on `" + $sha + "`; their verdicts carry over.\n\n| Role | Verdict | Note |\n|---|---|---|\n" + ([$r.carried[], $r.skipped[]] | map("| " + .role + " | " + .verdict + " | " + (.summary | gsub("[|\n]"; " ")) + " |") | join("\n")))}' > .review/result.json
+          fi
           if [ ! -f .review/result.json ]; then
-            echo "::error::The team review wrote no result."
+            echo "::error::The team review wrote no result.\"
             # Say why: the tool calls Claude Code refused (names and inputs only).
             jq -c '.[] | select(.type == "result") | .permission_denials[]? | {tool: .tool_name, input: .tool_input}' "$RUNNER_TEMP/claude-execution-output.json" 2>/dev/null | head -20 | tee .review/permission-denials.jsonl || true
             exit 1
@@ -557,6 +646,10 @@ jobs:
           if [ -n "$verdicts" ]; then printf '\n<!-- team-verdicts %s -->\n' "$verdicts" >> "$RUNNER_TEMP/comment.md"; fi
           gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file "$RUNNER_TEMP/comment.md" || gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
           cat "$RUNNER_TEMP/comment.md" >> "$GITHUB_STEP_SUMMARY"
+          # The panel's verdicts (from the model, only the roles in "run" count) plus the carried and skipped ones,
+          # from the roster job's output, which nothing in this job can change.
+          jq --argjson r "$ROSTER" '.roles = ([(.roles // [])[] | select(.role as $role | $r.run | index($role))] + $r.carried + $r.skipped)' .review/result.json > "$RUNNER_TEMP/result.json"
+          cp "$RUNNER_TEMP/result.json" .review/result.json
           # Approved only when the model says so AND six roles each say APPROVE or NOT_APPLICABLE.
           if [ "$(jq -r '.approved' .review/result.json)" != "true" ] || ! jq -e '(.roles | length) == 6 and all(.roles[]; .verdict == "APPROVE" or .verdict == "NOT_APPLICABLE")' .review/result.json >/dev/null; then
             echo "::error::The team asked for changes or waits for Steven: see the comment on the pull request."

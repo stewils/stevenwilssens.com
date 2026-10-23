@@ -153,7 +153,7 @@ describe('the assistant check (AC-9)', () => {
   })
 
   it('team still runs when the assistant check failed or was skipped, and then reads "did not run"', () => {
-    expect(team).toMatch(/^ {4}needs: \[gates, assistant-input, assistant\]\n(?: {4}#.*\n)* {4}if: \$\{\{ !cancelled\(\) && needs\.gates\.result == 'success' \}\}$/m)
+    expect(team).toMatch(/^ {4}needs: \[gates, assistant-input, assistant, roster\]\n(?: {4}#.*\n)* {4}if: \$\{\{ !cancelled\(\) && needs\.gates\.result == 'success' && needs\.roster\.result == 'success' && github\.event\.pull_request\.draft != true \}\}$/m)
     const notRun = stepOf(team, 'Say when the assistant check did not run')
     expect(notRun).toContain('Result: did not run (its input job ended with')
     expect(notRun).toContain('Result: did not run (the check job ended with')
@@ -219,5 +219,48 @@ describe("the team-verdicts marker as the workflow's jq writes it (m-8)", () => 
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('the panel: only the reviewers whose part changed, never on a draft', () => {
+  const roster = jobOf('roster')
+
+  it('decides in a job of its own that runs nothing from the pull request, with main\'s copy of the script', () => {
+    expect(roster).toMatch(/^ {4}if: github\.event\.pull_request\.draft != true$/m)
+    expect(roster).not.toMatch(/npm (ci|run|test)|npx /)
+    expect(roster).toContain('git show origin/main:scripts/review-roster.mjs > "$roster"')
+    expect(roster).toContain('persist-credentials: false')
+    expect(roster).toMatch(/permissions:\n {6}contents: read\n {6}pull-requests: read\n/)
+  })
+
+  it('reads the previous verdicts only from this workflow\'s own comment, and only files of the pull request since', () => {
+    expect(roster).toContain('select(.user.login == "github-actions[bot]")')
+    expect(roster).toContain('git merge-base --is-ancestor "$prev" HEAD')
+    expect(roster).toContain('grep -Fx -f "$RUNNER_TEMP/changed.txt"')
+  })
+
+  it('hands the team job its answer as job outputs, which nothing in the team job can change', () => {
+    expect(team).toContain('PANEL: ${{ needs.roster.outputs.run }}')
+    expect(team).toContain('ROSTER: ${{ needs.roster.outputs.json }}')
+    const post = stepOf(team, 'Post the sign-offs and pass or fail')
+    expect(post).toContain(`jq --argjson r "$ROSTER" '.roles = ([(.roles // [])[] | select(.role as $role | $r.run | index($role))] + $r.carried + $r.skipped)'`)
+    expect(post.indexOf('$r.carried + $r.skipped')).toBeLessThan(post.indexOf('(.roles | length) == 6'))
+  })
+
+  it('runs no reviewer when every approval holds, and then posts the carried verdicts', () => {
+    expect(stepOf(team, 'The team reviews the pull request')).toMatch(/if: steps\.who\.outputs\.dependabot != 'true' && needs\.roster\.outputs\.run != ''/)
+    expect(stepOf(team, 'Post the sign-offs and pass or fail')).toContain('if [ -z "$PANEL" ]; then')
+  })
+
+  it('builds main and starts a browser only for the designer, and runs coverage once for the whole panel', () => {
+    expect(stepOf(team, "Browser and local database for the designer's screenshots")).toContain("contains(needs.roster.outputs.run, 'ux-designer')")
+    expect(stepOf(team, "Main's build for the before screenshots (best effort)")).toContain("contains(needs.roster.outputs.run, 'ux-designer')")
+    const once = stepOf(team, 'Lint and coverage once, for the whole panel')
+    expect(once).toContain('> .review/coverage.txt')
+    expect(team.indexOf("- name: A clean folder for the reports, and Steven's replies on the pull request")).toBeLessThan(team.indexOf('- name: Lint and coverage once, for the whole panel'))
+  })
+
+  it('coordinates on Sonnet', () => {
+    expect(stepOf(team, 'The team reviews the pull request')).toContain("claude_args: '--model claude-sonnet-5-5 ")
   })
 })

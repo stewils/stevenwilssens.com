@@ -901,7 +901,8 @@ describe('this repository', () => {
   it('lists the assistant check harness as a checker, which the write-up also watches (AC-14)', () => {
     expect(entryFor('scripts/assistant-check.mjs')).toMatchObject({ section: 'checks' })
     const notify = readFileSync(join(repoRoot, '.github/workflows/building-notify.yml'), 'utf8')
-    const paths = JSON.parse(/paths: (\[.*\])/.exec(notify)[1].replace(/'/g, '"'))
+    // The daily refresh's sources: a bash array of paths and ':(glob)' pathspecs.
+    const paths = /^ *paths=\((.*)\)$/m.exec(notify)[1].split(/\s+/).map((path) => path.replace(/^'|'$/g, '').replace(/^:\(glob\)/, ''))
     expect(paths.some((glob) => globToRegExp(glob).test('scripts/assistant-check.mjs'))).toBe(true)
     const sources = JSON.parse(readFileSync(join(repoRoot, 'src/articles/sources.json'), 'utf8'))
     expect(sources.site.sources).toContain('scripts/assistant-check.mjs')

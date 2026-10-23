@@ -378,3 +378,39 @@ describe('the branch name', () => {
     expect(alias(branchFor(title, '41'))).not.toBe(alias(branchFor(title, '42')))
   })
 })
+
+describe('the work an update needs, and no more', () => {
+  it('takes the short path for approved proposals and write-up refreshes, without spec agents', () => {
+    expect(team).toContain('0. Small changes take the short path. When the instruction only applies approved résumé proposals, or only refreshes a Building write-up, start no spec agents')
+    expect(team.indexOf('0. Small changes take the short path.')).toBeLessThan(team.indexOf('1. Spec first.'))
+  })
+
+  it('coordinates on Sonnet', () => {
+    expect(team).toContain("claude_args: '--model claude-sonnet-5-5 --max-turns 400 ")
+  })
+
+  it('closes the older refreshes of the same write-up when a newer one opens, with the checks of a redo', () => {
+    const open = runOf(publishStep('Open the pull request'))
+    expect(open).toContain('if [ -n "$PROJECT" ] && [[ "$TITLE" == "Building "*": "* ]]; then')
+    expect(open).toContain('(.title | startswith($prefix)) and .url != $url and (.isCrossRepository | not) and (.headRefName | test("^update/[a-z0-9-]+-[0-9]+$")) and (.author.login == $slug or .author.login == "app/github-actions")')
+    expect(open).toContain('[[ "$older" =~ ^[0-9]+$ ]] || continue')
+    expect(open.indexOf('gh pr create --base main')).toBeLessThan(open.indexOf('Replaced by $url'))
+  })
+})
+
+describe('the daily refresh of this site\'s write-up', () => {
+  const notify = readFileSync(join(root, '.github/workflows/building-notify.yml'), 'utf8').replace(/\r\n/g, '\n')
+
+  it('runs once a day or by hand, never on a push', () => {
+    expect(notify).toMatch(/^on:\n {2}schedule:\n {4}- cron: '0 5 \* \* \*'\n {2}workflow_dispatch:\n/m)
+    expect(notify).not.toMatch(/^ {2}push:/m)
+  })
+
+  it('tells the site only when the sources changed in the last day, naming the newest change', () => {
+    expect(notify).toContain("before=$(git rev-list -1 --first-parent --before='24 hours ago' HEAD)")
+    expect(notify).toContain('git diff --quiet "$before" "$sha" -- "${paths[@]}"')
+    expect(notify).toContain('subject="$subject (and $((count - 1)) more)"')
+    for (const path of ['CLAUDE.md', '.claude', '.github/workflows/review.yml', '.github/workflows/site-update.yml', 'scripts/review-roster.mjs']) expect(notify).toMatch(new RegExp(`paths=\\(.*${path.replace(/\./g, '\\.')}`))
+  })
+})
+

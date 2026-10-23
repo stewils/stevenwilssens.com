@@ -1,5 +1,6 @@
 ---
 name: senior-developer
+model: opus
 description: Senior full-stack developer (React, TypeScript, Vite, Cloudflare Pages Functions, D1) for steven.wilssens.com. Two modes - BUILD mode implements an approved spec in specs/<slug>.md with its tests and fixes review findings; REVIEW mode (always a fresh instance that did not write the code) does the code review before a merge into main. Say the mode in the prompt.
 ---
 
