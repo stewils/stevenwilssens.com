@@ -225,7 +225,7 @@ describe('Rate answers', () => {
   })
 
   it('a stranger\'s markup renders as text: no img, no javascript: link, no off-site link', () => {
-    const hostile = '<img src=x onerror=alert(1)> [x](javascript:alert(1)) [y](https://evil.example) https://evil.example/z'
+    const hostile = '<img src=x onerror=alert(1)> [x](javascript:alert(1)) [y](https://evil.example) https://evil.example/z [a](/\\evil.example) [b](/\\\\evil.example) [c](\\/evil.example) [d](//evil.example)'
     render(<Harness info={makeAsk({ log: [makeLogEntry({ id: 15, question: hostile, answer: hostile }), makeLogEntry({ id: 16, ts: ts(20, 9), visitor: 'v1', question: 'Next', answer: hostile })] })} />)
     expect(card().querySelector('img')).toBeNull()
     for (const link of card().querySelectorAll('a')) expect(link.getAttribute('href')).toMatch(/^https:\/\/steven\.wilssens\.com\//)

@@ -138,14 +138,15 @@ describe('recording stays off the answer', () => {
     expect(logged).not.toHaveBeenCalled()
   })
 
-  it('a versions call that fails loses only the log row', async () => {
+  it('a versions call that fails keeps the log row, with no versions', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
     const store = new MemoryAskStore()
     const response = await ask(post(), deps(streamOf(answered), store, { versions: async () => { throw new Error('digest failed') } }))
     const textOf = await response.text()
     expect(textOf).toContain('event: done')
-    expect(store.entries).toEqual([])
+    expect(store.entries).toHaveLength(1)
+    expect(store.entries[0]).toMatchObject({ outcome: 'answered', answer: expect.stringContaining('He shipped'), promptVersion: null, knowledgeVersion: null })
     expect(store.rows[0]).toMatchObject({ outcome: 'answered' })
-    expect(errors).toHaveBeenCalledWith('ask log', expect.any(Error))
+    expect(errors).toHaveBeenCalledWith('ask versions', expect.any(Error))
   })
 })

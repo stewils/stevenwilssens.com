@@ -360,8 +360,10 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
   const logAs = async (outcome: Outcome, answer: string, ids: string[], served: { model: string; fallback: boolean }) => {
     if (!visitor) return
     const asked = fit ? `Job description (${question.length} characters): ${redact(question).slice(0, 240).trim()}…` : redact(question).slice(0, MAX_QUESTION)
+    // A failure computing the versions costs only the versions, not the row.
+    const produced = await versions(entries, writeUps).catch((err) => { console.error('ask versions', err); return { promptVersion: null, knowledgeVersion: null } })
     try {
-      const { promptVersion, knowledgeVersion } = await versions(entries, writeUps)
+      const { promptVersion, knowledgeVersion } = produced
       await store.logQuestion({ ts: started, visitor, kind: fit ? 'fit' : 'question', question: asked, answer: answer ? redact(answer).slice(0, MAX_ANSWER) : null, outcome, ...where, ...served, promptVersion, knowledgeVersion, sources: outcome === 'answered' ? [...new Set(ids)] : null }, KEEP_MS)
     } catch (err) {
       console.error('ask log', err)

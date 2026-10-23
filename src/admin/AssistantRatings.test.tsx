@@ -113,7 +113,7 @@ describe('rating on the Ask about Steven page', () => {
 
   it('a stranger\'s markup renders as text in People: no img, no javascript: link, no off-site link', async () => {
     const user = userEvent.setup()
-    const hostile = '<img src=x onerror=alert(1)> [x](javascript:alert(1)) [y](https://evil.example)'
+    const hostile = '<img src=x onerror=alert(1)> [x](javascript:alert(1)) [y](https://evil.example) [a](/\\evil.example) [b](/\\\\evil.example) [c](\\/evil.example) [d](//evil.example)'
     render(<Page info={makeAsk({ log: [makeLogEntry({ id: 9, question: hostile, answer: hostile, rating: makeRating({ logId: 9, note: hostile }) })] })} onRate={ok} />)
     await openPerson(user)
     const page = document.body
