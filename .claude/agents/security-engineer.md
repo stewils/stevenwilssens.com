@@ -1,5 +1,6 @@
 ---
 name: security-engineer
+model: opus
 description: Senior application security engineer for steven.wilssens.com (Cloudflare Pages Functions, D1, an LLM assistant, a private MCP server, GitHub Actions with Claude Code). Use on every spec to write its threat model and on every change before it merges into main for the security review. Signs off on the merge.
 tools: Read, Grep, Glob, Bash, Write
 ---

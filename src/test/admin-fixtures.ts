@@ -2,11 +2,23 @@
 // resume.ts, team.ts, costs.ts) and the Team page's build-time manifest, for the dashboard's tests
 // (src/admin/*.test.tsx). Each builder takes overrides.
 import type { TeamManifest, TeamReads, TeamUpdate } from '../admin/team-types'
-import type { AskInfo, CostFeature, CostMoney, CostsInfo, McpInfo, ResumeInfo, Stats } from '../admin/types'
+import type { AskInfo, AskLogEntry, AskRating, CostFeature, CostMoney, CostsInfo, McpInfo, ResumeInfo, Stats } from '../admin/types'
 
 // The tests run on a fixed clock: Monday 19 October 2026, noon local time.
 export const NOW = new Date(2026, 9, 19, 12, 0, 0)
 export const ts = (day: number, hour = 12) => new Date(2026, 9, day, hour, 0, 0).getTime()
+
+// One logged answer with what produced it, and one of Steven's ratings (functions/api/ask/admin.ts).
+export const makeLogEntry = (overrides: Partial<AskLogEntry> = {}): AskLogEntry => ({
+  id: 1, ts: ts(19, 9), visitor: 'v1', kind: 'question', page: 'experience', question: 'Has he led managers of managers?', answer: 'Yes. As **Group PM** at Microsoft he led three teams.', outcome: 'answered', country: 'BE', asOrg: 'Proximus',
+  model: 'claude-opus-5-5', fallback: false, promptVersion: 'a1b2c3d4', knowledgeVersion: '5e4d3c2b', sources: [{ id: 'role:csx-data', title: 'Group PM, Microsoft', href: 'https://steven.wilssens.com/experience' }], rating: null, cut: false,
+  ...overrides,
+})
+export const makeRating = (overrides: Partial<AskRating> = {}): AskRating => ({
+  id: 1, logId: 1, day: '2026-10-19', model: 'claude-opus-5-5', fallback: false, promptVersion: 'a1b2c3d4', knowledgeVersion: '5e4d3c2b', kind: 'question', outcome: 'answered',
+  accurate: 'yes', supported: 'yes', answers: 'yes', tone: 'yes', overall: 5, note: null, questionId: null, ratedAt: ts(19, 13),
+  ...overrides,
+})
 
 export const makeStats = (overrides: Partial<Stats> = {}): Stats => ({
   days: 7,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import teamManifest from 'virtual:team-manifest'
 import { ignoreKey } from '../analytics'
 import { AssistantPage } from './AssistantPage'
@@ -9,7 +9,7 @@ import { CrawlersPage } from './CrawlersPage'
 import { formatAgo, formatTime } from './format'
 import { LinksPage } from './LinksPage'
 import { McpPage } from './McpPage'
-import { badgeCounts, computeNeeds, computeSummaries } from './needs'
+import { badgeCounts, computeNeeds, computeSummaries, rangeForLink } from './needs'
 import { Overview } from './Overview'
 import { pageById, pages, type PageDef } from './pages'
 import { ResumePage } from './ResumePage'
@@ -21,7 +21,9 @@ import { TeamPage, type TeamAction } from './TeamPage'
 import { roles } from './team-state'
 import type { TeamReads } from './team-types'
 import { TrafficPage } from './TrafficPage'
-import type { AdminData, AskInfo, CostsInfo, McpInfo, ResumeInfo, Stats } from './types'
+import type { AdminData, AskInfo, AskLogEntry, AskRating, CostsInfo, McpInfo, RatingDraft, ResumeInfo, Stats } from './types'
+import { newerRatings, withRatings } from './askQuality'
+import type { SaveResult } from './RatingForm'
 
 // The dashboard: a menu on the left (a tab bar on narrow screens) with one page per
 // area, chosen by the URL hash; the overview lists what needs Steven and links there.
@@ -149,13 +151,48 @@ export default function Admin() {
     }
   }, [token, rejected, refreshCount])
 
+  // Steven's ratings of the assistant's answers: each saved one shows at once on top of the
+  // loaded page (People, the queue, the scores, Needs you, the tile) without reloading a log of
+  // up to 2,000 rows. A load of the page that has the rating (or a later one) takes over; one
+  // that read the database before the save does not hide it.
+  const [saved, setSaved] = useState<Map<number, AskRating>>(() => new Map())
+  const rateAnswer = useCallback(async (draft: RatingDraft): Promise<SaveResult> => {
+    try {
+      const response = await fetch('/api/ask/rating', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(draft) })
+      if (response.status === 401) { rejected(); return { ok: false, reason: 'the token was not accepted' } }
+      if (!response.ok) {
+        const refusal = (await response.json().catch(() => null)) as { field?: string } | null
+        return { ok: false, reason: refusal?.field ? `the server refused ${refusal.field}` : `HTTP ${response.status}` }
+      }
+      const { rating } = (await response.json()) as { rating: AskRating }
+      setSaved((current) => new Map(current).set(rating.logId!, rating))
+      return { ok: true, rating }
+    } catch {
+      return { ok: false, reason: 'no connection' }
+    }
+  }, [token, rejected])
+  const loadAnswer = useCallback(async (id: number) => {
+    const response = await fetch(`/api/ask/admin?entry=${id}`, { headers: { Authorization: `Bearer ${token}` } })
+    if (response.status === 401) { rejected(); return null }
+    return response.ok ? ((await response.json()) as { entry: AskLogEntry }).entry : null
+  }, [token, rejected])
+  const askData = ask.data ? withRatings(ask.data, newerRatings(ask.data, saved)) : ask.data
+
   useEffect(() => {
-    const onChange = () => setHash(readHash())
+    const onChange = () => {
+      const next = readHash()
+      setHash(next)
+      setDays((current) => rangeForLink(next.split('?')[1] ?? '', current))
+    }
     addEventListener('hashchange', onChange)
     return () => removeEventListener('hashchange', onChange)
   }, [])
-  const page: PageDef = pageById(hash) ?? pages[0]
-  useEffect(() => {
+  // A page and, after a question mark, what it was asked to show (#assistant?rate=wrong).
+  const [pageHash, hashQuery = ''] = hash.split('?')
+  const page: PageDef = pageById(pageHash) ?? pages[0]
+  // A new page starts at the top. In a layout effect, so it runs before the page's own effects:
+  // a page that moves focus on arrival (Rate answers from a Needs you line) scrolls there after it.
+  useLayoutEffect(() => {
     document.title = `${page.title} · Admin · steven.wilssens.com`
     scroller.current?.scrollTo({ top: 0 })
   }, [page])
@@ -178,14 +215,14 @@ export default function Admin() {
 
   if (!token) return <Login onSubmit={(value) => { storage.set(tokenKey, value); storage.set(ignoreKey, '1'); setIgnored(true); setLoginError(''); setToken(value) }} error={loginError} />
 
-  const data: AdminData = { days, stats: stats.data, mcp: mcp.data, ask: ask.data, resume: resume.data, team: { manifest: teamManifest, reads: teamReads, readsError: team.error }, costs: { info: costsInfo, error: costs.error } }
+  const data: AdminData = { days, stats: stats.data, mcp: mcp.data, ask: askData, resume: resume.data, team: { manifest: teamManifest, reads: teamReads, readsError: team.error }, costs: { info: costsInfo, error: costs.error } }
   const needs = computeNeeds(data)
   const badges = badgeCounts(needs)
   const summaries = computeSummaries(data)
   const loading = stats.loading || ask.loading || mcp.loading || resume.loading || team.loading || costs.loading
   const errors = [['visitor data', stats.error], ['the assistant', ask.error], ['the MCP', mcp.error], ['the résumé', resume.error], ['what you have seen on the Team page', team.error], ['the costs', costs.error]].filter(([, error]) => error).map(([what, error]) => `Could not load ${what} (${error}).`)
   // The section bar reads the parts again when the Team page's read state arrives (its "new" dots).
-  const version = `${Boolean(stats.data)}${Boolean(ask.data)}${Boolean(mcp.data)}${Boolean(resume.data)}${Boolean(teamReads)}${Boolean(costsInfo)}|${days}|${refreshCount}`
+  const version = `${Boolean(stats.data)}${Boolean(ask.data)}${Boolean(mcp.data)}${Boolean(resume.data)}${Boolean(teamReads)}${Boolean(costsInfo)}|${days}|${refreshCount}|${askData?.unratedWeek?.length ?? 0}`
   const waiting = (what: string, chart = true) => <PageSkeleton what={what} chart={chart} />
 
   const content = () => {
@@ -196,7 +233,7 @@ export default function Admin() {
       case 'crawlers': return stats.data ? <CrawlersPage stats={stats.data} /> : waiting('crawler data')
       case 'speed': return stats.data ? <SpeedPage vitals={stats.data.vitals} /> : waiting('page speed data', false)
       case 'resume': return resume.data ? <ResumePage resume={resume.data} proposals={mcp.data?.proposals ?? null} /> : waiting('the résumé report', false)
-      case 'assistant': return ask.data ? <AssistantPage info={ask.data} days={days} visitors={stats.data?.visitors} /> : waiting("the assistant's numbers")
+      case 'assistant': return askData ? <AssistantPage info={askData} days={days} visitors={stats.data?.visitors} onRate={rateAnswer} onLoadEntry={loadAnswer} request={new URLSearchParams(hashQuery).get('rate')} /> : waiting("the assistant's numbers")
       case 'mcp': return mcp.data ? <McpPage info={mcp.data} /> : waiting('the MCP details', false)
       case 'team': return <TeamPage manifest={teamManifest} reads={teamReads} readsError={team.error} onPost={postTeam} />
       case 'costs': return costs.error ? <CostsError /> : costsInfo ? <CostsPage info={costsInfo} onBudget={saveBudget} roleNames={roleNamesFrom(roles(teamManifest))} /> : waiting('costs')

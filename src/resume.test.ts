@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import appSource from './App.tsx?raw'
 import { analyzeResume, atsScore, compareScores, dataQuestions, extractPdf, formatComparison, lenses, readBaseline, resumePath } from '../scripts/resume-check.mjs'
-import { about, experiences } from './resume'
+import { about, experiences, profile, selectedWork } from './resume'
 
 const pointsOf = (key: string) => experiences.find((item) => item.key === key)!.points
 // The PDF's text the way resume-check reads it: one line, straight quotes and hyphens, lower case.
@@ -16,7 +16,7 @@ describe('the resume PDF', () => {
     const report = await analyzeResume()
     const errors = report.findings.filter((finding: { severity: string }) => finding.severity === 'error').map((finding: { message: string }) => finding.message)
     expect(errors, 'run npm run resume:build after changing src/resume.ts').toEqual([])
-    expect(report.pages).toBeLessThanOrEqual(2)
+    expect(report.pages).toBe(2)
     expect(report.score).toBeGreaterThanOrEqual(70)
     expect(report.findings.every((finding: { lens: string }) => finding.lens in lenses)).toBe(true)
     expect(report.ats.errors).toBe(0)
@@ -40,6 +40,21 @@ describe('the resume PDF', () => {
     expect(perfectDay).toBeLessThan(next)
   }, 30_000)
 
+  // Header line 2, under the location an ATS parses; the facts for a close read stay off the PDF.
+  it('prints the work arrangement in the PDF, "hybrid" and "remote" as words', async () => {
+    const { text: raw } = await extractPdf(resumePath)
+    const text = normalize(raw)
+    expect(text).toContain(normalize(profile.workArrangement))
+    for (const value of [profile.citizenship, profile.travel, profile.employers, profile.relocation]) expect(text).not.toContain(normalize(value))
+    expect(raw).toMatch(/\bhybrid\b/i)
+    expect(raw).toMatch(/\bremote\b/i)
+    const lines = raw.split('\n').map(normalize)
+    const at = lines.findIndex((line) => line.includes('seattle, washington'))
+    expect(lines[at]).not.toMatch(/hybrid|remote/)
+    expect(lines[at + 1]).toBe(normalize(profile.workArrangement))
+    expect((await analyzeResume()).findings.filter((finding: { id: string }) => finding.id.startsWith('contact-'))).toEqual([])
+  }, 30_000)
+
   // The score is what an applicant tracking system makes of the PDF: what a recruiter
   // would say and where the PDF differs from the site are listed but do not count.
   it('scores only the findings an applicant tracking system trips over', () => {
@@ -54,6 +69,28 @@ describe('the resume PDF', () => {
     expect(questions.some((q: { question: string }) => /Compuware.*Microsoft|months in between|overlaps with/.test(q.question))).toBe(true)
     // Every key number has a role behind it, so none is asked about.
     expect(questions.some((q: { about: string }) => q.about === 'impact')).toBe(false)
+  })
+
+  // Made-up roles, so these three questions stay tested whatever the real dates raise (#84 removes
+  // the Cosmos overlap). Latest first, as in src/resume.ts.
+  it('asks about an overlap, a gap and a stale last role in made-up roles, and not about roles that follow on', () => {
+    const roles = [
+      { key: 'latest', role: 'Director', company: 'Acme', dates: 'Jan 2023 - Mar 2025' },
+      { key: 'middle', role: 'Lead', company: 'Beta', dates: 'Jan 2021 - Jun 2023' },
+      { key: 'first', role: 'Engineer', company: 'Gamma', dates: 'Jan 2015 - Dec 2019' },
+    ]
+    const questions = dataQuestions(new Date('2026-10-22'), roles).filter((q: { about: string }) => q.about !== 'impact')
+    expect(questions).toEqual([
+      { about: 'latest', question: 'Director (Jan 2023 - Mar 2025) overlaps with Lead at Beta (Jan 2021 - Jun 2023). Were these consultancy placements, or should the dates change?' },
+      { about: 'latest', question: 'The last role ended Mar 2025, 19 months ago. What have you been doing since, in one line for the resume?' },
+      { about: 'middle', question: 'Engineer at Gamma ended Dec 2019 and Lead started Jan 2021: 12 months in between. What happened? Recruiters ask, so say it or correct the dates.' },
+    ])
+    const followOn = [
+      { key: 'latest', role: 'Director', company: 'Acme', dates: 'Jul 2023 - Sep 2026' },
+      { key: 'middle', role: 'Lead', company: 'Beta', dates: 'Jan 2020 - Jun 2023' },
+      { key: 'first', role: 'Engineer', company: 'Gamma', dates: 'Jan 2015 - Dec 2019' },
+    ]
+    expect(dataQuestions(new Date('2026-10-22'), followOn).filter((q: { about: string }) => q.about !== 'impact')).toEqual([])
   })
 
   // The workflows compare a new resume with the one on main or on the live site and
@@ -93,13 +130,118 @@ describe('the Windows Data roles', () => {
       'Owned strategy and roadmap for the data platform and insights products Windows engineers and PMs use to ship higher-quality releases.',
       'Built the quality measurement framework that underpinned Windows K2, Microsoft’s high-profile push to improve Windows reliability and performance.',
       'Ran the weekly ship-readiness quality review where Windows VPs made release decisions based on my team’s data on ship-blocking issues.',
-      'Scaled experimentation adoption across Windows, significantly reducing the number of features pulled back after release.',
+      'Scaled experimentation across Windows to hundreds of concurrent experiments, significantly reducing the number of features pulled back after release.',
       'Owned the multi-million-dollar Windows data infrastructure budget; shut down a low-adoption on-device model platform and reinvested in platform modernization, cutting costs 30% over two years.',
       'Shifted the team to AI-driven analytics and launched the first version, letting people ask business questions in natural language across every source in the data platform instead of relying on fixed queries.',
       'Partnered with engineering, data science, and research leadership across telemetry from more than 1.6 billion Windows devices.',
     ])
     expect(points[0]).toContain('Microsoft’s')
   })
+
+  // The assistant's prompt is checked in functions/_lib/ask/agent.test.ts.
+  it('the old experimentation bullet is gone from the data and the PDF', async () => {
+    expect(JSON.stringify(experiences).toLowerCase()).not.toContain('scaled experimentation adoption')
+    expect(await pdfText()).not.toContain('scaled experimentation adoption')
+  }, 30_000)
+})
+
+// Steven's approved wording, typed here as literals: comparing a surface with profile
+// proves the wiring, only these prove the words.
+const cosmosSummary = 'Built and supported software components across C# client and Java server systems using CORBA middleware. Joined as a consultant from Info Support, then hired full-time.'
+const experimentationBullet = 'Scaled experimentation across Windows to hundreds of concurrent experiments, significantly reducing the number of features pulled back after release.'
+
+// Travel is its own fact since PR #80 merged beside this branch (D-23): Steven's words, no frequency.
+describe('the travel fact', () => {
+  it('profile.travel is Steven’s wording, with no frequency or percentage, and the #80 sentence is gone', () => {
+    expect(profile.travel).toBe('Open to coordinated travel')
+    expect(profile.travel).not.toMatch(/\d|%|weekly|monthly|quarterly|\bdays?\b/i)
+    expect(profile.workArrangement).toBe('Hybrid or remote, across time zones')
+    expect(profile.location).toBe('Seattle, Washington')
+    expect(JSON.stringify(profile)).not.toContain('Seattle-based')
+  })
+
+  it('keeps travel off the PDF, and prints the Cosmos story and the new experimentation bullet', async () => {
+    const report = await analyzeResume()
+    expect(report.pages).toBe(2)
+    const text = await pdfText()
+    expect(text).not.toContain(normalize(profile.travel))
+    expect(text).not.toContain('coordinated travel')
+    expect(text).toContain(normalize(cosmosSummary))
+    expect(text).toContain(normalize(experimentationBullet))
+  }, 30_000)
+
+  it('keeps the travel value out of the component', () => {
+    expect(appSource).not.toContain('coordinated travel')
+    expect(appSource).toContain('{profile.travel}')
+  })
+})
+
+describe('the early career', () => {
+  it('cosmos explains the Info Support overlap and keeps its dates, title, company, location and points', () => {
+    expect(experiences.find((item) => item.key === 'cosmos')).toEqual({
+      key: 'cosmos',
+      role: 'Software Developer',
+      company: 'Cosmos',
+      dates: 'Jan 2004 - Dec 2005',
+      location: 'Antwerp Area, Belgium',
+      summary: cosmosSummary,
+      points: ['Provided technical guidance, application redesigns, developer support, and code reviews.', 'Worked on the Technical Components team responsible for construction, maintenance, and support.'],
+    })
+  })
+})
+
+describe('the selected work', () => {
+  const work = (key: string) => selectedWork.find((item) => item.key === key)!
+
+  it('windows-quality ends on the measured outcome and has no source', () => {
+    const item = work('windows-quality')
+    expect(item).toEqual({
+      key: 'windows-quality',
+      title: 'Windows quality, measured from preview channels to retail',
+      period: '2020 - 2026',
+      role: 'csx-data',
+      context: 'Windows ships to more than 1.6 billion devices. Engineers needed to know whether a release was healthy before it reached customers, and to find the issues that mattered once it had.',
+      work: 'Led the PM team that built the data products and the review rhythms measuring Windows quality across the Insider preview channels and at retail scale, weaving customer signals and machine learning into insights engineers act on.',
+      outcome: 'Adopted by every Windows team, and behind the roughly 30% drop in issue days across Perfect Day scenarios.',
+    })
+    expect('source' in item).toBe(false)
+  })
+
+  it('okr-tool adds the Viva Goals sentence after one space, with a curly apostrophe, and keeps its outcome and Amit Gupte as source', () => {
+    const item = work('okr-tool')
+    expect(item.work).toBe('With a member of my team, ideated and stood up a working replacement from scratch using AI coding tools, rather than waiting for a procurement cycle. Built in six months to replace Viva Goals, Microsoft’s acquired OKR product, after it was retired.')
+    expect(item.work).toContain('Microsoft’s')
+    expect(item.outcome).toBe('The gap was closed with a functional replacement, and the project became the team’s working example of a modern AI development lifecycle.')
+    expect(item.source).toBe('Amit Gupte')
+  })
+
+  it('keeps the AI feature forecast credited to Amit Gupte', () => {
+    expect(work('ai-feature-forecast')).toMatchObject({ outcome: 'The forecast held. Amit Gupte calls it the clearest demonstration of “an intuitive understanding of customer behavior second to none.”', source: 'Amit Gupte' })
+  })
+
+  it('raises no résumé question about the numbers in the selected work', () => {
+    const questions = dataQuestions(new Date('2026-10-23'))
+    expect(questions.some((q: { question: string }) => /30%|six months/.test(q.question))).toBe(false)
+  })
+})
+
+// Steven's words of 2026-10-22, each its own field: how he works next to when, citizenship
+// next to authorization. Every surface reads them from here, so no other source types them.
+describe('the hiring logistics', () => {
+  it('states the logistics in Steven\'s words, each in its own field', () => {
+    expect(profile.location).toBe('Seattle, Washington')
+    expect(experiences.find((item) => item.key === 'independent-ai-builder')!.location).toBe(profile.location)
+    expect(profile.workAuthorization).toBe('US permanent resident (green card)')
+    expect(profile.citizenship).toBe('Belgian citizen (EU)')
+    expect(profile.availability).toBe('Available now')
+    expect(profile.workArrangement).toBe('Hybrid or remote, across time zones')
+    expect(profile.workArrangement).toHaveLength(35)
+    expect(profile.employers).toBe('Open to remote roles with employers outside the US, in their working hours')
+    expect(profile.relocation).toBe('Not relocating')
+    const keys = Object.keys(profile)
+    expect(keys.slice(keys.indexOf('workAuthorization'), keys.indexOf('relocation') + 1)).toEqual(['workAuthorization', 'citizenship', 'availability', 'workArrangement', 'employers', 'relocation'])
+  })
+  // That the four values are typed only here is checked in scripts/resume-facts.test.mjs, which reads the tree at run time.
 })
 
 // The guards and the designer's limits run on this copy in functions/_lib/mcp/about.test.ts.

@@ -3,7 +3,11 @@ import type { Env } from '../env'
 import { escapeHtml, handleMcp, resolveMode } from './server'
 import { MemoryStore } from './store'
 import { publicInstructions, publicToolNames, recruiterLens, roleKeys, searchTerms, sitePages } from './tools'
+import { profile } from '../../../src/resume'
 import { speakPlainly } from './plain'
+
+// What the public tools tell a recruiter's assistant never to infer, relocation kept beside the new limits.
+const neverInfer = ['willingness to relocate, on-site days or a region', 'work authorization beyond what about_steven states']
 
 const env = { MCP_OWNER_KEY: 'owner-key-123' } as unknown as Env
 const url = 'https://steven.wilssens.com/mcp/owner-key-123'
@@ -99,7 +103,9 @@ describe('what is already there', () => {
     const about = parse((await call(store, 'about_steven')).text)
     expect((about.roles as { key: string }[]).map((role) => role.key)).toContain('windows-devices-data')
     expect((about.contact as { email: string }).email).toBe('steven@wilssens.com')
+    expect(about.location).toBe('Seattle, Washington · US permanent resident (green card)')
     expect(about.sitePages).toEqual(sitePages)
+    expect(about).toMatchObject({ citizenship: profile.citizenship, workArrangement: profile.workArrangement, travel: profile.travel, employers: profile.employers, relocation: profile.relocation })
     const role = parse((await call(store, 'get_role', { role: 'spatial-audio-lead' })).text)
     expect(role.role).toContain('Principal Product Manager Lead')
     expect(role.entries).toEqual([])
@@ -204,6 +210,11 @@ describe('the résumé', () => {
     const current = roles.find((role) => role.key === 'spatial-audio-lead')!.points[1]
     expect(current).toContain('250%')
     expect((resume.pages as Record<string, string>)['building-wilssens']).toBeTruthy()
+    expect(resume.profile).toMatchObject({ location: 'Seattle, Washington', workArrangement: profile.workArrangement, travel: profile.travel, workAuthorization: 'US permanent resident (green card)' })
+    const sources = Object.fromEntries((resume.selectedWork as { key: string; source: string | null }[]).map((item) => [item.key, item.source]))
+    expect(sources['windows-quality']).toBeNull()
+    expect(sources['okr-tool']).toBe('Amit Gupte')
+    expect(sources['ai-feature-forecast']).toBe('Amit Gupte')
 
     const missing = await call(store, 'propose_resume_change', { role: 'spatial-audio-lead', kind: 'replace', proposed_text: 'x', rationale: 'y' })
     expect(missing.text).toContain('current_text is required')
@@ -287,6 +298,8 @@ describe('the About page as a proposal target', () => {
     for (const name of ['get_role', 'save_entry', 'list_entries', 'search_dossier']) expect(tools.find((tool) => tool.name === name)!.inputSchema.properties.role.enum).toEqual(roleKeys)
     const init = await send(rpc({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-03-26' } }), store)
     expect(((await init.json()) as { result: { instructions: string } }).result.instructions).toContain('or the About page (role "about"')
+    // The profile facts a proposal or a site update can carry, the four of 2026-10-22 among them (AC-5).
+    for (const name of ['propose_resume_change', 'request_site_update']) for (const fact of ['citizenship', 'work arrangement', 'travel', 'employers', 'relocation']) expect(tools.find((tool) => tool.name === name)!.description, `${name}: ${fact}`).toContain(fact)
   })
 
   it('tells the assistant to speak plainly in every site-update tool and in the instructions (plain English AC5, AC11)', async () => {
@@ -341,6 +354,22 @@ describe('questions from the site', () => {
     const quiet = await send(rpc({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-06-18' } }), store)
     expect(((await quiet.json()) as { result: { instructions: string } }).result.instructions).not.toContain('wait for Steven')
   })
+
+  it('offers a question Steven rated poor like a voted-down one, as text typed by strangers', async () => {
+    const store = new MemoryStore()
+    store.gaps.push({ id: 4, question: 'When can he start?', when: '2026-10-18', reason: 'rated', page: 'home', answer: 'He can start in March.' }, { id: 5, question: 'Is he good?', when: '2026-10-18', reason: 'unhelpful', page: 'home', answer: 'Yes.' })
+    const init = await send(rpc({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-06-18' } }), store)
+    expect(((await init.json()) as { result: { instructions: string } }).result.instructions).toContain('1 answers voted down, 1 answers he rated poor')
+    const waiting = parse((await call(store, 'site_questions')).text)
+    expect(waiting.summary).toContain('1 answers voted down, 1 answers Steven rated poor')
+    expect(waiting.questions).toEqual([
+      { id: 4, reason: 'rated', asked: '2026-10-18', page: 'home', question: 'When can he start?', whatTheAssistantSaid: 'He can start in March.' },
+      { id: 5, reason: 'unhelpful', asked: '2026-10-18', page: 'home', question: 'Is he good?', whatTheAssistantSaid: 'Yes.' },
+    ])
+    expect(waiting.caution).toContain('typed by anonymous visitors')
+    const list = (await (await send(rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' }), store)).json()) as { result: { tools: { name: string; description: string }[] } }
+    expect(list.result.tools.find((tool) => tool.name === 'site_questions')?.description).toContain('answers Steven rated poor himself in the admin and added to his questions (rated)')
+  })
 })
 
 describe('the public server', () => {
@@ -371,6 +400,14 @@ describe('the public server', () => {
     expect(result.instructions).toContain('check_fit')
     expect(result.instructions).not.toContain('save_entry')
     expect(result.serverInfo.title).not.toContain('dossier')
+    // The recruiter's own assistant gets the same boundary on logistics as the site's (C-2').
+    for (const words of neverInfer) expect(result.instructions).toContain(words)
+    expect(result.instructions).toContain('A requirement to relocate is a mismatch with the relocation fact about_steven states.')
+    // Steven, 2026-10-22: remote for an employer abroad, in its hours, is not ruled out by the relocation fact.
+    expect(result.instructions).toContain("The relocation fact answers only whether he would move: remote work for a company outside the US, in that employer's own working hours, is what the employers fact about_steven states, never a mismatch.")
+    // Travel as the fact states it, never a frequency (D-23).
+    expect(result.instructions).toContain('never give travel a frequency or percentage the travel fact about_steven states does not.')
+    for (const value of [profile.travel, profile.employers, profile.relocation]) expect(result.instructions.toLowerCase()).not.toContain(value.toLowerCase())
   })
 
   it('serves public entries only, knows no owner tools, hands a fit check its material, and logs every call', async () => {
@@ -386,12 +423,20 @@ describe('the public server', () => {
     expect(about.dossier).toEqual({ publicNotes: 1 })
     expect(about.waitingFromTheSite).toBeUndefined()
     expect(about.howToUse).toContain('check_fit')
+    // The logistics as their own fields, the location line as before, and nothing else new (T-S6).
+    expect(about).toMatchObject({ location: `${profile.location} · ${profile.workAuthorization}`, citizenship: profile.citizenship, workArrangement: profile.workArrangement, travel: profile.travel, employers: profile.employers, relocation: profile.relocation })
+    expect(Object.keys(about)).toEqual(['howToUse', 'name', 'headline', 'status', 'location', 'citizenship', 'workArrangement', 'travel', 'employers', 'relocation', 'teamSize', 'contact', 'education', 'languages', 'honors', 'roles', 'sitePages', 'dossier'])
     const write = await publicCall(store, 'save_entry', { role: 'csx-data', topic: 'scope', title: 't', body: 'b' })
     expect(write.body.error?.code).toBe(-32602)
     expect((await publicCall(store, 'site_questions')).body.error?.code).toBe(-32602)
     const posting = 'Director of Product, Data Platform. Requirements: led PM teams; experimentation at scale; hands-on SQL.'
     const fit = parse((await publicCall(store, 'check_fit', { job_description: posting })).text)
     expect(fit.howTo).toContain('Not shown')
+    for (const words of neverInfer) expect(fit.howTo).toContain(words)
+    expect(fit.howTo).toContain('A requirement to relocate is a mismatch with the relocation fact about_steven states: put it under Partly covered as does not match, not as a question.')
+    expect(fit.howTo).toContain("The relocation fact answers only whether he would move: a requirement to work remotely for a company outside the US, or in the working hours of that employer, is Covered by the work arrangement and the employers fact about_steven states, never a mismatch; a requirement to live or be based outside the Seattle area is a mismatch with the location and the relocation fact.")
+    expect(fit.howTo).toContain('Travel: a requirement for occasional, as-needed or coordinated travel is Covered by the travel fact about_steven states; a specific frequency or percentage of travel is at most Partly covered (the travel fact gives none) and a question for him.')
+    for (const value of [profile.travel, profile.employers, profile.relocation]) expect(String(fit.howTo).toLowerCase()).not.toContain(value.toLowerCase())
     expect(fit.record).toContain('Nine PMs')
     expect(fit.record).not.toContain('Internal numbers')
     expect((await publicCall(store, 'check_fit', {})).text).toContain('job_description is required')

@@ -107,17 +107,18 @@ const span = (dates: string) => {
   return { start: parts[0], end: parts[1], months: parts[1] - parts[0] + 1 }
 }
 
-// What the dates alone would make a recruiter ask, plus the written angles.
-export const recruiterLens = (key: string) => {
+// What the dates alone would make a recruiter ask, plus the written angles. `roles` is the
+// résumé's experiences (latest first) unless a test passes made-up ones.
+export const recruiterLens = (key: string, roles: readonly Pick<(typeof experiences)[number], 'key' | 'role' | 'company' | 'dates'>[] = experiences) => {
   const flags: string[] = []
-  const index = experiences.findIndex((item) => item.key === key)
-  const item = experiences[index]
+  const index = roles.findIndex((item) => item.key === key)
+  const item = roles[index]
   if (item) {
     const mine = span(item.dates)
     if (mine) {
       if (mine.months < 12) flags.push(`Short stint: ${mine.months} months.`)
       if (mine.months >= 60 && !/Lead|Group/.test(item.role)) flags.push(`${Math.round(mine.months / 12)} years in one role without a visible promotion.`)
-      const previous = experiences[index + 1]
+      const previous = roles[index + 1]
       const before = previous ? span(previous.dates) : null
       if (before && before.end > mine.start) flags.push(`Overlaps with ${previous.role} at ${previous.company} (${previous.dates}).`)
       if (before && mine.start - before.end > 2) flags.push(`${mine.start - before.end - 1} months unaccounted for before this role.`)
@@ -164,12 +165,14 @@ const needGitHub = (ctx: ToolContext) => {
   return ctx.github
 }
 const sleepFor = (ctx: ToolContext, ms: number) => (ctx.sleep ?? ((wait) => new Promise<void>((resolve) => setTimeout(resolve, wait))))(ms)
-// GitHub's reasons a pull request will not merge, in words.
+// GitHub's reasons a pull request will not merge, in words, for the assistant: the update by its
+// name (a number only where a tool takes one), and what to tell Steven in plain words.
 // With the head's check runs, an unstable one names the checks that failed instead of sending Steven to GitHub.
 const mergeTrouble = (pull: PullRequest, checks: CheckState | null = null) => {
-  if (pull.state === 'closed') return pull.merged ? `#${pull.number} is already merged.` : `#${pull.number} is closed. Redo it with request_site_update (redo: ${pull.number}) to get a fresh pull request.`
-  if (pull.mergeable === false || pull.mergeableState === 'dirty') return `#${pull.number} conflicts with main: another change touched the same files (usually src/resume.ts and the résumé PDF, which every update regenerates) and merged first. GitHub cannot merge it as it is. When Steven says to put it live, merge_site_update redoes it by itself on a fresh branch from main (the same instruction runs again, the old pull request is closed, the proposals it carries move with it); request_site_update with redo: ${pull.number} does the same now. Never tell Steven about the conflict: pass on the say line.`
-  if (pull.mergeableState === 'unstable') return `#${pull.number}'s checks have not passed (${checks?.failed.length ? `${names(checks.failed)} failed on its latest commit` : 'the team review or a site check failed or asked for changes; which one could not be read here'}). It does not go live unless Steven, told in plain words that the team's checks on it have not passed, still wants it: then merge_site_update with acceptFailingChecks: true.`
+  const update = `The update ${quotedName(pull)}`
+  if (pull.state === 'closed') return pull.merged ? `${update} is already live.` : `${update} is set aside. Redo it with request_site_update (redo: ${pull.number}) to make it again.`
+  if (pull.mergeable === false || pull.mergeableState === 'dirty') return `${update} conflicts with main: another change touched the same files (usually src/resume.ts and the résumé PDF, which every update regenerates) and merged first. GitHub cannot merge it as it is. When Steven says to put it live, merge_site_update redoes it by itself on a fresh branch from main (the same instruction runs again, the old pull request is closed, the proposals it carries move with it); request_site_update with redo: ${pull.number} does the same now. Never tell Steven about the conflict: pass on the say line.`
+  if (pull.mergeableState === 'unstable') return `${update}: its checks have not passed (${checks?.failed.length ? `${names(checks.failed)} failed on its latest commit` : 'the team review or a site check failed or asked for changes; which one could not be read here'}). It does not go live unless Steven, told in plain words that the team's checks on it have not passed, still wants it: then merge_site_update with acceptFailingChecks: true.`
   return null
 }
 // What holds a blocked pull request, from its own data (specs/mcp-prs-flow.md, AC-8): at most
@@ -195,7 +198,8 @@ const names = (list: string[]) => {
 }
 const clock = (iso: string | null) => (iso && /^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(iso) ? `${iso.slice(11, 16)} UTC` : null)
 export const blockedCauses = (pull: PullRequest, status: PullStatus): Blocked => {
-  const n = pull.number
+  const n = quotedName(pull)
+  const merge = `merge_site_update (number: ${pull.number})`
   const ranked: [number, string][] = []
   // The team's verdicts count only once its check on this head has finished, and only when it is not older than
   // gates (the same Review run or a later one): after a recheck the old verdicts for the same head stay in the
@@ -212,49 +216,52 @@ export const blockedCauses = (pull: PullRequest, status: PullStatus): Blocked =>
   const link = verdicts?.url ?? pull.url
   const objections = verdicts ? verdicts.roles.filter((role) => role.verdict === 'CHANGES_REQUESTED' || role.verdict === 'NEEDS_STEVEN') : []
   for (const role of objections) {
-    if (role.verdict === 'CHANGES_REQUESTED') ranked.push([1, `#${n}: the ${roleName(role.role)} asked for changes: "${quoteFinding(role.summary)}" (${link}). Ask for the fix with request_site_update, or close it with close_site_update.`])
-    else ranked.push([2, `#${n}: the ${roleName(role.role)} waits for Steven's answer: "${quoteFinding(role.summary)}" (${link}). He replies there; merge_site_update with recheck: true then runs the review again with his reply.`])
+    if (role.verdict === 'CHANGES_REQUESTED') ranked.push([1, `${n}: the ${roleName(role.role)} asked for changes: "${quoteFinding(role.summary)}" (${link}). Ask for the fix with request_site_update, or close it with close_site_update.`])
+    else ranked.push([2, `${n}: the ${roleName(role.role)} waits for Steven's answer: "${quoteFinding(role.summary)}" (${link}). He replies there; ${merge} with recheck: true then runs the review again with his reply.`])
   }
   for (const check of checks) {
     if (check.status !== 'completed' || !check.conclusion || !failedConclusions.includes(check.conclusion)) continue
     if (check.name === 'team' && objections.length) continue // the reviewers above say why
     const where = check.step ? ` at "${quotedReason(check.step)}"` : ''
-    ranked.push([3, `#${n}: "${check.name}" failed${where}${check.url ? ` (${check.url})` : ''}. Ask for the fix with request_site_update, or close it with close_site_update.`])
+    ranked.push([3, `${n}: "${check.name}" failed${where}${check.url ? ` (${check.url})` : ''}. Ask for the fix with request_site_update, or close it with close_site_update.`])
   }
-  if (pull.resumeScore?.lower && !status.labels.includes('accept-lower-score')) ranked.push([4, `#${n} lowers the résumé score from ${pull.resumeScore.before} to ${pull.resumeScore.after}; only Steven's accept-lower-score label on GitHub lets it merge, and then merge_site_update with acceptLowerScore: true.`])
+  if (pull.resumeScore?.lower && !status.labels.includes('accept-lower-score')) ranked.push([4, `${n} lowers the résumé score from ${pull.resumeScore.before} to ${pull.resumeScore.after}; only Steven's accept-lower-score label on GitHub lets it merge, and then merge_site_update with acceptLowerScore: true.`])
   const present = new Set(checks.map((check) => check.name))
   // A required check with no run yet while another job of its workflow runs on the head (team waits for gates):
   // coming, so "running", never "not run" and never a recheck, which would cancel that run.
   const pending = (status.pending ?? []).filter((name) => !present.has(name))
   // Waiting for approval only when no run of the check is on the head commit (an old held run stays held after a recheck).
   const waiting = status.waiting.filter((name) => !present.has(name) && !pending.includes(name))
-  if (waiting.length) ranked.push([5, `#${n}: ${names(waiting)} ${waiting.length > 1 ? 'wait' : 'waits'} for approval on GitHub (a run started by a bot). Call merge_site_update with recheck: true to start ${waiting.length > 1 ? 'them' : 'it'} as Steven.`])
+  if (waiting.length) ranked.push([5, `${n}: ${names(waiting)} ${waiting.length > 1 ? 'wait' : 'waits'} for approval on GitHub (a run started by a bot). Call ${merge} with recheck: true to start ${waiting.length > 1 ? 'them' : 'it'} as Steven.`])
   const missing = requiredChecks.filter((name) => !present.has(name) && !waiting.includes(name) && !pending.includes(name))
-  if (missing.length) ranked.push([6, `#${n} cannot merge yet: ${names(missing)} ${missing.length > 1 ? 'have' : 'has'} not run on its latest commit. Call merge_site_update with recheck: true to start ${missing.length > 1 ? 'them' : 'it'}.`])
+  if (missing.length) ranked.push([6, `${n} cannot merge yet: ${names(missing)} ${missing.length > 1 ? 'have' : 'has'} not run on its latest commit. Call ${merge} with recheck: true to start ${missing.length > 1 ? 'them' : 'it'}.`])
   const running = [...checks.filter((check) => check.status !== 'completed'), ...pending.map((name) => ({ name, startedAt: null }))]
   if (running.length) {
     const started = clock([...running.map((check) => check.startedAt)].filter(Boolean).sort()[0] ?? null)
-    ranked.push([7, `#${n} is not ready yet: ${names(running.map((check) => check.name))} ${running.length > 1 ? 'are' : 'is'} still running${started ? ` (started ${started})` : ''}. Merge it once ${running.length > 1 ? 'they pass' : 'it passes'}; wait_for_site_update does not follow checks, so ask again in a few minutes.`])
+    ranked.push([7, `${n} is not ready yet: ${names(running.map((check) => check.name))} ${running.length > 1 ? 'are' : 'is'} still running${started ? ` (started ${started})` : ''}. Merge it once ${running.length > 1 ? 'they pass' : 'it passes'}; wait_for_site_update does not follow checks, so ask again in a few minutes.`])
   }
-  if (!ranked.length) return { causes: [`GitHub still reports #${n} as blocked, although every required check passed and no reviewer is waiting; it may still be working it out. Call merge_site_update again in a minute.`], recheck: false }
+  if (!ranked.length) return { causes: [`GitHub still reports ${n} as blocked, although every required check passed and no reviewer is waiting; it may still be working it out. Call ${merge} again in a minute.`], recheck: false }
   const causes = ranked.sort((a, b) => a[0] - b[0]).slice(0, MAX_CAUSES)
   return { causes: causes.map(([, text]) => text), recheck: causes.some(([rank]) => rank === 2 || rank === 5 || rank === 6), running: running.length > 0 }
 }
 // Why an open pull request of this repository does not merge, or null when nothing holds it. Asking
 // GitHub what holds a blocked one costs up to three requests; `look: false` names the block without asking.
 const troubleOf = async (github: GitHub, pull: PullRequest, look = true, checks: CheckState | null = null): Promise<Blocked | null> => {
+  const merge = `merge_site_update (number: ${pull.number})`
   const plain = mergeTrouble(pull, checks)
   if (plain) return { causes: [plain], recheck: false }
   if (pull.state !== 'open' || pull.mergeableState !== 'blocked') return null
-  if (!look) return { causes: [`#${pull.number} is blocked by the repository's branch rules; this answer looks into at most ${LOOK_AT} blocked pull requests at a time. Deal with one of the others (merge, redo or close it) and ask again.`], recheck: false }
+  if (!look) return { causes: [`The update ${quotedName(pull)} is held by the repository's branch rules; this answer looks into at most ${LOOK_AT} blocked pull requests at a time. Deal with one of the others (merge, redo or close it) and ask again.`], recheck: false }
   try { return blockedCauses(pull, await github.status(pull.number)) } catch (error) {
     console.error('pull status', String(error))
-    return { causes: [`#${pull.number} is blocked by the repository's branch rules, and what holds it could not be read here (${quotedReason(String((error as Error)?.message ?? error))?.slice(0, 200)}). Call merge_site_update again in a minute.`], recheck: false }
+    return { causes: [`The update ${quotedName(pull)} is held by the repository's branch rules, and what holds it could not be read here (${quotedReason(String((error as Error)?.message ?? error))?.slice(0, 200)}). Call ${merge} again in a minute.`], recheck: false }
   }
 }
 const shapeRun = (run: WorkflowRun) => ({ name: updateName(run.title), id: run.id, number: run.number, status: run.status, conclusion: run.conclusion, startedAt: run.createdAt, url: run.url, branch: run.branch, title: run.title })
 // An update's human name: what it was asked to do, else its pull request's title.
 const pullName = (pull: PullRequest) => updateName(pull.request?.title || pull.title)
+// The name inside the assistant's guidance, in double quotes no name can close.
+const quotedName = (pull: PullRequest) => `"${pullName(pull).replace(/"/g, "'")}"`
 // Where an update stands: live, set aside, clashing with main (a real conflict), still being
 // checked, its checks failed, held by the branch rules for a reason the checks do not show, or
 // ready for Steven to check. GitHub's "unstable" and "blocked" cover both running and failed
@@ -544,6 +551,11 @@ export const tools: Tool[] = [
         headline: `${profile.headline}. Most recently Principal Group Product Manager, Windows & Devices Data, at Microsoft: the data, experimentation and ML products behind decisions across more than 1.6 billion Windows devices.`,
         status: `Building in AI while choosing his next role. Looking for: ${profile.lookingFor.toLowerCase()}. ${profile.availability}.`,
         location: `${profile.location} · ${profile.workAuthorization}`,
+        citizenship: profile.citizenship,
+        workArrangement: profile.workArrangement,
+        travel: profile.travel,
+        employers: profile.employers,
+        relocation: profile.relocation,
         teamSize: `Led teams of ${profile.teamSize}`,
         contact,
         education: `${education.degree}, ${education.school} (${education.dates})`,
@@ -620,7 +632,7 @@ export const tools: Tool[] = [
       str(args, 'job_description', 12_000, true)
       const entries = await ctx.store.list({ visibility: 'public' })
       return {
-        howTo: 'Go through the posting requirement by requirement and put each in exactly one of three lists. Covered: a fact in the record names it; cite the role or page. Partly covered: the record shows something related; say what is missing. Not shown: the record is silent; do not infer it, even when it is probably true. Then list up to four questions an interviewer should ask Steven to settle the open points. Never infer level, compensation, visa status, clearance or willingness to relocate; he answers those himself. Quote his numbers as written.',
+        howTo: 'Go through the posting requirement by requirement and put each in exactly one of three lists. Covered: a fact in the record names it; cite the role or page. Partly covered: the record shows something related; say what is missing. Not shown: the record is silent; do not infer it, even when it is probably true. Then list up to four questions an interviewer should ask Steven to settle the open points. Never infer level, compensation, visa status, clearance, willingness to relocate, on-site days or a region, or work authorization beyond what about_steven states; he answers those himself. Travel: a requirement for occasional, as-needed or coordinated travel is Covered by the travel fact about_steven states; a specific frequency or percentage of travel is at most Partly covered (the travel fact gives none) and a question for him. A requirement to relocate is a mismatch with the relocation fact about_steven states: put it under Partly covered as does not match, not as a question. The relocation fact answers only whether he would move: a requirement to work remotely for a company outside the US, or in the working hours of that employer, is Covered by the work arrangement and the employers fact about_steven states, never a mismatch; a requirement to live or be based outside the Seattle area is a mismatch with the location and the relocation fact. Quote his numbers as written.',
         record: dossierText(entries),
         contact,
       }
@@ -668,7 +680,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'site_questions',
-    description: "Questions from the site that wait for Steven, each with an id: what the assistant on steven.wilssens.com could not answer from the public notes (gap), the requirements a recruiter's pasted job description named that his record does not show (fit), and answers readers voted down (unhelpful). A recruiter actually asked these, so they come before the interview's own questions. Take them one at a time: read what exists (get_role, search_dossier), ask him, then answer_site_question or dismiss_site_question.",
+    description: "Questions from the site that wait for Steven, each with an id: what the assistant on steven.wilssens.com could not answer from the public notes (gap), the requirements a recruiter's pasted job description named that his record does not show (fit), answers readers voted down (unhelpful), and answers Steven rated poor himself in the admin and added to his questions (rated). A recruiter actually asked these, so they come before the interview's own questions. Take them one at a time: read what exists (get_role, search_dossier), ask him, then answer_site_question or dismiss_site_question.",
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     readOnly: true,
     run: async (_args, ctx) => {
@@ -676,7 +688,7 @@ export const tools: Tool[] = [
       const count = (reason: AskGap['reason']) => open.filter((gap) => gap.reason === reason).length
       return {
         waiting: open.length,
-        summary: open.length ? `${count('gap')} the assistant could not answer, ${count('fit')} job requirements the record does not show, ${count('unhelpful')} answers voted down.` : 'Nothing waits: every question from the site has been answered or set aside.',
+        summary: open.length ? `${count('gap')} the assistant could not answer, ${count('fit')} job requirements the record does not show, ${count('unhelpful')} answers voted down, ${count('rated')} answers Steven rated poor.` : 'Nothing waits: every question from the site has been answered or set aside.',
         questions: open.map((gap) => ({ id: gap.id, reason: gap.reason, asked: gap.when, page: gap.page, question: gap.question, whatTheAssistantSaid: gap.answer })),
         caution: visitorTextCaution,
         howTo: 'For each: say what a recruiter was after, check the dossier, ask Steven, and save his answer with answer_site_question (public by default, so the assistant can answer the next recruiter). dismiss_site_question for duplicates, off-topic text and anything he will not answer. Similar questions can share one answer: answer the first, then dismiss the others with "answered by entry N".',
@@ -827,7 +839,7 @@ export const tools: Tool[] = [
       summary: profile.summary,
       // Owner only, as deployed (never a proposal): the exact current text for an About proposal.
       ...(ctx.mode === 'owner' ? { about: { intro: about.intro, paragraphs: about.paragraphs } } : {}),
-      profile: { lookingFor: profile.lookingFor, location: profile.location, workAuthorization: profile.workAuthorization, availability: profile.availability, teamSize: profile.teamSize },
+      profile: { lookingFor: profile.lookingFor, location: profile.location, workAuthorization: profile.workAuthorization, citizenship: profile.citizenship, availability: profile.availability, workArrangement: profile.workArrangement, travel: profile.travel, employers: profile.employers, relocation: profile.relocation, teamSize: profile.teamSize },
       keyAchievements: impact.map((item) => ({ ...achievementOf(item), asProposalText: JSON.stringify(achievementOf(item)) })),
       skills,
       roles: experiences.map((item) => ({ key: item.key, role: item.role, company: item.company, dates: item.dates, location: item.location, summary: item.summary, points: item.points })),
@@ -842,7 +854,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'propose_resume_change',
-    description: `Propose one concrete résumé edit for Steven to approve or reject. Any part of a role can change: its title, company, dates ("Dec 2024 - Sep 2026"), location, summary, or a bullet point (replace, add or remove). A whole role can be added (role "${newRoleKey}", field "role", kind "add", the entry as JSON), replaced or removed (field "role" on an existing role key). The headline, summary, skills and education sections can change too, and so can the key achievements strip (role "${achievementsSection}": current_text and proposed_text as JSON {"value", "label", "backing"}, where backing is the key of the role whose bullet explains the number; get_resume shows each one as asProposalText). The About page can change too (role "${aboutSection}"): field "intro" is the line under the title and can only be replaced; field "paragraph" replaces, adds or removes one paragraph (for an add, current_text optionally quotes the paragraph it follows; without it the new one goes at the end). get_resume has the current About text as about. About text is plain prose: no markup, links or line breaks; the facts of the side note (title, location, work authorization, availability) change through the résumé proposals, never through About. Quote the current text exactly and give the full proposed text. One proposal per change.`,
+    description: `Propose one concrete résumé edit for Steven to approve or reject. Any part of a role can change: its title, company, dates ("Dec 2024 - Sep 2026"), location, summary, or a bullet point (replace, add or remove). A whole role can be added (role "${newRoleKey}", field "role", kind "add", the entry as JSON), replaced or removed (field "role" on an existing role key). The headline, summary, skills and education sections can change too, and so can the key achievements strip (role "${achievementsSection}": current_text and proposed_text as JSON {"value", "label", "backing"}, where backing is the key of the role whose bullet explains the number; get_resume shows each one as asProposalText). The About page can change too (role "${aboutSection}"): field "intro" is the line under the title and can only be replaced; field "paragraph" replaces, adds or removes one paragraph (for an add, current_text optionally quotes the paragraph it follows; without it the new one goes at the end). get_resume has the current About text as about. About text is plain prose: no markup, links or line breaks; the facts of the side note (title, location, work authorization, citizenship, availability, work arrangement, travel, employers, relocation) change through the résumé proposals or a site update, never through About. Quote the current text exactly and give the full proposed text. One proposal per change.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -1005,7 +1017,7 @@ export const tools: Tool[] = [
   // Changing the site and the resume.
   {
     name: 'request_site_update',
-    description: `Make a change to Steven's site and résumé. Claude Code applies the instruction on a branch in GitHub Actions (facts in src/resume.ts, then npm run resume:build regenerates the PDF and refuses a worse résumé), runs the checks and opens a pull request with a preview link. Nothing goes live until Steven has seen the preview and says yes. Three ways to use it. (1) proposals: the ids of approved résumé proposals; one update carries all of them, the brief is written from them (add an instruction only for what is not in the proposals), and they are marked applied when it goes live. Batch everything that is ready: every update regenerates the same résumé file, so two waiting at once clash after the first goes live. (2) instruction: a complete brief with the exact wording to use, for answered questions and anything else he wants changed: rewording, correcting a role's dates, title, company or location, the period of a selected-work case, the profile (headline, summary, location, authorization, availability, team size, contact), adding or removing a role, a bullet, a key achievement, a skill, a selected-work case, a recommendation or a page. (3) redo: the number of a pull request that clashes with main or was closed; the same instruction and proposals run again on a fresh branch from main and the old pull request is closed when the new one opens. ${speakPlainly}`,
+    description: `Make a change to Steven's site and résumé. Claude Code applies the instruction on a branch in GitHub Actions (facts in src/resume.ts, then npm run resume:build regenerates the PDF and refuses a worse résumé), runs the checks and opens a pull request with a preview link. Nothing goes live until Steven has seen the preview and says yes. Three ways to use it. (1) proposals: the ids of approved résumé proposals; one update carries all of them, the brief is written from them (add an instruction only for what is not in the proposals), and they are marked applied when it goes live. Batch everything that is ready: every update regenerates the same résumé file, so two waiting at once clash after the first goes live. (2) instruction: a complete brief with the exact wording to use, for answered questions and anything else he wants changed: rewording, correcting a role's dates, title, company or location, the period of a selected-work case, the profile (headline, summary, location, authorization, citizenship, availability, work arrangement, travel, employers, relocation, team size, contact), adding or removing a role, a bullet, a key achievement, a skill, a selected-work case, a recommendation or a page. (3) redo: the number of a pull request that clashes with main or was closed; the same instruction and proposals run again on a fresh branch from main and the old pull request is closed when the new one opens. ${speakPlainly}`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -1173,7 +1185,7 @@ export const tools: Tool[] = [
       const stuck = shaped.filter((pull, index) => pull.mergeTrouble && !beingRedone(pulls[index]))
       const by = (...wanted: Standing[]) => pulls.filter((_pull, index) => wanted.includes(where[index]))
       return {
-        say: say.status({ ready: by('ready').map(pullName), checking: by('checking').map(pullName), making: shapedRuns.filter((run) => run.outcome === 'running').map((run) => run.name), held: by('checks', 'blocked').map(pullName), clashing: by('clash').filter((pull) => !beingRedone(pull)).map(pullName), lowering: lowering.map(pullName) }),
+        say: say.status({ ready: by('ready').map(pullName), checking: by('checking').map(pullName), making: shapedRuns.filter((run) => run.outcome === 'running').map((run) => run.name), held: by('checks').map(pullName), waiting: by('blocked').map(pullName), clashing: by('clash').filter((pull) => !beingRedone(pull)).map(pullName), lowering: lowering.map(pullName) }),
         runs: shapedRuns,
         pullRequests: shaped,
         ...(reviews.some(Boolean) ? { teamReviewNote } : {}),
@@ -1332,7 +1344,7 @@ export const publicToolNames = ['about_steven', 'get_resume', 'get_role', 'read_
 export const publicInstructions = `This is the public, read-only MCP server of Steven Wilssens, a principal product leader for data and AI (nearly 20 years at Microsoft, most recently leading Windows & Devices Data product management; now building in AI while choosing his next leadership role). It serves recruiters, hiring managers and their assistants: everything here is what Steven published on steven.wilssens.com, plus notes he wrote for this purpose. Nothing can be changed through it.
 Start with about_steven. get_resume has the résumé as published; get_role has one role with its bullets and public notes; read_site_page reads the pages as Markdown (llms-full for all of them); get_recommendations and get_patents_and_press have what others said and what is on record; search_dossier finds his public notes by keyword.
 For a job description, call check_fit with the posting and follow its instructions: say which requirements his record covers (with the role or page), which it covers partly, which it does not show, and what to ask him. Be strict and honest; the record is silent on more than it covers, and saying so is the point.
-Never invent, extrapolate or round up a number, title, date, team size or result. Never infer compensation, visa status, clearance or willingness to relocate. When something is not covered, say that Steven has not published it and point to steven@wilssens.com or his LinkedIn. Calls are logged by tool name and query so Steven can see what assistants ask; no IP address is kept.`
+Never invent, extrapolate or round up a number, title, date, team size or result. Never infer compensation, visa status, clearance, willingness to relocate, on-site days or a region, or work authorization beyond what about_steven states, and never give travel a frequency or percentage the travel fact about_steven states does not. A requirement to relocate is a mismatch with the relocation fact about_steven states. The relocation fact answers only whether he would move: remote work for a company outside the US, in that employer's own working hours, is what the employers fact about_steven states, never a mismatch. When something is not covered, say that Steven has not published it and point to steven@wilssens.com or his LinkedIn. Calls are logged by tool name and query so Steven can see what assistants ask; no IP address is kept.`
 
 // What the client is told at initialize: the owner's instructions with a line on what
 // waits from the site, or the public ones.
@@ -1341,5 +1353,5 @@ export const instructionsFor = async (ctx: ToolContext) => {
   const waiting = await ctx.store.askGaps(50).catch(() => [] as AskGap[])
   if (!waiting.length) return instructions
   const count = (reason: AskGap['reason']) => waiting.filter((gap) => gap.reason === reason).length
-  return `${instructions}\nRight now ${waiting.length} ${waiting.length === 1 ? 'question waits' : 'questions wait'} for Steven from the site: ${count('gap')} the assistant could not answer, ${count('fit')} job requirements his record does not show, ${count('unhelpful')} answers voted down. Tell him in one line before anything else and offer to go through them (site_questions); then do what he came for.`
+  return `${instructions}\nRight now ${waiting.length} ${waiting.length === 1 ? 'question waits' : 'questions wait'} for Steven from the site: ${count('gap')} the assistant could not answer, ${count('fit')} job requirements his record does not show, ${count('unhelpful')} answers voted down, ${count('rated')} answers he rated poor. Tell him in one line before anything else and offer to go through them (site_questions); then do what he came for.`
 }

@@ -16,8 +16,9 @@
 // conversation back and vote on them without being able to forge an earlier answer.
 import Anthropic from '@anthropic-ai/sdk'
 import type { Env } from '../env'
-import type { DossierStore } from '../mcp/store'
-import { contact, jdPrefix, loadArticles, sources as allSources, systemPrompt, type Articles, type Source } from './prompt'
+import type { DossierEntry, DossierStore } from '../mcp/store'
+import { contact, instructionVersion, jdPrefix, knowledgeVersion, loadArticles, sources as allSources, systemPrompt, type Articles, type Source } from './prompt'
+import { isModel } from './rating'
 import { dayOf, monthStart, type AskStore, type Outcome, type Usage } from './store'
 import { optedOut, visitorHash } from '../visitor'
 import { PRICES } from '../prices'
@@ -40,12 +41,14 @@ export const MAX_JD = 8000
 const MAX_ANSWER = 6000
 const MAX_TURNS = 12
 const MAX_HISTORY_CHARS = 30_000
-const MAX_TOKENS = 1500
-const MAX_TOKENS_FIT = 2200
-const MAX_SOURCES = 3
-const MAX_SOURCES_FIT = 6
+/**
+ * What every request to the model is sent with, in one place: claudeStream reads it and the
+ * instruction version hashes it (prompt.ts), so a change here starts a new version on /admin.
+ */
+export const REQUEST = { maxTokens: 1500, maxTokensFit: 2200, thinking: 'adaptive', effort: 'low', fallbacks: 'default', maxSources: 3, maxSourcesFit: 6 } as const
 const MAX_FIT_GAPS = 8
-const KEEP_MS = 90 * 86_400_000
+/** How long the log and the open questions are kept, as /privacy says. */
+export const KEEP_MS = 90 * 86_400_000
 
 export const words = {
   offTopic: "I can only answer questions about Steven's work: his roles, results, leadership, patents, projects and how to reach him. Ask me one of those, or email him at steven@wilssens.com.",
@@ -63,7 +66,7 @@ export type Turn = { role: 'user'; content: string; kind?: 'fit' } | { role: 'as
 export type AskBody = { messages: Turn[]; page: string; turnstileToken: string }
 
 const str = (value: unknown, max: number) => (typeof value === 'string' ? value.slice(0, max) : '')
-const sourceIds = (value: unknown) => (Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string' && /^(role|site):[a-z0-9-]{1,40}$|^notes$/.test(id)).slice(0, MAX_SOURCES_FIT) : [])
+const sourceIds = (value: unknown) => (Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string' && /^(role|site):[a-z0-9-]{1,40}$|^notes$/.test(id)).slice(0, REQUEST.maxSourcesFit) : [])
 
 /** The panel sends only the newest turns within MAX_TURNS and MAX_HISTORY_CHARS, so `longConversation` is a guard against other clients. */
 export function parseBody(raw: unknown): AskBody | 'tooLong' | 'longConversation' | 'failed' {
@@ -174,16 +177,35 @@ export const missingRequirements = (answer: string): string[] => {
   return found.slice(0, MAX_FIT_GAPS)
 }
 
-// What the agent needs from a stream: text deltas, then the final message's usage and stop reason.
-export type AnswerStream = { [Symbol.asyncIterator](): AsyncIterator<{ type: string; delta?: { type: string; text?: string } }>; finalMessage(): Promise<{ stop_reason: string | null; usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null } } | null>; abort(): void }
+// What the agent needs from a stream: text deltas, the model it started with (message_start)
+// and any server-side fallback it handed over to (a `fallback` block), then the final
+// message's usage, stop reason, model and iterations.
+export type StreamEvent = { type: string; delta?: { type: string; text?: string }; message?: { model?: string }; content_block?: { type: string; to?: { model?: string } } }
+export type FinalMessage = { stop_reason: string | null; model?: string; usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null; iterations?: { type: string; model?: string }[] | null } }
+export type AnswerStream = { [Symbol.asyncIterator](): AsyncIterator<StreamEvent>; finalMessage(): Promise<FinalMessage | null>; abort(): void }
 export type StreamOptions = { maxTokens: number }
 export type StreamFactory = (system: string, context: string, messages: Anthropic.Beta.BetaMessageParam[], options: StreamOptions) => AnswerStream
 
+const MODEL_ID = /^[a-z0-9][a-z0-9._:-]{0,63}$/
+/**
+ * The model that actually served an answer, for the log: a server-side fallback wins (the
+ * last `fallback_message` iteration, then the last `fallback` block), then the final message's
+ * model, then the one the stream started with (an off-topic answer is cut before any final
+ * message), then MODEL; an id that is not a model id is stored as MODEL. `fallback` says the
+ * answer was handed over, or came from another model than the one requested.
+ */
+export const servingModel = (served: { start: string | null; fallback: string | null }, final: FinalMessage | null, requested = MODEL) => {
+  const iteration = [...(final?.usage.iterations ?? [])].reverse().find((item) => item.type === 'fallback_message' && typeof item.model === 'string')
+  const handedOver = iteration?.model ?? served.fallback
+  const pick = handedOver ?? final?.model ?? served.start ?? requested
+  const model = MODEL_ID.test(pick) ? pick : requested
+  return { model, fallback: Boolean(handedOver) || !isModel(model, requested) }
+}
 // How the live assistant asks the model, besides the model, the prompt and the answer budget. The CI
 // assistant check (functions/_lib/assistant-input.ts, scripts/assistant-check.mjs) asks the same way.
-export const liveRequest = { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default', thinking: { type: 'adaptive' }, output_config: { effort: 'low' } } as const
-export const answerTokens = { question: MAX_TOKENS, fit: MAX_TOKENS_FIT }
-export const answerSources = { question: MAX_SOURCES, fit: MAX_SOURCES_FIT }
+export const liveRequest = { betas: ['server-side-fallback-2026-07-01'], fallbacks: REQUEST.fallbacks, thinking: { type: REQUEST.thinking }, output_config: { effort: REQUEST.effort } } as const
+export const answerTokens = { question: REQUEST.maxTokens, fit: REQUEST.maxTokensFit }
+export const answerSources = { question: REQUEST.maxSources, fit: REQUEST.maxSourcesFit }
 
 const claudeStream = (env: Env): StreamFactory => (system, context, messages, options) => {
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, maxRetries: 1, defaultHeaders: env.ANTHROPIC_WORKSPACE_ID ? { 'anthropic-workspace-id': env.ANTHROPIC_WORKSPACE_ID } : undefined })
@@ -264,7 +286,17 @@ const verifyTurnstile = async (secret: string, token: string, ip: string | null,
 }
 
 /** `pages` reads one of the site's own static files by path (the Markdown copies of the Building write-ups); without it the assistant knows the write-ups only from the projects section. */
-export type AskDeps = { env: Env; store: AskStore; dossier: DossierStore; waitUntil: (promise: Promise<unknown>) => void; pages?: (path: string) => Promise<string | null>; stream?: StreamFactory; now?: () => number }
+export type AskDeps = { env: Env; store: AskStore; dossier: DossierStore; waitUntil: (promise: Promise<unknown>) => void; pages?: (path: string) => Promise<string | null>; stream?: StreamFactory; now?: () => number; versions?: Versions }
+
+/** The instruction and knowledge versions of an answer (prompt.ts), worked out after it has streamed. */
+export type Versions = (entries: DossierEntry[], articles: Articles) => Promise<{ promptVersion: string; knowledgeVersion: string }>
+// The instruction version depends only on module constants: once per isolate.
+let instructionCache: Promise<string> | null = null
+export const answerVersions: Versions = async (entries, articles) => {
+  instructionCache ??= instructionVersion(REQUEST, { offTopic: words.offTopic, notAPosting: words.notAPosting })
+  const [promptVersion, knowledge] = await Promise.all([instructionCache, knowledgeVersion(entries, articles)])
+  return { promptVersion, knowledgeVersion: knowledge }
+}
 
 /** The second system block: the page the reader is on, and for a pasted job description the fit-check format. The CI assistant check (functions/_lib/assistant-input.ts) sends the same. */
 export const contextFor = (page: string, fit: boolean) => `The reader is on the ${page === 'home' ? 'home' : page} page of steven.wilssens.com.${fit ? ' The last message is a job description pasted for a fit check: follow the fit-check format.' : ''}`
@@ -288,7 +320,7 @@ export async function askStatus(request: Request, env: Env, store: AskStore, now
 }
 
 /** POST /api/ask: the answer as Server-Sent Events, or a JSON error { error, message }. */
-export async function ask(request: Request, { env, store, dossier, waitUntil, pages, stream, now = Date.now }: AskDeps): Promise<Response> {
+export async function ask(request: Request, { env, store, dossier, waitUntil, pages, stream, now = Date.now, versions = answerVersions }: AskDeps): Promise<Response> {
   const fail = (error: keyof typeof words, status: number) => json({ error, message: words[error] }, status)
   if (!env.ANTHROPIC_API_KEY && env.ASK_MOCK !== '1') return fail('unavailable', 503)
   const parsed = parseBody(await request.json().catch(() => null))
@@ -329,13 +361,24 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
   // Without HASH_SALT the code would be a plain hash of the IP address, so nothing is logged.
   const visitor = optOut || !env.HASH_SALT || new URL(request.url).hostname.endsWith('.pages.dev') ? null
     : await visitorHash(env.HASH_SALT, day, request.headers.get('CF-Connecting-IP') ?? '', request.headers.get('User-Agent') ?? '')
-  const logAs = async (outcome: Outcome, answer: string) => {
+  // After the answer has streamed: what produced it (the serving model, the versions, the
+  // sources an answered answer cited) goes into the same log write, so none of it can delay
+  // or fail the answer.
+  const mock = !stream && env.ASK_MOCK === '1'
+  const logAs = async (outcome: Outcome, answer: string, ids: string[], served: { model: string; fallback: boolean }) => {
     if (!visitor) return
     const asked = fit ? `Job description (${question.length} characters): ${redact(question).slice(0, 240).trim()}…` : redact(question).slice(0, MAX_QUESTION)
-    await store.logQuestion({ ts: started, visitor, kind: fit ? 'fit' : 'question', question: asked, answer: answer ? redact(answer).slice(0, MAX_ANSWER) : null, outcome, ...where }, KEEP_MS).catch((err: unknown) => console.error('ask log', err))
+    // A failure computing the versions costs only the versions, not the row.
+    const produced = await versions(entries, writeUps).catch((err) => { console.error('ask versions', err); return { promptVersion: null, knowledgeVersion: null } })
+    try {
+      const { promptVersion, knowledgeVersion } = produced
+      await store.logQuestion({ ts: started, visitor, kind: fit ? 'fit' : 'question', question: asked, answer: answer ? redact(answer).slice(0, MAX_ANSWER) : null, outcome, ...where, ...served, promptVersion, knowledgeVersion, sources: outcome === 'answered' ? [...new Set(ids)] : null }, KEEP_MS)
+    } catch (err) {
+      console.error('ask log', err)
+    }
   }
   const makeStream = stream ?? (env.ASK_MOCK === '1' ? mockStream : claudeStream(env))
-  const maxSources = fit ? MAX_SOURCES_FIT : MAX_SOURCES
+  const maxSources = fit ? REQUEST.maxSourcesFit : REQUEST.maxSources
 
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
   const writer = writable.getWriter()
@@ -345,6 +388,8 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
     const state = { decided: false, scope: 'in' as 'in' | 'out', sources: [] as Source[], head: '', answer: '', failed: false }
     let firstAt = 0
     let usage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+    let final: FinalMessage | null = null
+    const servedBy = { start: null as string | null, fallback: null as string | null }
     const decide = async () => {
       state.decided = true
       const match = HEADER.exec(state.head)
@@ -358,8 +403,11 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
       if (rest) { firstAt ||= now(); state.answer += rest; await send('delta', { text: rest }) }
     }
     try {
-      const answerStream = makeStream(system, context, messages, { maxTokens: fit ? MAX_TOKENS_FIT : MAX_TOKENS })
+      const answerStream = makeStream(system, context, messages, { maxTokens: fit ? REQUEST.maxTokensFit : REQUEST.maxTokens })
       for await (const event of answerStream) {
+        // Which model answers: a field read, nothing awaited.
+        if (event.type === 'message_start' && event.message?.model) servedBy.start = event.message.model
+        if (event.type === 'content_block_start' && event.content_block?.type === 'fallback' && event.content_block.to?.model) servedBy.fallback = event.content_block.to.model
         if (event.type !== 'content_block_delta' || event.delta?.type !== 'text_delta' || typeof event.delta.text !== 'string') continue
         if (state.decided) {
           const text = state.answer ? event.delta.text : event.delta.text.trimStart()
@@ -374,7 +422,7 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
         await decide()
         if (state.scope === 'out') { answerStream.abort(); break }
       }
-      const final = await answerStream.finalMessage().catch(() => null)
+      final = await answerStream.finalMessage().catch(() => null)
       if (final) usage = { input: final.usage.input_tokens, output: final.usage.output_tokens, cacheRead: final.usage.cache_read_input_tokens ?? 0, cacheWrite: final.usage.cache_creation_input_tokens ?? 0 }
       if (!state.decided) await decide()
       // A declined request (safety classifiers) gets the same answer as an off-topic one.
@@ -404,7 +452,8 @@ export async function ask(request: Request, { env, store, dossier, waitUntil, pa
       const outcome: Outcome = state.failed ? 'failed' : state.scope === 'out' ? 'off' : state.sources.length ? 'answered' : 'gap'
       const done = now()
       await store.recordUsage(day, outcome, usage, costMicro(usage), (firstAt || done) - started, done - started).catch((err: unknown) => console.error('ask usage', err))
-      await logAs(outcome, state.failed ? '' : state.answer)
+      const served = mock ? { model: 'mock', fallback: false } : servingModel(servedBy, final)
+      await logAs(outcome, state.failed ? '' : state.answer, state.sources.map((source) => source.id), served)
       await writer.close().catch(() => {})
     }
   }

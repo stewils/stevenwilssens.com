@@ -16,7 +16,7 @@ import aibreakerFeed from './aibreaker/feed.json'
 import juniorFeed from './juniortrackcycling/feed.json'
 import leoFeed from './leo/feed.json'
 
-const report = { since: '2026-10-01', questions: 1234, answered: 30, gaps: 10, gapsCovered: 4, gapsOpen: 6, helpful: 9, unhelpful: 2, costMicro: 1_250_000, costPerAnswerMicro: 41_667, publicNotes: 3 }
+const report = { since: '2026-10-01', questions: 1234, answered: 30, gaps: 10, gapsCovered: 4, gapsOpen: 6, costMicro: 1_250_000, costPerAnswerMicro: 41_667, publicNotes: 3 }
 const fetchMock = vi.fn()
 
 beforeEach(() => {
@@ -105,9 +105,25 @@ describe('the assistant\'s report card on /building-this-site', () => {
     expect(within(card).getByText('75%')).toBeInTheDocument()
     expect(within(card).getByText('times my notes had no answer')).toBeInTheDocument()
     expect(within(card).getByText(/questions from readers I answered since, as public notes · 6 waiting/)).toBeInTheDocument()
-    expect(within(card).getByText('9 / 2')).toBeInTheDocument()
     expect(within(card).getByText('$0.04')).toBeInTheDocument()
     expect(within(card).getByText('per answer · $1.25 in all')).toBeInTheDocument()
+  })
+
+  it('shows no vote and no score of Steven\'s, only the numbers about the answers', async () => {
+    const { container } = render(<ReportCard />)
+    expect(container.textContent).not.toMatch(/vote/i)
+    const card = await screen.findByRole('figure', { name: 'The assistant’s report card' })
+    expect(card.textContent).not.toMatch(/vote|helpful|rated|score/i)
+    expect(card.querySelectorAll('.wx-report-grid > div')).toHaveLength(5)
+  })
+
+  it('/building-this-site says Steven reads and rates the answers, marks the wrong ones and compares versions, without a score', () => {
+    const { container } = render(<SiteArticle />)
+    const said = screen.getByText(/where I also read and rate the answers myself, mark the wrong ones and compare the model and instruction versions/)
+    expect(said.textContent).not.toMatch(/vote|\d+ ?%|\d\/5/i)
+    // The ratings are not what the card below shows.
+    expect(said).toHaveTextContent('Those ratings stay private; the counts below are public, straight from the database.')
+    expect(container.querySelector('.wx-report-wait')!.textContent).not.toMatch(/vote/i)
   })
 
   it('reads well on a first day: singular words, no share and no cost per answer yet', async () => {
@@ -178,8 +194,8 @@ describe('the team diagram on /building-this-site', () => {
     const images = screen.getAllByRole('img', { name: 'How a change reaches the site: a team of AI agents, and Steven deciding' })
     expect(images.map((image) => image.getAttribute('class'))).toEqual(['wx-flow-wide', 'wx-flow-tall'])
     for (const image of images) {
-      expect(image).toHaveAccessibleDescription(/Six reviews run in parallel.*at most three rounds\. When all approve, the pull request runs its own required checks on GitHub: main’s gates, the team review, which also tests the assistant on a change to the assistant, the résumé or a write-up, and the site checks\. Steven merges, and the site deploys\. The agents’ runs, on GitHub and in Steven’s own Claude Code sessions, are metered/)
-      for (const label of ['Spec', 'My questions', 'Build', 'Six reviews, in parallel', 'tests, 90% a file', 'recruiter: not worse', 'PM: acceptance', 'all approve', 'Pull request', 'I merge', 'Deploy']) expect(within(image).getByText(label)).toBeInTheDocument()
+      expect(image).toHaveAccessibleDescription(/The reviews run in parallel, by fresh agents that did not write the code, and only for the parts the change touches.*a change to the rules or the team gets every role but the recruiter, who reviews only changes to the résumé and the site\. Changes go back to the developer for at most three rounds, and only the reviewers who asked, or whose part the fix touched, review again\. When all approve, the pull request runs its own required checks on GitHub: main’s gates, the team review, which also tests the assistant on a change to the assistant, the résumé or a write-up, and the site checks\. Steven merges, and the site deploys\. The agents’ runs, on GitHub and in Steven’s own Claude Code sessions, are metered/)
+      for (const label of ['Spec', 'My questions', 'Build', 'Reviews, for the parts it touches', 'fresh agents; approvals carry over', 'tests, 90% a file', 'recruiter: not worse', 'PM: acceptance', 'all approve', 'Pull request', 'I merge', 'Deploy']) expect(within(image).getByText(label)).toBeInTheDocument()
     }
   })
 
@@ -199,7 +215,7 @@ describe('the team diagram on /building-this-site', () => {
   it('the flow diagram shows the stop when nothing changed, across and stacked', () => {
     render(<TeamFlowDiagram />)
     for (const image of screen.getAllByRole('img', { name: /a team of AI agents, and Steven deciding/ })) {
-      expect(image).toHaveAccessibleDescription(/A developer builds it with its tests\. A build that changes nothing stops there: the run fails and Steven is told, so no empty pull request is opened\. Six reviews/)
+      expect(image).toHaveAccessibleDescription(/A developer builds it with its tests\. A build that changes nothing stops there: the run fails and Steven is told, so no empty pull request is opened\. The reviews run in parallel/)
       for (const label of ['Nothing changed', 'the run fails', 'and I am told', 'Fix and review again,', 'at most three rounds']) expect(within(image).getByText(label)).toBeInTheDocument()
       // The stop is drawn in the stop colour, never the accent that marks where Steven decides.
       const box = within(image).getByText('Nothing changed').parentElement!.querySelector('rect')!
@@ -301,5 +317,53 @@ describe('the team diagram on /building-this-site', () => {
     const sentence = step.textContent!.match(/[^.]*unread updates[^.]*\./)![0].trim()
     expect(sentence).toBe('Changes to the agent team itself reach me in my admin as unread updates until I have seen them.')
     expect(sentence).not.toMatch(/\d/)
+  })
+
+  it('says the private MCP merges exactly the version I previewed or nothing, not while checks run, and after a failed check only with my yes (specs/building-steven-wi-49.md, AC-2, AC-4, AC-5)', () => {
+    render(<SiteArticle />)
+    const step = within(document.getElementById('loop')!.closest('section')!).getByText('Put every change past a team.').closest('li')!
+    const text = step.textContent!
+    const match = text.match(/from the same conversation if I like\.\s+([^.]*\.)/)
+    expect(match).not.toBeNull()
+    const sentence = match![1]
+    expect(sentence).toMatch(/^My private MCP merges/)
+    for (const said of [/exactly the version I previewed/, /or nothing/, /still running/, /failed check only with my explicit yes/]) expect(sentence).toMatch(said)
+    expect(sentence).not.toMatch(/\d|https?:|merge_site_update|updateName|\bsay\b|acceptFailingChecks|acceptLowerScore|\bconfirm\b|recheck|\bsha\b|commit|\bhead\b|MCP tool|check run|branch|redo|conflict|\/mcp\/|\bgates\b|ADMIN_TOKEN|token|\bkey\b|pull request/i)
+    // About failed checks the stop is Steven's to overrule, so no absolute word and no claim that GitHub enforces it.
+    expect(sentence).not.toMatch(/cannot|safely|guaranteed|GitHub/i)
+    expect(sentence.match(/never/g)).toHaveLength(1)
+    expect(sentence).toMatch(/never while the checks are still running,/)
+    // "MCP" only as "private MCP", never a bare one a reader could take for the public read-only server.
+    expect(sentence.match(/MCP/g)).toHaveLength((sentence.match(/private MCP/g) ?? []).length)
+    expect(text).not.toMatch(/\d/)
+    // Main's bullet was 175 words (its text content split on spaces); the refresh may add 30.
+    expect(sentence.trim().split(/\s+/).length).toBeLessThanOrEqual(30)
+    expect(text.trim().split(/\s+/).length).toBeLessThanOrEqual(175 + 30)
+  })
+})
+
+describe('the assistant section on /building-this-site', () => {
+  it('the assistant section says the dashboard counts the people who asked, kept 90 days, nothing kept when the browser asks not to be tracked', () => {
+    render(<SiteArticle />)
+    const section = document.getElementById('assistant')!.closest('section')!
+    const list = section.querySelector('ul')!
+    // Exactly one paragraph between the list and the report card (shown here while it loads).
+    const after = [...section.children].slice([...section.children].indexOf(list) + 1)
+    const card = after.findIndex((element) => element.matches('.wx-report-wait, .wx-report'))
+    expect(card).toBe(1)
+    expect(after.slice(0, card).map((element) => element.tagName)).toEqual(['P'])
+    const paragraph = after[0] as HTMLElement
+    const text = paragraph.textContent!
+    expect(text).toMatch(/\bI\b|\bmy\b/)
+    for (const said of [/different people/, /once a day/, /what each/, /90[ -]days?/, /Questions, cost and the unanswered questions/, /straight from the database/]) expect(text).toMatch(said)
+    expect(text).not.toMatch(/vote/i)
+    expect(text).toMatch(/I measured what I shipped at Microsoft; the assistant gets the same treatment, including the numbers that do not flatter it\.$/)
+    const link = within(paragraph).getByRole('link', { name: /asks not to be tracked/ })
+    expect(link).toHaveAttribute('href', '/privacy')
+    expect(text).not.toMatch(/ask_log|ask_questions|ask_hits|HASH_SALT|ASK_BUDGET|visitor\.ts|migration|USD|\$/)
+    expect(text).not.toMatch(/anonymous|unique people|deleted/i)
+    expect(text.match(/\d+/g)).toEqual(['90'])
+    // Main's paragraph was 44 words; the refresh may add about 40, and the ratings sentence about 20.
+    expect(text.trim().split(/\s+/).length).toBeLessThanOrEqual(44 + 45 + 20)
   })
 })

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { experiences, profile } from '../../../src/resume'
-import { compareLinkedIn, linkedInTexts, parseCsv, parseLinkedInCsv, parseLinkedInText, shortMonth } from './linkedin'
+import { compareLinkedIn, linkedInTexts, lowerFirst, parseCsv, parseLinkedInCsv, parseLinkedInText, shortMonth } from './linkedin'
 import { reviewForRecruiters } from './recruiter'
 
 const now = Date.UTC(2026, 9, 17)
@@ -102,6 +102,16 @@ describe('LinkedIn import', () => {
     expect(headline.why).toMatch(/recruiters search/i)
     for (const fix of fixes) { expect(fix.why.length).toBeGreaterThan(20); expect(fix.siteSays.length).toBeGreaterThan(0) }
     expect(linkedInTexts().position('windows-devices-data')).toContain(experiences.find((e) => e.key === 'windows-devices-data')!.points[0])
+    // The arrangement follows the availability, first letter lowered; the facts kept off the home page stay off LinkedIn too.
+    const about = linkedInTexts().about
+    expect(about).toContain(`${profile.location}, us permanent resident, available now, hybrid or remote, across time zones.\n`)
+    for (const value of [profile.citizenship, profile.travel, profile.employers, profile.relocation]) expect(about).not.toContain(value)
+  })
+
+  it('lowers the first letter of a phrase inside a sentence, but not an acronym', () => {
+    expect(lowerFirst('Hybrid or remote, across time zones')).toBe('hybrid or remote, across time zones')
+    expect(lowerFirst('US-based, remote')).toBe('US-based, remote')
+    expect(lowerFirst('')).toBe('')
   })
 
   it('has nothing to say when LinkedIn already matches', () => {

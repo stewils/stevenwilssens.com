@@ -19,7 +19,7 @@ export type AssistantInput = {
   system: string
   contexts: { question: string; fit: string }
   jdPrefix: string
-  profile: { location: string; workAuthorization: string; availability: string; teamSize: string }
+  profile: { location: string; workArrangement: string; workAuthorization: string; availability: string; teamSize: string }
   notes: number
   articles: number
   // How the live assistant asks (the answer budget per kind, thinking, effort, the fallback beta) and shows an
@@ -58,7 +58,7 @@ export const assistantInput = async ({ readPage, notesUrl = NOTES_URL, fetchImpl
     system: systemPrompt(entries, articles),
     contexts: { question: contextFor('home', false), fit: contextFor('home', true) },
     jdPrefix,
-    profile: { location: profile.location, workAuthorization: profile.workAuthorization, availability: profile.availability, teamSize: profile.teamSize },
+    profile: { location: profile.location, workArrangement: profile.workArrangement, workAuthorization: profile.workAuthorization, availability: profile.availability, teamSize: profile.teamSize },
     notes: entries.length,
     articles: Object.keys(articles).length,
     request: { ...liveRequest, maxTokens: answerTokens },

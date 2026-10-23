@@ -8,6 +8,9 @@ const allowedHosts = new Set(['steven.wilssens.com', 'www.linkedin.com', 'linked
 
 export const safeHref = (href: string) => {
   if (href === 'mailto:steven@wilssens.com') return href
+  // Browsers read a backslash as a slash and drop tabs and newlines, so `/\evil.example`
+  // or `/<tab>/evil.example` would open another host: no link keeps either.
+  if (/[\\\s\p{Cc}]/u.test(href)) return null
   if (href.startsWith('/') && !href.startsWith('//')) return href
   try {
     const url = new URL(href)

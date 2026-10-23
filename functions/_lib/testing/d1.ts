@@ -19,9 +19,11 @@ const value = (input: unknown): SQLInputValue => {
 
 export type FakeD1 = D1Database & { sqlite: DatabaseSync; queries: string[]; failOn?: RegExp }
 
-export const fakeD1 = (): FakeD1 => {
+// `through` stops at a migration number ('0013': every file up to 0013), for a test that
+// applies the next one by hand to a database with rows in it (applyMigration).
+export const fakeD1 = ({ through }: { through?: string } = {}): FakeD1 => {
   const sqlite = new DatabaseSync(':memory:')
-  for (const file of readdirSync(migrations).filter((name) => name.endsWith('.sql')).sort()) sqlite.exec(readFileSync(join(migrations, file), 'utf8'))
+  for (const file of readdirSync(migrations).filter((name) => name.endsWith('.sql') && (!through || name.slice(0, 4) <= through)).sort()) sqlite.exec(readFileSync(join(migrations, file), 'utf8'))
   const queries: string[] = []
   const db = { sqlite, queries } as unknown as FakeD1
 
@@ -55,6 +57,13 @@ export const fakeD1 = (): FakeD1 => {
     return results
   }) as unknown as D1Database['batch']
   return db
+}
+
+// Runs one migration file (by its number, '0014') on a database fakeD1 stopped before it.
+export const applyMigration = (db: FakeD1, number: string) => {
+  const file = readdirSync(migrations).find((name) => name.startsWith(`${number}_`) && name.endsWith('.sql'))
+  if (!file) throw new Error(`no migration ${number}`)
+  db.sqlite.exec(readFileSync(join(migrations, file), 'utf8'))
 }
 
 // The site's static files (env.ASSETS), answered from a map of path to body.

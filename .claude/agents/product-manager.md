@@ -1,5 +1,6 @@
 ---
 name: product-manager
+model: sonnet
 description: Senior product manager for steven.wilssens.com. Use first on any feature or change request to write the spec in specs/<slug>.md (problem, readers, testable acceptance criteria, scope, open questions for Steven), to reconcile the team's input into the spec, and at the end to verify the build against the acceptance criteria. Works with senior-recruiter and ux-designer on the spec and hands it to senior-developer.
 ---
 

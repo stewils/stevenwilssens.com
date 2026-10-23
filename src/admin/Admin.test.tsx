@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import Admin from './Admin'
-import { makeAsk, makeCosts, makeMcp, makeResume, makeStats, makeTeamReads, NOW, sha } from '../test/admin-fixtures'
+import { makeAsk, makeCosts, makeLogEntry, makeMcp, makeRating, makeResume, makeStats, makeTeamReads, NOW, sha } from '../test/admin-fixtures'
 
 // The dashboard against a fake admin API: /api/stats, /api/ask/admin, /api/mcp and
 // /api/resume and /api/team answer with the shapes the Pages Functions write.
@@ -260,8 +260,8 @@ describe('the Team page', () => {
     go('assistant')
     expect(heading()).toHaveTextContent('Ask about Steven')
     const parts = [...document.querySelectorAll<HTMLElement>('.page [data-part]')]
-    expect(parts.map((part) => part.dataset.part)).toEqual(['People', 'Use and cost', 'Waiting for you'])
-    expect(parts.map((part) => part.querySelector('h2')!.textContent)).toEqual(['People who asked', 'Use and cost', 'Questions waiting for you'])
+    expect(parts.map((part) => part.dataset.part)).toEqual(['People', 'Answer quality', 'Rate answers', 'Use and cost', 'Waiting for you'])
+    expect(parts.map((part) => part.querySelector('h2')!.textContent)).toEqual(['People who asked', 'Answer quality', 'Rate answers', 'Use and cost', 'Questions waiting for you'])
   })
 
   it('shows the number not seen on the menu item, named "Team, N not seen"', async () => {
@@ -440,6 +440,149 @@ describe('preferences', () => {
     expect(heading()).toHaveTextContent('Overview')
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+  })
+})
+
+describe('rating answers from the dashboard', () => {
+  const entry = makeLogEntry({ id: 1, ts: NOW.getTime() - 3_600_000, question: 'Where is he based?', answer: 'Cut answer…', cut: true })
+  // The admin API plus the rating and the whole-answer calls.
+  const rateServe = (rating: Answer = { body: { rating: makeRating({ logId: 1, overall: 5 }) } }, whole: Answer = { body: { entry: { ...entry, answer: 'The whole answer.', cut: false } } }) => {
+    serve({ ask: { body: makeAsk({ log: [entry], ratings: [], unratedWeek: [1] }) } })
+    const base = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const answer = url === '/api/ask/rating' ? rating : url.startsWith('/api/ask/admin?entry=') ? whole : null
+      if (!answer) return base(url, init)
+      if (answer instanceof Error) return Promise.reject(answer)
+      if (answer === 'pending') return new Promise<Response>(() => {})
+      return Promise.resolve(new Response(JSON.stringify(answer.body ?? {}), { status: answer.status ?? 200 }))
+    })
+  }
+  const queue = () => screen.getByRole('heading', { name: 'Rate answers' }).closest('section')!
+  const rateIt = () => {
+    for (const group of ['Accurate', 'Supported', 'Answers the question', 'Tone and length']) fireEvent.click(within(within(queue()).getByRole('group', { name: group })).getByRole('radio', { name: 'Yes' }))
+    fireEvent.click(within(within(queue()).getByRole('group', { name: 'Overall' })).getByRole('radio', { name: /^5/ }))
+    fireEvent.click(within(queue()).getByRole('button', { name: 'Save' }))
+  }
+
+  it('opens the queue a Needs you line asks for, loads the whole answer, saves with the token, and shows the rating everywhere without reloading the log', async () => {
+    rateServe()
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    expect(screen.getByRole('link', { name: /answer from the last 7 days waits for your rating/ })).toHaveAttribute('href', '#assistant?rate=unrated')
+    go('assistant?rate=unrated')
+    expect(heading()).toHaveTextContent('Ask about Steven')
+    expect(await within(queue()).findByText('The whole answer.')).toBeInTheDocument()
+    expect(urls()).toContain('/api/ask/admin?entry=1')
+    const loads = urls().filter((url) => url.startsWith('/api/ask/admin?days=')).length
+    rateIt()
+    expect(await within(queue()).findByText('Every answer from the last 30 days is rated.')).toBeInTheDocument()
+    const [, init] = fetchMock.mock.calls.find(([url]) => url === '/api/ask/rating')!
+    expect(init).toMatchObject({ method: 'POST', headers: { Authorization: 'Bearer secret', 'Content-Type': 'application/json' } })
+    expect(JSON.parse(init!.body as string)).toEqual({ id: 1, accurate: 'yes', supported: 'yes', answers: 'yes', tone: 'yes', overall: 5, note: null, addToQuestions: false })
+    expect(urls().filter((url) => url.startsWith('/api/ask/admin?days=')).length).toBe(loads)
+    // The scores and the overview read the saved rating at once.
+    expect(screen.getByText('Rated good', { selector: '.stats span' }).parentElement).toHaveTextContent('100%')
+    go('overview')
+    expect(screen.queryByRole('link', { name: /wait for your rating|waits for your rating/ })).not.toBeInTheDocument()
+    expect(screen.getByText(/· 100% rated good \(1\)/)).toBeInTheDocument()
+  })
+
+  it('the unrated answers of the last 7 days open on a range that holds them: Today widens to 7 days', async () => {
+    rateServe()
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    fireEvent.click(screen.getByRole('button', { name: 'Today' }))
+    await waitFor(() => expect(urls()).toContain('/api/ask/admin?days=1&r=0'))
+    go('assistant?rate=unrated')
+    expect(screen.getByRole('button', { name: '7 days' })).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(() => expect(urls()).toContain('/api/ask/admin?days=7&r=0'))
+    // Another page, or a range Steven picks there, is left as he chose it.
+    fireEvent.click(screen.getByRole('button', { name: 'Today' }))
+    go('overview')
+    expect(screen.getByRole('button', { name: 'Today' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('a Needs you line lands on the question it asked for: the page goes to the top first, then focus moves to the question', async () => {
+    rateServe()
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    const order: string[] = []
+    vi.mocked(Element.prototype.scrollTo).mockImplementation(() => { order.push('top') })
+    const focus = HTMLElement.prototype.focus
+    vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (this: HTMLElement, options?: FocusOptions) {
+      order.push(`focus ${this.tagName}`)
+      focus.call(this, options)
+    })
+    go('assistant?rate=unrated')
+    expect(within(queue()).getByRole('heading', { level: 3, name: 'Where is he based?' })).toHaveFocus()
+    expect(order.indexOf('top')).toBeGreaterThanOrEqual(0)
+    expect(order.lastIndexOf('top')).toBeLessThan(order.indexOf('focus H3'))
+  })
+
+  it('a rating saved while the page refreshes stays shown when the refresh read the log before it, and gives way to a later rating from the server', async () => {
+    rateServe()
+    const base = fetchMock.getMockImplementation()!
+    const held: ((body: unknown) => void)[] = []
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (!/^\/api\/ask\/admin\?days=.*&r=[1-9]/.test(url)) return base(url, init)
+      return new Promise<Response>((resolve) => { held.push((body) => resolve(new Response(JSON.stringify(body), { status: 200 }))) })
+    })
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    go('assistant')
+    const goodShare = () => screen.getByText('Rated good', { selector: '.stats span' }).parentElement!.querySelector('strong')
+    // The refresh starts, reads the database, and the rating is saved before it lands.
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(held).toHaveLength(1))
+    rateIt()
+    await waitFor(() => expect(goodShare()).toHaveTextContent(/^100%$/))
+    await act(async () => { held[0](makeAsk({ log: [entry], ratings: [] })) })
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
+    expect(goodShare()).toHaveTextContent(/^100%$/)
+    // A later rating in the database (from another tab, say) wins over the one saved here.
+    const later = makeRating({ logId: 1, overall: 1, accurate: 'no', ratedAt: makeRating().ratedAt + 60_000 })
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(held).toHaveLength(2))
+    await act(async () => { held[1](makeAsk({ log: [{ ...entry, rating: later }], ratings: [later] })) })
+    expect(goodShare()).toHaveTextContent(/^0%$/)
+  })
+
+  it.each([
+    ['a refusal names the field', { status: 400, body: { error: 'invalid', field: 'note' } } as Answer, 'Could not save the rating (the server refused note)'],
+    ['a server error gives its status', { status: 503, body: {} } as Answer, 'Could not save the rating (HTTP 503)'],
+    ['a lost connection says so', new Error('offline') as Answer, 'Could not save the rating (no connection)'],
+  ])('%s', async (_, answer, text) => {
+    rateServe(answer)
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    go('assistant')
+    rateIt()
+    expect(await within(queue()).findByText((content) => content.startsWith(text))).toBeInTheDocument()
+  })
+
+  it('a refused token on a save or on loading an answer goes back to the sign-in', async () => {
+    rateServe({ status: 401 })
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    go('assistant')
+    rateIt()
+    expect(await screen.findByText('That token was not accepted.')).toBeInTheDocument()
+    cleanup()
+    localStorage.setItem('sw-admin-token', 'secret')
+    history.replaceState(null, '', '/admin')
+    rateServe(undefined, { status: 401 })
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    go('assistant')
+    expect(await screen.findByText('That token was not accepted.')).toBeInTheDocument()
+  })
+
+  it('an answer that cannot be loaded keeps its cut', async () => {
+    rateServe(undefined, { status: 404 })
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    go('assistant')
+    expect(await within(queue()).findByText('Could not load the whole answer; this is its first 1,500 characters.')).toBeInTheDocument()
   })
 })
 

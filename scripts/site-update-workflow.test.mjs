@@ -4,6 +4,7 @@
 // no-change decision run main's copies without a secret, a run without a change stops before
 // anything is pushed, and the feed merge keeps the numbers a live feed does not send.
 // The YAML is not measured by coverage; these turn red when it drifts.
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -340,3 +341,79 @@ describe('the request marker and a redo (AC-7)', () => {
     expect(runOf(publishStep('Open the pull request'))).toContain('ask Claude for \\`merge_site_update\\` with \\`recheck: true\\`')
   })
 })
+
+describe('the branch name', () => {
+  // Cloudflare cuts a preview's address to 28 characters; the run number has to be inside them.
+  const slugLine = runOf(step('Create the branch')).split('\n').find((line) => line.trim().startsWith('slug='))?.trim() ?? ''
+  const branchFor = (title, run) => execFileSync('bash', ['-c', `${slugLine}\nprintf '%s' "update/\${slug:-change}-\${GITHUB_RUN_NUMBER}"`], { env: { ...process.env, TITLE: title, GITHUB_RUN_NUMBER: run }, encoding: 'utf8' })
+  const alias = (branch) => branch.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 28)
+
+  it('reads the slug line from the step', () => {
+    expect(slugLine).toMatch(/^slug=\$\(.*cut -c1-\$\(\(20 - \$\{#GITHUB_RUN_NUMBER\}\)\)/)
+  })
+
+  it.each([
+    ['Building steven.wilssens.com: Merge mcp-plain-english: your MCP talks t…', '42'],
+    ['Building steven.wilssens.com: Merge dev-costs: your admin shows', '41'],
+    ['Team sizes, Azure DevOps context and Cosmos start date', '1234'],
+    ['x', '7'],
+    // Cut to 18 characters this slug ends on a hyphen ("building-wilssens-"), which is dropped.
+    ['Building wilssens.com: x', '42'],
+  ])('keeps the run number of %j inside the preview address', (title, run) => {
+    const branch = branchFor(title, run)
+    expect(alias(branch)).toBe(branch.replace('/', '-'))
+    expect(branch).toMatch(new RegExp(`^update/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?-${run}$`))
+  })
+
+  it('falls back to "change" for a title with no letters or digits', () => {
+    expect(branchFor('!!! ???', '9')).toBe('update/change-9')
+  })
+
+  it('drops a hyphen the cut leaves at the end of the slug', () => {
+    expect(branchFor('Building wilssens.com: x', '42')).toBe('update/building-wilssens-42')
+  })
+
+  it('gives two refreshes of the same write-up two previews', () => {
+    const title = 'Building steven.wilssens.com: Merge mcp-plain-english: your MCP talks t…'
+    expect(alias(branchFor(title, '41'))).not.toBe(alias(branchFor(title, '42')))
+  })
+})
+
+describe('the work an update needs, and no more', () => {
+  it('takes the short path for approved proposals and write-up refreshes, without spec agents', () => {
+    expect(team).toContain('0. Small changes take the short path. When the instruction only applies approved résumé proposals, or only refreshes a Building write-up, start no spec agents')
+    expect(team.indexOf('0. Small changes take the short path.')).toBeLessThan(team.indexOf('1. Spec first'))
+  })
+
+  it('coordinates on Sonnet', () => {
+    expect(team).toContain("claude_args: '--model claude-sonnet-5-5 --max-turns 400 ")
+  })
+
+  it('closes the older refreshes of the same write-up when a newer one opens, with the checks of a redo', () => {
+    const open = runOf(publishStep('Open the pull request'))
+    expect(open).toContain('if [ -n "$PROJECT" ] && [[ "$TITLE" == "Building "*": "* ]]; then')
+    expect(open).toContain('(.title | startswith($prefix)) and .url != $url and (.isCrossRepository | not) and (.headRefName | test("^update/[a-z0-9-]+-[0-9]+$")) and (.author.login == $slug or .author.login == "app/github-actions")')
+    expect(open).toContain('[[ "$older" =~ ^[0-9]+$ ]] || continue')
+    expect(open.indexOf('gh pr create --base main')).toBeLessThan(open.indexOf('Replaced by $url'))
+  })
+})
+
+describe('the daily refresh of this site\'s write-up', () => {
+  const notify = readFileSync(join(root, '.github/workflows/building-notify.yml'), 'utf8').replace(/\r\n/g, '\n')
+
+  it('runs once a day or by hand, never on a push', () => {
+    expect(notify).toMatch(/^on:\n {2}schedule:\n {4}- cron: '0 5 \* \* \*'\n {2}workflow_dispatch:\n/m)
+    expect(notify).not.toMatch(/^ {2}push:/m)
+  })
+
+  it('tells the site only when the sources changed since the last successful run, naming the newest change', () => {
+    expect(notify).toContain("before=$(gh run list --workflow building-notify.yml --branch main --status success --limit 1 --json headSha -q '.[0].headSha' 2>/dev/null || true)")
+    expect(notify).toContain('git merge-base --is-ancestor "$before" "$sha"')
+    expect(notify).toContain("before=$(git rev-list -1 --first-parent --before='24 hours ago' HEAD)")
+    expect(notify).toMatch(/permissions:\n {2}contents: read\n {2}actions: read\n/)
+    expect(notify).toContain('git diff --quiet "$before" "$sha" -- "${paths[@]}"')
+    expect(notify).toContain('subject="$subject (and $((count - 1)) more)"')
+    for (const path of ['CLAUDE.md', '.claude', '.github/workflows/review.yml', '.github/workflows/site-update.yml', 'scripts/review-roster.mjs']) expect(notify).toMatch(new RegExp(`paths=\\(.*${path.replace(/\./g, '\\.')}`))
+  })
+})
+
