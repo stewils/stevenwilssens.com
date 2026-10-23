@@ -59,6 +59,8 @@ describe('WebMCP', () => {
     expect(about.headline).toBe(profile.headline)
     expect(about.lookingFor).toBe(profile.lookingFor)
     expect(about.workAuthorization).toBe(profile.workAuthorization)
+    expect(about.location).toBe('Seattle, Washington')
+    expect(about.workArrangement).toBe('Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.')
     expect(about.contact).toEqual({ email: profile.email, linkedin: profile.linkedin, site: profile.site, resumePdf: `https://steven.wilssens.com${profile.resumePdf}` })
     expect(about.roles.map((role: { key: string }) => role.key)).toEqual(experiences.map((item) => item.key))
     expect(about.keyNumbers[0]).toEqual({ value: '250%+', label: 'growth in monthly active spatial-audio devices', backedByRole: 'spatial-audio-lead' })
@@ -124,10 +126,15 @@ describe('WebMCP in browsers that misbehave', () => {
   })
 
   it('gives every selected work case its role, and a link or source only where it has one', async () => {
-    const cases = (await run('get_selected_work')).cases as { link: string | null; source: unknown }[]
+    const cases = (await run('get_selected_work')).cases as { key: string; link: string | null; source: string | null }[]
     for (const item of cases) {
       expect(item.link === null || item.link.startsWith('https://steven.wilssens.com/')).toBe(true)
-      expect(item.source === null || typeof item.source === 'object' || typeof item.source === 'string').toBe(true)
+      expect(item.source === null || typeof item.source === 'string').toBe(true)
     }
+    const sourceOf = (key: string) => cases.find((item) => item.key === key)!.source
+    // Windows quality is in Steven's own words now; the forecast and the OKR tool stay credited.
+    expect(sourceOf('windows-quality')).toBeNull()
+    expect(sourceOf('ai-feature-forecast')).toBe('Amit Gupte')
+    expect(sourceOf('okr-tool')).toBe('Amit Gupte')
   })
 })

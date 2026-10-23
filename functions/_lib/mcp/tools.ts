@@ -544,6 +544,7 @@ export const tools: Tool[] = [
         headline: `${profile.headline}. Most recently Principal Group Product Manager, Windows & Devices Data, at Microsoft: the data, experimentation and ML products behind decisions across more than 1.6 billion Windows devices.`,
         status: `Building in AI while choosing his next role. Looking for: ${profile.lookingFor.toLowerCase()}. ${profile.availability}.`,
         location: `${profile.location} · ${profile.workAuthorization}`,
+        workArrangement: profile.workArrangement,
         teamSize: `Led teams of ${profile.teamSize}`,
         contact,
         education: `${education.degree}, ${education.school} (${education.dates})`,
@@ -827,7 +828,7 @@ export const tools: Tool[] = [
       summary: profile.summary,
       // Owner only, as deployed (never a proposal): the exact current text for an About proposal.
       ...(ctx.mode === 'owner' ? { about: { intro: about.intro, paragraphs: about.paragraphs } } : {}),
-      profile: { lookingFor: profile.lookingFor, location: profile.location, workAuthorization: profile.workAuthorization, availability: profile.availability, teamSize: profile.teamSize },
+      profile: { lookingFor: profile.lookingFor, location: profile.location, workArrangement: profile.workArrangement, workAuthorization: profile.workAuthorization, availability: profile.availability, teamSize: profile.teamSize },
       keyAchievements: impact.map((item) => ({ ...achievementOf(item), asProposalText: JSON.stringify(achievementOf(item)) })),
       skills,
       roles: experiences.map((item) => ({ key: item.key, role: item.role, company: item.company, dates: item.dates, location: item.location, summary: item.summary, points: item.points })),
