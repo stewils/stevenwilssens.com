@@ -1,6 +1,6 @@
 # Steven rates the assistant's answers and sees whether it gets better
 
-Slug: `ask-ratings` · Branch: `ask-ratings` · Status: **built** (2026-10-22: merge reviews in two rounds, fix round 2 done, every role signed off the merge). The spec was approved in spec round 2 (2026-10-20): Steven answered the four open questions, the tester's round-2 findings are in, nothing is left open. Built after `dev-costs` merged and main was merged into `ask-ratings`.
+Slug: `ask-ratings` · Branch: `ask-ratings` · Status: **built** (2026-10-22: merge reviews in two rounds, fix round 2 done, every role signed off the merge). The spec was approved in spec round 2 (2026-10-20): Steven answered the four open questions, the tester's round-2 findings are in, nothing is left open. Built: `dev-costs` merged into main first, and main (with the costs meter) was merged into `ask-ratings` on 2026-10-22, the rating route on `functions/_lib/http.ts`; "Add to my questions" on a gap answer links the gap question the answer already raised instead of adding a second one.
 Asked by Steven on 2026-10-20: "Can we build an admin function where I can see the question and rate the answer? So we don't just rely on users reviewing? Can we then also on the tab for the agent see the scores. Make sure I see the model scoring over time? What will we use to calculate if the model is getting better?"
 
 ## Problem

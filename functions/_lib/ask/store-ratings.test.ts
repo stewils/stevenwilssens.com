@@ -74,6 +74,24 @@ describe.each(keptStores)('ratings in the %s assistant store', (_, make) => {
     expect(await store.questions(0, 10)).toHaveLength(1)
   })
 
+  it('a poor rating of a gap answer links the gap question the answer raised, and adds no second one', async () => {
+    const { store } = make()
+    const ts = Date.UTC(2026, 9, 20, 6)
+    await store.logQuestion(logged(ts, { outcome: 'gap', sources: null }), 900 * day)
+    const id = await lastId(store)
+    const gap = await store.saveQuestion({ ts, reason: 'gap', page: 'experience', question: 'Has he led managers of managers?', answer: 'Yes. As Group PM he led a team.', country: 'BE', asOrg: 'Proximus' }, 900 * day)
+    const saved = (await store.saveRating(rating(id, { accurate: 'no', overall: 2 })))!
+    const q = { ts, reason: 'rated' as const, page: 'experience', question: 'Has he led managers of managers?', answer: 'Yes.', country: null, asOrg: null }
+    expect(await store.addRatingQuestion(saved.id, q, 900 * day)).toBe(gap)
+    expect(await store.questions(0, 10)).toMatchObject([{ id: gap, reason: 'gap' }])
+    // The gap question of another answer is never reused.
+    await store.logQuestion(logged(ts + 1, { outcome: 'gap', sources: null }), 900 * day)
+    const other = (await store.saveRating(rating(await lastId(store), { accurate: 'no', overall: 2 })))!
+    const added = await store.addRatingQuestion(other.id, { ...q, ts: ts + 1 }, 900 * day)
+    expect(added).not.toBe(gap)
+    expect((await store.questions(0, 10)).map((question) => [question.id, question.reason])).toEqual([[added, 'rated'], [gap, 'gap']])
+  })
+
   it('a save that loses the race to link drops the question it made, and an answer pruned meanwhile gets none', async () => {
     const { store } = make()
     await store.logQuestion(logged(Date.UTC(2026, 9, 20, 6)), 900 * day)

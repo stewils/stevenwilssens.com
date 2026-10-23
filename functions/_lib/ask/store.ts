@@ -73,8 +73,9 @@ export interface AskStore {
   // Links a question to a rating that has none yet and whose answer is kept; answers the
   // question the rating carries after it (an earlier one wins), null when its answer is gone.
   linkRatingQuestion(ratingId: number, questionId: number): Promise<number | null>
-  // "Add to my questions": the question made from a rating, once. An open one left by a save
-  // whose link failed is used again, and one that lost a race with another save is dropped.
+  // "Add to my questions": the question made from a rating, once. An open one for the same
+  // answer is used again: left by a save whose link failed, or the gap question the answer
+  // itself raised; one that lost a race with another save is dropped.
   addRatingQuestion(ratingId: number, q: QuestionInput, keepMs: number): Promise<number | null>
   // The rateable answers since `since` that have no rating, newest first.
   unrated(since: number): Promise<number[]>
@@ -235,7 +236,7 @@ export class D1AskStore implements AskStore {
   }
 
   async addRatingQuestion(ratingId: number, q: QuestionInput, keepMs: number) {
-    const open = await this.db.prepare('SELECT id FROM ask_questions WHERE ts = ? AND reason = ? AND question = ? AND resolved_at IS NULL LIMIT 1').bind(q.ts, q.reason, q.question).first<{ id: number }>()
+    const open = await this.db.prepare("SELECT id FROM ask_questions WHERE ts = ? AND reason IN (?, 'gap') AND question = ? AND resolved_at IS NULL ORDER BY id LIMIT 1").bind(q.ts, q.reason, q.question).first<{ id: number }>()
     const id = open?.id ?? (await this.saveQuestion(q, keepMs))
     const linked = await this.linkRatingQuestion(ratingId, id)
     if (linked !== id && !open) await this.db.prepare('DELETE FROM ask_questions WHERE id = ? AND resolved_at IS NULL').bind(id).run()
@@ -341,7 +342,7 @@ export class MemoryAskStore implements AskStore {
     return linked
   }
   async addRatingQuestion(ratingId: number, q: QuestionInput, keepMs: number) {
-    const open = this.saved.find((item) => item.ts === q.ts && item.reason === q.reason && item.question === q.question && !item.resolvedAt)
+    const open = this.saved.find((item) => item.ts === q.ts && (item.reason === q.reason || item.reason === 'gap') && item.question === q.question && !item.resolvedAt)
     const id = open?.id ?? (await this.saveQuestion(q, keepMs))
     const linked = await this.linkRatingQuestion(ratingId, id)
     if (linked !== id && !open) this.saved = this.saved.filter((item) => item.id !== id)
