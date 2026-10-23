@@ -31,9 +31,11 @@ The ask: $ARGUMENTS
 Start these three in one message, in parallel:
 - `product-manager`: "Write specs/<slug>.md for: <ask>. Surfaces: <…>. Fill Problem,
   Outcome, Acceptance criteria, Out of scope, Open questions."
-- `senior-recruiter`: "Write the Recruiter impact section of specs/<slug>.md for: <ask>,
+- `senior-recruiter`, only when the ask changes the résumé or the website (pages, write-ups, the
+  assistant): "Write the Recruiter impact section of specs/<slug>.md for: <ask>,
   with today's baseline scores. The PM is writing the rest in parallel; edit only your
-  section (create the file from specs/TEMPLATE.md if it is not there yet)."
+  section (create the file from specs/TEMPLATE.md if it is not there yet)." Otherwise the PM
+  writes "Recruiter impact: none, no résumé or website change" and the recruiter does not run.
 - `ux-designer`: same, for the Design section (or NOT_APPLICABLE with the reason when
   nothing renders).
 
@@ -72,7 +74,7 @@ written `dist/`.
 Only the reviewers whose part changed review: `git diff --name-only origin/main...HEAD > .review/<slug>/changed.txt`
 and `node scripts/review-roster.mjs .review/<slug>/changed.txt <slug>` prints the panel ("run") and why the others
 are not on it ("skipped", each `NOT_APPLICABLE` with that reason). A change to the rules, the team or the gates
-gets all six. Steven's sessions run on his weekly limit: run lint, `test:coverage` and the build once yourself and
+gets every role but the recruiter, who only ever reviews résumé and website changes. Steven's sessions run on his weekly limit: run lint, `test:coverage` and the build once yourself and
 give every reviewer the result (`.review/<slug>/coverage.txt`), so no reviewer runs the whole suite again.
 
 Start the panel in one message, from:

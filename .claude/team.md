@@ -14,7 +14,7 @@ product, design, engineering, security and test.
 |---|---|---|---|
 | Lead (the main Claude session or the CI job) | — | the flow below, handoffs, the PR | nothing alone; never overrides a reviewer |
 | Senior product manager | `product-manager` | the spec in `specs/`: problem, readers, acceptance criteria, scope | the spec; that the build meets it |
-| Senior recruiter | `senior-recruiter` | the reader's bar: the site must not get worse for recruiters | the spec; the merge |
+| Senior recruiter | `senior-recruiter` | the reader's bar: the site must not get worse for recruiters; only résumé and website changes | the spec; the merge, of résumé and website changes |
 | Senior designer (UX) | `ux-designer` | the interaction and visual design, in the site's own language | the spec's design; the UI before the merge |
 | Senior developer | `senior-developer` | the implementation (build mode) and the code review (review mode, a fresh instance) | the merge (review mode) |
 | Senior security engineer | `security-engineer` | the threat model in the spec; the security review | the spec's threat model; the merge |
@@ -68,7 +68,8 @@ flowchart TD
 
 The team runs on Steven's money, so it does only the work a change needs. Only the reviewers
 whose part of the site changed review (`scripts/review-roster.mjs`: the server, the pages, the
-résumé, the admin, the write-ups; a change to the rules, the team or the gates gets all six), and
+résumé, the admin, the write-ups; a change to the rules, the team or the gates gets everyone
+but the recruiter, who only ever reviews résumé and website changes), and
 an approval carries over to the next round while nothing in that reviewer's part changes. The
 developer and the security engineer run on Opus; the product manager, the recruiter, the designer,
 the tester and the lead on Sonnet. A pull request is a draft while it is worked on: the Review
@@ -80,7 +81,7 @@ older one.
 ```mermaid
 flowchart LR
   diff([The pull request's files]) --> roster{Roster: whose part changed?}
-  roster -- the rules, the team or the gates --> all[All six review]
+  roster -- the rules, the team or the gates --> all[All review; the recruiter only with a résumé or website change]
   roster -- otherwise --> some[Only those roles review; the others are not applicable]
   some & all --> round{Next round}
   round -- approved, and nothing in its part changed --> carried[Approval carries over]
@@ -118,7 +119,8 @@ with what had to be redone and a budget per change; a cancelled or timed-out Git
    did not write the code, from `senior-developer` (review mode), `security-engineer`,
    `senior-tester`, `ux-designer` (UI check) and `senior-recruiter` (merge check); the PM
    checks the acceptance criteria one by one. `scripts/review-roster.mjs` picks them from
-   the changed files (all six for a change to the rules, the team or the gates); the
+   the changed files (everyone for a change to the rules, the team or the gates, except the
+   recruiter, who only ever reviews résumé and website changes); the
    others are `NOT_APPLICABLE` with its reason. Each writes its report to
    `.review/<slug>/<role>-r<round>.md` (ignored by git) and returns the verdict block.
 7. **Fix loop**: the developer fixes every `blocker` and `major`, and fixes each `minor`

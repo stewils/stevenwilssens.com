@@ -23,7 +23,8 @@ Target: $ARGUMENTS
    `origin/main` in a worktree for the designer:
    `git worktree add ../stevenwilssens-main origin/main && (cd ../stevenwilssens-main && npm ci && npm run build)`).
    Then start in one message the panel `node scripts/review-roster.mjs <changed-files> <slug>` names (only
-   the roles whose part changed; all six for a change to the rules, the team or the gates), from
+   the roles whose part changed; every role for a change to the rules, the team or the gates, except the recruiter, who only ever reviews
+   résumé and website changes), from
    `senior-developer` (REVIEW mode), `security-engineer`, `senior-tester`, `ux-designer` (UI check),
    `senior-recruiter` (merge check) and `product-manager` (acceptance check), round 1, reports in
    `.review/<slug>/`; the others are `NOT_APPLICABLE` with the roster's reason. Tell each

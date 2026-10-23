@@ -16,7 +16,7 @@ flowchart TD
   draft -- yes --> none[No paid review]
   draft -- no, or marked ready --> roster[roster job: who reviews, main's script, nothing from the PR runs]
   roster --> rules{Rules, team or gates changed?}
-  rules -- yes --> six[All six review]
+  rules -- yes --> six[All review; the recruiter only with a résumé or website change]
   rules -- no --> part[Only the roles whose part changed]
   six & part --> carry{Approved before, and nothing in its part changed since?}
   carry -- yes --> kept[Approval carries over]
@@ -26,7 +26,7 @@ flowchart TD
 
 ## Acceptance criteria
 
-1. `scripts/review-roster.mjs` picks the panel from the pull request's files: the developer and the tester for any change other than text (specs, Markdown, a write-up's feed: its words are code to them); security for the server, the scripts, migrations, headers, the build config, the assistant, the admin and WebMCP (not tests); the designer for pages, components, styles, images and the résumé and share-image layout (not a write-up's words, only its diagrams); the recruiter for anything readers see (pages, `public/`, the résumé, write-ups, the assistant); the PM for a spec, code, or any Site update branch. A change to `CLAUDE.md`, `.claude/`, a workflow, `functions/_lib/review/` or a gate script (including the roster itself) gets all six, and so does a path git still quotes (paths are read with `core.quotePath=false`). Nobody on the panel means the developer. Every role off the panel is `NOT_APPLICABLE` with its reason.
+1. `scripts/review-roster.mjs` picks the panel from the pull request's files: the developer and the tester for any change other than text (specs, Markdown, a write-up's feed: its words are code to them); security for the server, the scripts, migrations, headers, the build config, the assistant, the admin and WebMCP (not tests); the designer for pages, components, styles, images and the résumé and share-image layout (not a write-up's words, only its diagrams); the recruiter for anything readers see (pages, `public/`, the résumé, write-ups, the assistant); the PM for a spec, code, or any Site update branch. A change to `CLAUDE.md`, `.claude/`, a workflow, `functions/_lib/review/` or a gate script (including the roster itself) gets every role but the recruiter, who only ever reviews résumé and website changes (Steven, 2026-10-22), and so does a path git still quotes (paths are read with `core.quotePath=false`). Nobody on the panel means the developer. Every role off the panel is `NOT_APPLICABLE` with its reason.
 2. An `APPROVE` in this workflow's own last comment (`github-actions[bot]`, the `team-verdicts` marker) carries over when its commit is an ancestor of the head and none of the pull request's files changed since touches that role's part or the rules. A force push, a missing or unreadable marker, or another verdict carries nothing. A re-run of the same commit re-runs only the roles that did not approve.
 3. The roster runs in a job of its own (`roster`) that runs nothing from the pull request, with main's copy of the script (the pull request that adds it runs its own). The team job reads its answer only from the job's outputs, and fails (never skips: a skipped required check passes) when the roster job did not succeed. The result's roles are the model's verdicts for the panel plus the roster's carried and skipped ones, merged before the verdicts marker is written so the next round reads every role; it still needs six roles, each `APPROVE` or `NOT_APPLICABLE`, to pass.
 4. When every approval carries over, no reviewer runs: the workflow posts the carried verdicts and `team` passes.
@@ -56,7 +56,7 @@ The write-up's team diagram keeps its layout; the reviews box now reads "Reviews
 
 - A pull request choosing its own reviewers: the roster runs main's script in a job that runs no pull request code; the team job reads only that job's outputs, which its own steps (which do run the pull request's install, build and tests) cannot change.
 - A forged approval: only `github-actions[bot]`'s comment is read, and its marker is written by the workflow from the run's result.
-- A pull request that weakens the roster: a change to the roster is a gate change, so it gets all six reviewers, and it takes effect only after it merges.
+- A pull request that weakens the roster: a change to the roster is a gate change, so it gets the full panel, and it takes effect only after it merges.
 - Closing pull requests: only open Site update pull requests of this repository opened by the site bot, matched by the refresh title, as for a redo.
 
 ## Technical approach (senior-developer)

@@ -252,12 +252,23 @@ describe('the panel: only the reviewers whose part changed, never on a draft', (
     expect(stepOf(team, 'Post the sign-offs and pass or fail')).toContain('if [ -z "$PANEL" ]; then')
   })
 
-  it('builds main and starts a browser only for the designer, and runs coverage once for the whole panel', () => {
+  it('builds main and starts a browser only for the designer, and runs coverage once, before main\'s rules', () => {
     expect(stepOf(team, "Browser and local database for the designer's screenshots")).toContain("contains(needs.roster.outputs.run, 'ux-designer')")
     expect(stepOf(team, "Main's build for the before screenshots (best effort)")).toContain("contains(needs.roster.outputs.run, 'ux-designer')")
     const once = stepOf(team, 'Lint and coverage once, for the whole panel')
-    expect(once).toContain('> .review/coverage.txt')
-    expect(team.indexOf("- name: A clean folder for the reports, and Steven's replies on the pull request")).toBeLessThan(team.indexOf('- name: Lint and coverage once, for the whole panel'))
+    expect(once).toContain('cov=0; npm run test:coverage')
+    expect(once).toContain('echo "npm run test:coverage exited with $cov"')
+    expect(once).not.toContain('|| true\n')
+    expect(team.indexOf('- name: Lint and coverage once, for the whole panel')).toBeLessThan(team.indexOf("- name: Review by main's rules"))
+    expect(stepOf(team, "The panel's reports")).toContain('cp "$RUNNER_TEMP/panel/lint.txt" "$RUNNER_TEMP/panel/coverage.txt" .review/')
+  })
+
+  it('runs nothing from the pull request after main\'s rules are restored, up to the review', () => {
+    const from = team.indexOf("- name: Review by main's rules")
+    const to = team.indexOf('- name: The team reviews the pull request')
+    const between = team.slice(team.indexOf('\n', from), to)
+    expect(between).not.toMatch(/\b(npm|npx|node|yarn|pnpm) /)
+    expect(between).not.toMatch(/\.\/node_modules|(bash|sh|tsx) +\.?\/?scripts\/|\.\/scripts\//)
   })
 
   it('coordinates on Sonnet', () => {

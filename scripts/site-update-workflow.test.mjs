@@ -382,7 +382,7 @@ describe('the branch name', () => {
 describe('the work an update needs, and no more', () => {
   it('takes the short path for approved proposals and write-up refreshes, without spec agents', () => {
     expect(team).toContain('0. Small changes take the short path. When the instruction only applies approved résumé proposals, or only refreshes a Building write-up, start no spec agents')
-    expect(team.indexOf('0. Small changes take the short path.')).toBeLessThan(team.indexOf('1. Spec first.'))
+    expect(team.indexOf('0. Small changes take the short path.')).toBeLessThan(team.indexOf('1. Spec first'))
   })
 
   it('coordinates on Sonnet', () => {

@@ -31,9 +31,14 @@ describe('who reviews', () => {
     expect(roster({ changed }).run).toEqual(run)
   })
 
-  it.each([['"src/caf\\303\\251.tsx"'], ['CLAUDE.md'], ['.claude/agents/senior-tester.md'], ['.github/workflows/review.yml'], ['scripts/recruiter-check.mjs'], ['scripts/review-roster.mjs'], ['functions/_lib/review/score.ts']])('the full panel when %s changes', (path) => {
+  it.each([['"src/caf\\303\\251.tsx"'], ['CLAUDE.md'], ['.claude/agents/senior-tester.md'], ['.github/workflows/review.yml'], ['.github/CODEOWNERS'], ['vitest.config.ts'], ['scripts/recruiter-check.mjs'], ['scripts/review-roster.mjs'], ['functions/_lib/review/score.ts']])('the full panel but the recruiter when %s changes', (path) => {
     const result = roster({ changed: ['README.md', path] })
-    expect(result).toMatchObject({ full: true, run: ROLES, skipped: [] })
+    expect(result).toMatchObject({ full: true, run: ROLES.filter((role) => role !== 'senior-recruiter') })
+    expect(result.skipped).toEqual([expect.objectContaining({ role: 'senior-recruiter', verdict: 'NOT_APPLICABLE', summary: expect.stringContaining('only résumé and website changes') })])
+  })
+
+  it('the full panel with the recruiter when the rules and a page change together', () => {
+    expect(roster({ changed: ['CLAUDE.md', 'src/articles/site/SiteArticle.tsx'] }).run).toEqual(ROLES)
   })
 
   it('always has the PM on a Site update, and says why each other role is not on the panel', () => {

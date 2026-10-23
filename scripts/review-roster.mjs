@@ -1,6 +1,7 @@
 // Who reviews a pull request in the Review workflow (.claude/team.md, step 6), and whose
 // earlier approval still holds. Each role reviews only when a file in its part changed; a
-// change to the rules, the team or the gates gets the full panel. An APPROVE from the
+// change to the rules, the team or the gates gets the full panel, except the recruiter, who
+// only ever reviews résumé and website changes (Steven, 2026-10-22). An APPROVE from the
 // Review workflow's own last comment carries over when nothing in that role's part changed
 // since the commit it approved. The workflow runs main's copy of this file, so a pull
 // request cannot pick its own reviewers.
@@ -25,7 +26,7 @@ const articleFeed = (path) => /^src\/articles\/.+\.json$/.test(path)
 const articleWords = (path) => /^src\/articles\/.+\.tsx$/.test(path) && !/Diagrams\.tsx$/.test(path)
 // The rules, the team and the gates: a change to any of them is reviewed by everyone. So is a path git
 // still quotes (a control character in it): the patterns below cannot be trusted to read it.
-const rules = (path) => path.startsWith('"') || /^(CLAUDE\.md$|\.claude\/|\.github\/workflows\/|functions\/_lib\/review\/|scripts\/(review-roster|[a-z-]+-(check|gate|compare))\.mjs$)/.test(path)
+const rules = (path) => path.startsWith('"') || /^(CLAUDE\.md$|vitest\.config\.ts$|\.claude\/|\.github\/|functions\/_lib\/review\/|scripts\/(review-roster|[a-z-]+-(check|gate|compare))\.mjs$)/.test(path)
 
 const parts = {
   'senior-developer': (path) => !docs(path) && !articleFeed(path),
@@ -41,7 +42,7 @@ const reasons = {
   'senior-tester': 'only text changed (specs, Markdown, a write-up\'s numbers)',
   'security-engineer': 'nothing on the server, in the build, the scripts, the assistant or the admin changed',
   'ux-designer': 'no page, component, style, image or résumé layout changed',
-  'senior-recruiter': 'nothing a recruiter reads changed (pages, résumé, write-ups, the assistant)',
+  'senior-recruiter': 'the recruiter reviews only résumé and website changes, and none changed (pages, the résumé, write-ups, the assistant)',
   'product-manager': 'there is no spec and no code to hold to one',
 }
 
@@ -61,7 +62,8 @@ export const roster = ({ changed, branch = '', previous = null, since = null }) 
   const files = changed.filter(Boolean)
   const full = files.some(rules)
   // A Site update always has a spec (the team writes one first), so its PM checks it.
-  let wanted = full ? [...ROLES] : ROLES.filter((role) => files.some(parts[role]) || (role === 'product-manager' && branch.startsWith('update/')))
+  const recruiter = files.some(parts['senior-recruiter'])
+  let wanted = full ? ROLES.filter((role) => role !== 'senior-recruiter' || recruiter) : ROLES.filter((role) => files.some(parts[role]) || (role === 'product-manager' && branch.startsWith('update/')))
   if (!wanted.length) wanted = ['senior-developer'] // somebody always looks
   const before = new Map((previous?.roles ?? []).map((entry) => [roleId(entry.role), entry]))
   const sha = /^[0-9a-f]{40}$/.test(previous?.sha ?? '') ? previous.sha : null
