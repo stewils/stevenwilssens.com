@@ -177,8 +177,8 @@ describe('the team diagram on /building-this-site', () => {
     const images = screen.getAllByRole('img', { name: 'How a change reaches the site: a team of AI agents, and Steven deciding' })
     expect(images.map((image) => image.getAttribute('class'))).toEqual(['wx-flow-wide', 'wx-flow-tall'])
     for (const image of images) {
-      expect(image).toHaveAccessibleDescription(/Six reviews run in parallel.*at most three rounds\. When all approve, the pull request runs its own required checks on GitHub: main’s gates, the team review, which also tries the assistant when a change touches it, and the site checks\. Steven merges, and the site deploys\. The agents’ runs, on GitHub and in Steven’s own Claude Code sessions, are metered/)
-      for (const label of ['Spec', 'My questions', 'Build', 'Six reviews, in parallel', 'tests, 90% a file', 'recruiter: not worse', 'PM: acceptance', 'all approve', 'Pull request', 'I merge', 'Deploy']) expect(within(image).getByText(label)).toBeInTheDocument()
+      expect(image).toHaveAccessibleDescription(/The reviews run in parallel, by fresh agents that did not write the code, and only for the parts the change touches.*a change to the rules or the team gets every role but the recruiter, who reviews only changes to the résumé and the site\. Changes go back to the developer for at most three rounds, and only the reviewers who asked, or whose part the fix touched, review again\. When all approve, the pull request runs its own required checks on GitHub: main’s gates, the team review, which also tries the assistant when a change touches it, and the site checks\. Steven merges, and the site deploys\. The agents’ runs, on GitHub and in Steven’s own Claude Code sessions, are metered/)
+      for (const label of ['Spec', 'My questions', 'Build', 'Reviews, for the parts it touches', 'fresh agents; approvals carry over', 'tests, 90% a file', 'recruiter: not worse', 'PM: acceptance', 'all approve', 'Pull request', 'I merge', 'Deploy']) expect(within(image).getByText(label)).toBeInTheDocument()
     }
   })
 
@@ -198,7 +198,7 @@ describe('the team diagram on /building-this-site', () => {
   it('the flow diagram shows the stop when nothing changed, across and stacked', () => {
     render(<TeamFlowDiagram />)
     for (const image of screen.getAllByRole('img', { name: /a team of AI agents, and Steven deciding/ })) {
-      expect(image).toHaveAccessibleDescription(/A developer builds it with its tests\. A build that changes nothing stops there: the run fails and Steven is told, so no empty pull request is opened\. Six reviews/)
+      expect(image).toHaveAccessibleDescription(/A developer builds it with its tests\. A build that changes nothing stops there: the run fails and Steven is told, so no empty pull request is opened\. The reviews run in parallel/)
       for (const label of ['Nothing changed', 'the run fails', 'and I am told', 'Fix and review again,', 'at most three rounds']) expect(within(image).getByText(label)).toBeInTheDocument()
       // The stop is drawn in the stop colour, never the accent that marks where Steven decides.
       const box = within(image).getByText('Nothing changed').parentElement!.querySelector('rect')!
