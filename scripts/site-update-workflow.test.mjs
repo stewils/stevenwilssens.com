@@ -365,6 +365,10 @@ describe('the branch name', () => {
     expect(branch).toMatch(new RegExp(`^update/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?-${run}$`))
   })
 
+  it('falls back to "change" for a title with no letters or digits', () => {
+    expect(branchFor('!!! ???', '9')).toBe('update/change-9')
+  })
+
   it('drops a hyphen the cut leaves at the end of the slug', () => {
     expect(branchFor('Building wilssens.com: x', '42')).toBe('update/building-wilssens-42')
   })

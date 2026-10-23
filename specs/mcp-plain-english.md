@@ -77,8 +77,8 @@ Follow-up (PR #77, from a live `site_update_status` after the first version ship
 | 13 lint, tests, coverage | `npm run lint`, `npm run test:coverage` |
 | 14 write-up names | plain.test.ts "an update's name" (it.each: steven.wilssens.com, wilssens.com, leo.wilssens.com, AI Breaker, Junior Track Cycling; pull request, branch and remote-tracking merges; "Building trust: …" stays Steven's), "cuts a long title…" (a 72-character Building title is 60) |
 | 15 " update" never cut | plain.test.ts "cuts a long title…" (the Windows and Devices title, "Team sizes…", 80 x's, "Fix …") |
-| 16 not ready yet, names in hints | plain.test.ts "says an update the branch rules hold…"; tools-branches.test.ts "lists one open pull request without a tip…" (`say`, no `#<n>` in `conflicts`), the blocked-causes tests (`merge_site_update (number: 60)`) |
-| 17 branch name | site-update-workflow.test.mjs "the branch name" (runs the step's own slug line: run numbers 7, 41, 42, 1234; two refreshes of one write-up get two previews; the slug line is there) |
+| 16 not ready yet, names in hints | plain.test.ts "says an update the branch rules hold…"; tools-branches.test.ts "lists one open pull request without a tip…" (`say`, no `#<n>` in `conflicts`), the blocked-causes tests (`merge_site_update (number: 60)`), "says an update the branch rules hold whose check failed is held back…", "quotes the name of an update in the hints…" |
+| 17 branch name | site-update-workflow.test.mjs "the branch name" (runs the step's own slug line: run numbers 7, 41, 42, 1234; two refreshes of one write-up get two previews; a trailing hyphen is dropped; "change" for a title without letters; the slug line is there) |
 
 ## Out of scope
 

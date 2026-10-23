@@ -318,6 +318,14 @@ describe('site updates', () => {
     expect((status.json!.pullRequests as { proposals: unknown[]; supersedes: unknown }[])[0]).toMatchObject({ proposals: [], supersedes: null })
   })
 
+  it('says an update the branch rules hold whose check failed is held back, never only waiting', async () => {
+    const store = new MemoryStore()
+    const { github } = fakeGitHub({ pulls: [pull(13, { mergeableState: 'blocked', mergeable: true })], checks: { 'sha-13': { pending: [], failed: ['team'] } } })
+    const status = await call(store, 'site_update_status', {}, { github })
+    expect(status.json!.say).toBe("Your Summary line N update is held back: the team's checks haven't passed.")
+    expect(status.json!.say).not.toMatch(/waits for the team's checks/)
+  })
+
   it('quotes the name of an update in the hints so a double quote in it cannot close the quote', async () => {
     const store = new MemoryStore()
     const closed = fakeGitHub({ pulls: [pull(2, { state: 'closed', title: 'Fix "Lead" title' })] })
