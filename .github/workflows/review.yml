@@ -25,9 +25,11 @@ name: Review
 #
 # The assistant check (specs/mcp-prs-flow.md, AC-9): on a pull request from this
 # repository that touches the assistant, the résumé or a write-up, `assistant-input`
-# (no secret, no token) builds what the assistant reads from the branch's own code and
-# from main's, with Steven's public notes from the live site; `assistant` checks out main
-# only and asks main's scripts/assistant-check.mjs five fixed questions on both, with the
+# (no secret, no token) builds what the assistant reads from the branch's own code, and
+# `assistant-input-main` from main's on a runner of its own, both with Steven's public notes
+# from the live site; `assistant` checks out main only, takes each input only when its sha256
+# is its own job's output (specs/mcp-prs-automation.md, AC-14), and asks main's
+# scripts/assistant-check.mjs five fixed questions on both, with the
 # model key. The answers go to the recruiter as data; a check that could not run reads
 # "did not run", never a pass. The preview has no assistant, no Turnstile and no MCP, so
 # this check, not the preview, is the evidence.
@@ -150,8 +152,9 @@ jobs:
           fi
 
   # The assistant's input, with no secret and no token: what the branch's own code (functions/_lib/ask/prompt.ts
-  # through functions/_lib/assistant-input.ts, never a copy of the prompt) and main's give the model, with Steven's
-  # public notes read from the live site's read-only /api/notes and the write-ups from each build.
+  # through functions/_lib/assistant-input.ts, never a copy of the prompt) gives the model, with Steven's public
+  # notes read from the live site's read-only /api/notes and the write-ups from the build. main's side is built in
+  # its own job below, on a runner the branch's npm ci and build never touch (specs/mcp-prs-automation.md, AC-14).
   assistant-input:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -159,6 +162,7 @@ jobs:
     outputs:
       run: ${{ steps.scope.outputs.run }}
       setup: ${{ steps.scope.outputs.setup }}
+      digest: ${{ steps.branch.outputs.digest }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -186,6 +190,7 @@ jobs:
           node-version: 24
           cache: npm
       - name: The branch's input
+        id: branch
         if: steps.scope.outputs.run == 'true' && steps.scope.outputs.setup == 'true'
         run: |
           set -e
@@ -194,21 +199,47 @@ jobs:
           npm run build
           npx vite build --ssr scripts/assistant-export.ts --outDir .assistant-export --emptyOutDir --logLevel warn
           node .assistant-export/assistant-export.js dist https://steven.wilssens.com/api/notes "$RUNNER_TEMP/assistant-input/branch.json"
-      - name: main's input
+          echo "digest=$(sha256sum "$RUNNER_TEMP/assistant-input/branch.json" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
         if: steps.scope.outputs.run == 'true' && steps.scope.outputs.setup == 'true'
+        with:
+          name: assistant-input-branch
+          path: ${{ runner.temp }}/assistant-input
+          retention-days: 7
+          if-no-files-found: error
+
+  # main's input, on its own runner: main checked out and nothing else, no secret, no token, no npm cache shared with
+  # the branch's job. Its sha256 is this job's output, which no other job can set, so the check below takes main.json
+  # only when it is this file (C21): the branch's job could upload a file under this artifact's name.
+  assistant-input-main:
+    needs: assistant-input
+    if: needs.assistant-input.outputs.run == 'true' && needs.assistant-input.outputs.setup == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions: {}
+    outputs:
+      digest: ${{ steps.main.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: main's input
+        id: main
         run: |
           set -e
-          main="$RUNNER_TEMP/main"
-          git worktree add --detach "$main" origin/main
-          cd "$main"
+          mkdir -p "$RUNNER_TEMP/assistant-input"
           npm ci
           npm run build
           npx vite build --ssr scripts/assistant-export.ts --outDir .assistant-export --emptyOutDir --logLevel warn
           node .assistant-export/assistant-export.js dist https://steven.wilssens.com/api/notes "$RUNNER_TEMP/assistant-input/main.json"
+          echo "digest=$(sha256sum "$RUNNER_TEMP/assistant-input/main.json" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
-        if: steps.scope.outputs.run == 'true' && steps.scope.outputs.setup == 'true'
         with:
-          name: assistant-input
+          name: assistant-input-main
           path: ${{ runner.temp }}/assistant-input
           retention-days: 7
           if-no-files-found: error
@@ -216,7 +247,7 @@ jobs:
   # The assistant check: main's harness and main's questions, with the model key, over the input as data.
   # Nothing from the pull request runs here; no Cloudflare token, no database, no Turnstile.
   assistant:
-    needs: assistant-input
+    needs: [assistant-input, assistant-input-main]
     if: needs.assistant-input.outputs.run == 'true' && needs.assistant-input.outputs.setup == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -236,17 +267,42 @@ jobs:
           node-version: 24
       - uses: actions/download-artifact@v4
         with:
-          name: assistant-input
-          path: ${{ runner.temp }}/assistant-input
+          name: assistant-input-branch
+          path: ${{ runner.temp }}/assistant-input-branch
+      - uses: actions/download-artifact@v4
+        with:
+          name: assistant-input-main
+          path: ${{ runner.temp }}/assistant-input-main
       - name: Ask the assistant on the branch and on main
         id: ask
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BRANCH_DIGEST: ${{ needs.assistant-input.outputs.digest }}
+          MAIN_DIGEST: ${{ needs.assistant-input-main.outputs.digest }}
         run: |
           mkdir -p "$RUNNER_TEMP/assistant-check"
           out="$RUNNER_TEMP/assistant-check/assistant-check.md"
+          branch="$RUNNER_TEMP/assistant-input-branch/branch.json"
+          main="$RUNNER_TEMP/assistant-input-main/main.json"
           code=0
-          node scripts/assistant-check.mjs --branch "$RUNNER_TEMP/assistant-input/branch.json" --main "$RUNNER_TEMP/assistant-input/main.json" --out "$out" || code=$?
+          # Each input only when it is the file its own job built: its sha256 is that job's output. A missing input or
+          # another file reads "did not run", never a pass, whichever version of the harness main has.
+          problem=''
+          for side in branch main; do
+            file=$branch; want=$BRANCH_DIGEST
+            if [ "$side" = main ]; then file=$main; want=$MAIN_DIGEST; fi
+            if [ ! -f "$file" ] || [ -L "$file" ]; then problem="the $side input is missing"
+            elif ! [[ "$want" =~ ^[0-9a-f]{64}$ ]] || [ "$(sha256sum "$file" | cut -d' ' -f1)" != "$want" ]; then problem="the $side input is not the one its job built"; fi
+            [ -n "$problem" ] && break
+          done
+          if [ -n "$problem" ]; then
+            printf '# The assistant check\n\nResult: did not run (%s; see the run).\n' "$problem" > "$out"
+            code=1
+          elif grep -q -- '--main-digest' scripts/assistant-check.mjs; then
+            node scripts/assistant-check.mjs --branch "$branch" --main "$main" --branch-digest "$BRANCH_DIGEST" --main-digest "$MAIN_DIGEST" --out "$out" || code=$?
+          else
+            node scripts/assistant-check.mjs --branch "$branch" --main "$main" --out "$out" || code=$?
+          fi
           if [ -f "$out" ]; then echo "digest=$(sha256sum "$out" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"; fi
           exit "$code"
       - uses: actions/upload-artifact@v4

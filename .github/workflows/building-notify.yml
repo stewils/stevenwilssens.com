@@ -9,7 +9,7 @@ name: Building write-up
 on:
   push:
     branches: [main]
-    paths: ['CLAUDE.md', 'README.md', '.claude/**', '.github/workflows/review.yml', '.github/workflows/site-update.yml', 'scripts/*-check.mjs', 'scripts/*-gate.mjs', 'scripts/*-compare.mjs']
+    paths: ['CLAUDE.md', 'README.md', '.claude/**', '.github/workflows/review.yml', '.github/workflows/site-update.yml', 'scripts/*-check.mjs', 'scripts/*-gate.mjs', 'scripts/*-compare.mjs', 'functions/_lib/site-update/**']
 
 permissions: {}
 

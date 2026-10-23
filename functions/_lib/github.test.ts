@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { apiUrl, checksOfWorkflow, encodeTeamVerdicts, encodeUpdateRequest, GitHubError, gitHubClient, noChangeSentence, noChangeStep, previewUrl, requiredChecks, reviewBots, sameRepo, resumeScoreFromBody, teamVerdictsFrom, updateJob, updateRequestFromBody, updateRequestKeys } from './github'
+import { apiUrl, checksOfWorkflow, encodeTeamVerdicts, encodeUpdateRequest, GitHubError, gitHubClient, noChangeSentence, noChangeStep, previewUrl, queuedStatuses, requiredChecks, reviewBots, sameRepo, resumeScoreFromBody, teamVerdictsFrom, updateJob, updateRequestFromBody, updateRequestKeys } from './github'
 
 type Call = { url: string; method: string; body: unknown; headers: Record<string, string> }
 type Reply = { status?: number; body?: unknown; text?: string }
@@ -146,7 +146,7 @@ describe('the GitHub client', () => {
     const pulls = await client.pulls()
     expect(calls[0].url).toContain('/pulls?state=open&per_page=20')
     expect(pulls[0]).toEqual({
-      number: 12, title: 'Add the patents', url: 'https://github.com/stewils/site/pull/12', branch: 'update/Add_Patents', headRepo: 'stewils/site', headSha: 'f00d', draft: false, state: 'open', merged: false, mergeCommit: null,
+      number: 12, title: 'Add the patents', url: 'https://github.com/stewils/site/pull/12', branch: 'update/Add_Patents', headRepo: 'stewils/site', headSha: 'f00d', author: null, draft: false, state: 'open', merged: false, mergeCommit: null,
       createdAt: '2026-10-18T10:00:00Z', previewUrl: 'https://update-add-patents.stevenwilssens.pages.dev', mergeable: true, mergeableState: 'clean',
       resumeScore: { before: 90, after: 85, lower: true }, request: { title: 'Add the patents', instruction: 'Add the patents', proposals: [3], supersedes: null },
     })
@@ -387,7 +387,7 @@ describe("a pull request's status", () => {
         { __typename: 'StatusContext', context: 'team' },
       ] } } } }] } }),
       'GET /actions/jobs/41': { body: { steps: [{ name: 'Set up job', conclusion: 'success' }, { name: 'Run npm run lint', conclusion: 'failure' }] } },
-      'GET /actions/runs?head_sha=': { body: { workflow_runs: [{ name: 'Review' }, { name: 'Review' }, { name: 'Other' }, {}] } },
+      'GET /actions/runs?head_sha=': { body: { workflow_runs: [{ name: 'Review', status: 'completed', conclusion: 'action_required' }, { name: 'Review', status: 'completed', conclusion: 'action_required' }, { name: 'Other', status: 'completed', conclusion: 'action_required' }, {}] } },
     })
     const status = await client.status(12)
     expect(status).toEqual({
@@ -400,12 +400,13 @@ describe("a pull request's status", () => {
       // another workflow ("Other", Deploy say) is no required check.
       waiting: ['team'],
       pending: [],
+      queued: [],
     })
     const graphql = calls[0]
     expect(graphql.method).toBe('POST')
     expect(graphql.body).toMatchObject({ variables: { owner: 'stewils', name: 'site', number: 12 } })
     expect((graphql.body as { query: string }).query).toMatch(/statusCheckRollup/)
-    expect(calls.map((call) => call.url.split('/stewils/site')[1] ?? call.url)).toEqual(['https://api.github.com/graphql', '/actions/jobs/41', `/actions/runs?head_sha=${SHA}&status=action_required&per_page=20`])
+    expect(calls.map((call) => call.url.split('/stewils/site')[1] ?? call.url)).toEqual(['https://api.github.com/graphql', '/actions/jobs/41', `/actions/runs?head_sha=${SHA}&per_page=50`])
   })
 
   it('names a required check pending while another job of its workflow runs on the head (team behind gates and the assistant jobs)', async () => {
@@ -550,5 +551,101 @@ describe('the request marker for a write-up refresh (AC-7)', () => {
     const jq = /'\{title: \$title, instruction: \$instruction,[^']*\}'/.exec(workflow)![0]
     const keys = [...jq.matchAll(/(?:\{|, )([a-zA-Z]+): /g)].map((match) => match[1])
     expect(keys).toEqual([...updateRequestKeys])
+  })
+})
+
+describe('a queued run reads as waiting to start (AC-13)', () => {
+  it("reads the head SHA's runs in one call and splits them by status", async () => {
+    const { client, calls } = fakeFetch({
+      'POST https://api.github.com/graphql': graphqlReply({ commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [checkRun('check')] } } } }] } }),
+      'GET /actions/runs?head_sha=': { body: { workflow_runs: [{ name: 'Review', status: 'queued', conclusion: null }, { name: 'Deploy', status: 'queued', conclusion: null }] } },
+    })
+    const status = await client.status(12)
+    expect(status).toMatchObject({ waiting: [], pending: [], queued: ['gates', 'team'] })
+    // The same number of requests as before: the GraphQL query and one list of the head's runs.
+    expect(calls.map((call) => call.url.split('/stewils/site')[1] ?? call.url)).toEqual(['https://api.github.com/graphql', `/actions/runs?head_sha=${SHA}&per_page=50`])
+  })
+
+  it.each(['queued', 'waiting', 'pending', 'requested'])('maps a run that is %s to queued', async (state) => {
+    const { client } = fakeFetch({
+      'POST https://api.github.com/graphql': graphqlReply({ commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [checkRun('gates'), checkRun('team')] } } } }] } }),
+      'GET /actions/runs?head_sha=': { body: { workflow_runs: [{ name: 'Site checks', status: state, conclusion: null }] } },
+    })
+    expect((await client.status(12)).queued).toEqual(['check'])
+    expect(queuedStatuses).toContain(state)
+  })
+
+  it('a run held for approval is waiting for approval, not queued, and one in progress is neither', async () => {
+    const { client } = fakeFetch({
+      'POST https://api.github.com/graphql': graphqlReply({ commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [] } } } }] } }),
+      'GET /actions/runs?head_sha=': { body: { workflow_runs: [{ name: 'Review', status: 'completed', conclusion: 'action_required' }, { name: 'Review', status: 'queued' }, { name: 'Site checks', status: 'in_progress' }] } },
+    })
+    expect(await client.status(12)).toMatchObject({ waiting: ['gates', 'team'], queued: [] })
+  })
+})
+
+describe('the request marker counts only when the App wrote the body and nobody edited it (AC-22)', () => {
+  const app = { __typename: 'Bot', login: 'stevenwilssens-site-bot' }
+  const body = `Done.\n${encodeUpdateRequest({ title: 'Team size', instruction: 'Set it', proposals: [4], supersedes: 70 })}`
+  const reply = (author: unknown, editor: unknown, text: string | null = body) => ({ body: { data: { repository: { pullRequest: { body: text, author, editor } } } } })
+  it('reads it when the App wrote it and nobody, or only the App, edited it', async () => {
+    for (const editor of [null, app]) {
+      const { client, calls } = fakeFetch({ 'POST https://api.github.com/graphql': reply(app, editor) })
+      expect(await client.requestOf(81)).toEqual({ request: { title: 'Team size', instruction: 'Set it', proposals: [4], supersedes: 70 }, trusted: true, author: 'stevenwilssens-site-bot', editor: editor ? 'stevenwilssens-site-bot' : null })
+      expect(calls[0].body).toMatchObject({ variables: { owner: 'stewils', name: 'site', number: 81 } })
+      expect((calls[0].body as { query: string }).query).toMatch(/editor \{ __typename login \}/)
+    }
+  })
+
+  it.each([
+    ['Steven', { __typename: 'User', login: 'stewils' }],
+    ['github-actions', { __typename: 'Bot', login: 'github-actions' }],
+    ['another bot', { __typename: 'Bot', login: 'dependabot' }],
+  ])('does not read it when %s edited it, or wrote it', async (_who, other) => {
+    const edited = fakeFetch({ 'POST https://api.github.com/graphql': reply(app, other) })
+    expect(await edited.client.requestOf(81)).toMatchObject({ request: null, trusted: false, editor: other.login })
+    const written = fakeFetch({ 'POST https://api.github.com/graphql': reply(other, null) })
+    expect(await written.client.requestOf(81)).toMatchObject({ request: null, trusted: false, author: other.login })
+  })
+
+  it('answers null for a pull request that is not there, and reads no marker from an empty body', async () => {
+    const { client } = fakeFetch({ 'POST https://api.github.com/graphql': { body: { data: { repository: { pullRequest: null } } } } })
+    expect(await client.requestOf(9)).toBeNull()
+    const empty = fakeFetch({ 'POST https://api.github.com/graphql': reply(app, undefined, null) })
+    expect(await empty.client.requestOf(9)).toEqual({ request: null, trusted: true, author: 'stevenwilssens-site-bot', editor: null })
+    const nobody = fakeFetch({ 'POST https://api.github.com/graphql': reply(null, null) })
+    expect(await nobody.client.requestOf(9)).toMatchObject({ trusted: false, author: null })
+  })
+
+  it('updateRequestFromBody with who wrote it reads only the App\'s unedited body', () => {
+    expect(updateRequestFromBody(body, { author: app, editor: null })).toMatchObject({ title: 'Team size' })
+    expect(updateRequestFromBody(body, { author: app, editor: { __typename: 'User', login: 'stewils' } })).toBeNull()
+    expect(updateRequestFromBody(body, { author: { __typename: 'Bot', login: 'github-actions' } })).toBeNull()
+    // The legacy instruction paragraph is never the App's either.
+    expect(updateRequestFromBody('**Instruction**\n\nDo it\n\n**Resume score', { author: { login: 'github-actions[bot]' } })).toBeNull()
+  })
+})
+
+describe('what isAppPullRequest reads (C17)', () => {
+  it("reads a pull request's commits and author, and its branch's activity", async () => {
+    const { client, calls } = fakeFetch({
+      'GET /pulls/81/commits': { body: [{ sha: 'a'.repeat(40), commit: { author: { name: 'bot', email: 'b@x' }, committer: { name: 'bot', email: 'b@x' } }, parents: [{ sha: 'p' }] }, { sha: 5, commit: { author: null }, parents: 'x' }] },
+      'GET /activity': { body: [{ activity_type: 'push', actor: { login: 'stevenwilssens-site-bot[bot]' }, before: 'b', after: 'a' }, { activity_type: 5, actor: null }] },
+      'GET /pulls/82': { body: pullJson({ number: 82, user: { login: 'stevenwilssens-site-bot[bot]' } }) },
+    })
+    expect(await client.pullCommits(81)).toEqual([{ sha: 'a'.repeat(40), author: { name: 'bot', email: 'b@x' }, committer: { name: 'bot', email: 'b@x' }, parents: 1 }, { sha: '', author: null, committer: null, parents: 0 }])
+    expect(await client.activity('update/team-size-47')).toEqual([{ type: 'push', actor: 'stevenwilssens-site-bot[bot]', before: 'b', after: 'a' }, { type: 'unknown', actor: null, before: null, after: null }])
+    expect(calls[1].url).toBe('https://api.github.com/repos/stewils/site/activity?ref=refs%2Fheads%2Fupdate%2Fteam-size-47&per_page=100')
+    expect((await client.pull(82))!.author).toBe('stevenwilssens-site-bot[bot]')
+  })
+
+  it('asks for no other branch, and reads an answer that is not a list as unreadable', async () => {
+    const { client, calls } = fakeFetch({ 'GET /pulls/81/commits': { body: { message: 'x' } }, 'GET /activity': { body: {} } })
+    expect(await client.activity('main')).toBeNull()
+    expect(await client.activity('update/../x-1')).toBeNull()
+    expect(calls).toHaveLength(0)
+    expect(await client.pullCommits(81)).toBeNull()
+    expect(await client.activity('update/x-1')).toBeNull()
+    expect((await fakeFetch({ 'GET /pulls/83': { body: pullJson({ user: null }) } }).client.pull(83))!.author).toBeNull()
   })
 })

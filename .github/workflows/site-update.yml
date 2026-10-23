@@ -109,6 +109,7 @@ jobs:
     outputs:
       name: ${{ steps.bot.outputs.name }}
       email: ${{ steps.bot.outputs.email }}
+      id: ${{ steps.bot.outputs.id }}
     steps:
       - name: The site bot is set up
         id: bot
@@ -124,6 +125,7 @@ jobs:
           fi
           id=$(gh api "users/${SLUG}%5Bbot%5D" --jq .id) || id=''
           [[ "$id" =~ ^[0-9]+$ ]] || { echo "::error::The site bot ${SLUG}[bot] was not found on GitHub: check SITE_BOT_SLUG."; exit 1; }
+          echo "id=$id" >> "$GITHUB_OUTPUT"
           echo "name=${SLUG}[bot]" >> "$GITHUB_OUTPUT"
           echo "email=${id}+${SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
 
@@ -198,7 +200,7 @@ jobs:
           dir="$RUNNER_TEMP/site-update"
           mkdir -p "$dir"
           git cat-file -e "$GITHUB_SHA^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
-          for script in claude-run-summary site-update-outcome building-feed; do
+          for script in claude-run-summary site-update-outcome building-feed site-update-bundle; do
             git show "$GITHUB_SHA:scripts/$script.mjs" > "$dir/$script.mjs"
           done
 
@@ -265,6 +267,9 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
+          # The action sets git's user to these for the session (by default claude[bot] with github-actions' id): the site bot's.
+          bot_name: ${{ needs.preflight.outputs.name }}
+          bot_id: ${{ needs.preflight.outputs.id }}
           prompt: |
             You are updating steven.wilssens.com, Steven Wilssens's resume site. Read CLAUDE.md first and follow it.
 
@@ -350,6 +355,11 @@ jobs:
           TITLE: ${{ needs.brief.outputs.title }}
           INSTRUCTION: ${{ needs.brief.outputs.instruction }}
           ORIGIN: ${{ needs.brief.outputs.origin }}
+          # The site bot as author and committer, over whatever git config the session left behind.
+          GIT_AUTHOR_NAME: ${{ needs.preflight.outputs.name }}
+          GIT_AUTHOR_EMAIL: ${{ needs.preflight.outputs.email }}
+          GIT_COMMITTER_NAME: ${{ needs.preflight.outputs.name }}
+          GIT_COMMITTER_EMAIL: ${{ needs.preflight.outputs.email }}
         run: |
           set -e
           status=passed
@@ -385,6 +395,16 @@ jobs:
             echo "### Resume score: $BEFORE → $after"
             if [ "$lower" = true ]; then echo; echo "⚠️ This update lowers the resume score. New findings:"; cat /tmp/resume-new-findings.txt 2>/dev/null; fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # The commit is the site bot's, as author and committer, or the run fails here, where it was made (AC-11). The copy
+      # taken before Claude ran; publish checks the same again before it mints the token and writes the commit it pushes.
+      - name: The commits are the site bot's
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          BOT_NAME: ${{ needs.preflight.outputs.name }}
+          BOT_EMAIL: ${{ needs.preflight.outputs.email }}
+        run: node "$RUNNER_TEMP/site-update/site-update-bundle.mjs" - "$BRANCH" "$(git rev-parse origin/main)" origin/main --identity "$BOT_NAME <$BOT_EMAIL>"
 
       # The commit leaves this job as a git bundle (main..branch), with the commit of main it grew from (the
       # base: main may move on before publish runs) and the score's report and new findings: the publish job
@@ -439,13 +459,20 @@ jobs:
           path: ${{ runner.temp }}/change
 
       # main's script: the branch name is one the workflow makes, it grows from its base (a commit in main's
-      # history; main may have moved on since), holds no merge commit and touches nothing under .github/;
-      # then the branch is a local branch of this checkout.
+      # history; main may have moved on since), holds no merge commit, touches nothing under .github/ and every
+      # commit is the site bot's (exit 7 otherwise). Then it writes the commit that goes to GitHub itself, with
+      # git commit-tree (AC-11): the bundle's tree on the base, the site bot as author and committer, the title as
+      # subject, the update job's message indented as the body and its own trailers last. The bundle's commits
+      # never leave this runner; the branch is a local branch at the new commit (steps.take.outputs.sha).
       - name: Take the change from the update job
+        id: take
         env:
           BRANCH: ${{ needs.update.outputs.branch }}
           BASE: ${{ needs.update.outputs.base }}
-        run: node scripts/site-update-bundle.mjs "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "$BASE" origin/main "$GITHUB_SHA"
+          TITLE: ${{ needs.brief.outputs.title }}
+          BOT_NAME: ${{ needs.preflight.outputs.name }}
+          BOT_EMAIL: ${{ needs.preflight.outputs.email }}
+        run: node scripts/site-update-bundle.mjs "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "$BASE" origin/main "$GITHUB_SHA" --identity "$BOT_NAME <$BOT_EMAIL>" --commit --title "$TITLE" --run "$GITHUB_RUN_ID"
 
       # The bot's token: this repository only, Contents and Pull requests, revoked when the job ends.
       - name: The site bot's token
@@ -462,16 +489,21 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           BRANCH: ${{ needs.update.outputs.branch }}
+          COMMIT: ${{ steps.take.outputs.sha }}
         run: |
           set -e
           [[ "$BRANCH" =~ ^update/[a-z0-9-]+-[0-9]+$ ]] && [[ "$BRANCH" == *-"$GITHUB_RUN_NUMBER" ]] || { echo "::error::Not this run's Site update branch: $BRANCH"; exit 1; }
+          # The commit publish wrote, and the branch points at it: never the bundle's own.
+          [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] && [ "$(git rev-parse "refs/heads/$BRANCH")" = "$COMMIT" ] || { echo "::error::The commit to push is not the one publish wrote: $COMMIT"; exit 1; }
           # The token goes in for this push only (as actions/checkout does it), masked in the log; no hooks run.
           auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
           echo "::add-mask::$auth"
-          git -c core.hooksPath=/dev/null -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" push origin "refs/heads/$BRANCH:refs/heads/$BRANCH"
+          git -c core.hooksPath=/dev/null -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" push origin "$COMMIT:refs/heads/$BRANCH"
 
       - name: Open the pull request
         # The team's change, checked, becomes a pull request that Steven merges from the MCP or on GitHub.
+        # Its one commit is the one this job wrote as the site bot; the markers in the body count only while
+        # nobody but the bot has edited it (functions/_lib/site-update/app.ts).
         id: pr
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}

@@ -51,6 +51,10 @@ const fakeGitHub = (options: { mergeError?: string } = {}): Fake => {
     reopen: async () => undefined,
     repositoryDispatch: async () => undefined,
     headOf: async () => null,
+    // The site bot wrote every fixture's body and nobody edited it (AC-22).
+    requestOf: async (number) => { const item = pulls.find((p) => p.number === number); return item ? { request: item.request, trusted: true, author: 'stevenwilssens-site-bot', editor: null } : null },
+    pullCommits: async () => null,
+    activity: async () => null,
   }
   return { github, calls, runs, pulls }
 }
@@ -152,7 +156,7 @@ describe('site updates', () => {
     expect(pulls[2]).toMatchObject({ number: 11, proposals: [1, 2] })
     expect(pulls[2].mergeTrouble).toMatch(/conflicts with main/)
     expect(status.json!.warning).toMatch(/Shorter bullets update lowers the résumé's ATS score from 90 to 80/)
-    expect(status.json!.say).toBe("2 updates are ready to check: Team size update and Shorter bullets update. Your Team size on the Group PM role update is still being made. Your Two bullets update needs to be made again before it can go live. Your Shorter bullets update would make your résumé score lower with job-application software.")
+    expect(status.json!.say).toBe("2 updates are ready to check: Team size update and Shorter bullets update. Your Team size on the Group PM role update is waiting to start; another update is being made first. Your Two bullets update needs to be made again before it can go live. Your Shorter bullets update would make your résumé score lower with job-application software.")
     expect(pulls.map((p) => (p as unknown as { name: string }).name)).toEqual(['Team size update', 'Shorter bullets update', 'Two bullets update'])
     expect(status.json!.tip).toMatch(/regenerates the same résumé file/)
     expect(status.json!.tip).toMatch(/redoes a clashing one by itself/)

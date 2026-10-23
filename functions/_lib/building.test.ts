@@ -26,6 +26,9 @@ const fakeGitHub = (merged: number | Error): GitHub => ({
   reopen: async () => undefined,
   repositoryDispatch: async () => undefined,
   headOf: async () => null,
+  requestOf: async () => null,
+  pullCommits: async () => null,
+  activity: async () => null,
 })
 
 describe('the projects', () => {

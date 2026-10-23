@@ -35,6 +35,8 @@ export const ORCHESTRATION = [
   { glob: 'scripts/recruiter-compare.mjs', section: 'checks' },
   { glob: 'scripts/resume-gate.mjs', section: 'checks' },
   { glob: 'functions/_lib/review/**', exclude: '**/*.test.*', section: 'checks' },
+  // What the site's App made, and only that: the rule the automations of specs/mcp-prs-automation.md trust.
+  { glob: 'functions/_lib/site-update/**', exclude: '**/*.test.*', section: 'checks' },
   { glob: 'specs/TEMPLATE.md', section: 'flow' },
   // The SessionEnd hook that meters the team's local runs (specs/dev-costs.md).
   { glob: '.claude/settings.json', section: 'flow' },
@@ -49,11 +51,12 @@ export const IGNORED = [
   { path: 'scripts/resume-check.mjs', reason: 'scores the résumé for the site and the admin; resume-gate.mjs is the gate' },
   { path: 'scripts/site-check.mjs', reason: 'the browser site check, not a merge gate of the team' },
   { path: 'functions/_lib/review/*.test.ts', reason: 'the tests of the recruiter checker, not the checker' },
+  { path: 'functions/_lib/site-update/*.test.ts', reason: "the tests of the App's rules, not the rules" },
   { path: '.claude/hooks/dev-costs.mjs', reason: 'measures the runs; hands nothing between agents or to Steven' },
 ]
 
 // Where orchestration files live: every tracked file here is in ORCHESTRATION or IGNORED.
-export const AUDITED = ['.claude/**', '.github/workflows/**', 'functions/_lib/review/**', 'scripts/*-gate.mjs', 'scripts/*-check.mjs', 'scripts/*-compare.mjs']
+export const AUDITED = ['.claude/**', '.github/workflows/**', 'functions/_lib/review/**', 'functions/_lib/site-update/**', 'scripts/*-gate.mjs', 'scripts/*-check.mjs', 'scripts/*-compare.mjs']
 
 export const SECTIONS = ['flow', 'roles', 'checks', 'commands', 'siteUpdate', 'rules']
 export const UPDATE_KEYS = ['sha', 'date', 'summary', 'pr', 'sections', 'roles', 'commands', 'steps', 'removedSteps', 'beforeLaunch']

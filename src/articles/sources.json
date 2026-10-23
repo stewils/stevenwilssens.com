@@ -21,7 +21,7 @@
     "repository": "stewils/stevenwilssens.com",
     "page": "building-this-site",
     "article": "src/articles/site/SiteArticle.tsx",
-    "sources": ["CLAUDE.md", "README.md", ".claude/team.md", ".claude/agents", ".github/workflows/review.yml", ".github/workflows/site-update.yml", "scripts/assistant-check.mjs"],
+    "sources": ["CLAUDE.md", "README.md", ".claude/team.md", ".claude/agents", ".github/workflows/review.yml", ".github/workflows/site-update.yml", "scripts/assistant-check.mjs", "functions/_lib/site-update"],
     "feed": "own"
   },
   "juniortrackcycling": {

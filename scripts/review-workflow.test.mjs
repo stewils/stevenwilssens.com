@@ -4,7 +4,8 @@
 // reviewers are told about the preview (specs/mcp-prs-flow.md, AC-1, AC-5, AC-9, AC-10).
 // The YAML is not measured by coverage; these turn red when it drifts.
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -26,6 +27,7 @@ const stepOf = (job, name) => {
 const gates = jobOf('gates')
 const team = jobOf('team')
 const input = jobOf('assistant-input')
+const mainInput = jobOf('assistant-input-main')
 const check = jobOf('assistant')
 const prompt = stepOf(team, 'The team reviews the pull request')
 
@@ -80,36 +82,97 @@ describe('the assistant check (AC-9)', () => {
     expect(scope).toContain('if [ "$SAME_REPO" = true ] && git diff --name-only origin/main...HEAD')
   })
 
-  it('job A has no secret and no token, and builds both inputs with the export from the build', () => {
+  it("job A has no secret and no token, and builds the branch's input with the export from the build", () => {
     expect(input).toMatch(/^ {4}permissions: \{\}$/m)
     expect(input).not.toMatch(/secrets\./)
     expect(input).toContain('persist-credentials: false')
-    // The bundle is built inside the checkout (and inside main's worktree), where node_modules resolves its imports.
-    for (const [name, out] of [["The branch's input", 'branch.json'], ["main's input", 'main.json']]) {
-      expect(stepOf(input, name)).toContain('npx vite build --ssr scripts/assistant-export.ts --outDir .assistant-export --emptyOutDir --logLevel warn')
-      expect(stepOf(input, name)).toContain(`node .assistant-export/assistant-export.js dist https://steven.wilssens.com/api/notes "$RUNNER_TEMP/assistant-input/${out}"`)
-    }
+    // The bundle is built inside the checkout, where node_modules resolves its imports.
+    const branch = stepOf(input, "The branch's input")
+    expect(branch).toContain('npx vite build --ssr scripts/assistant-export.ts --outDir .assistant-export --emptyOutDir --logLevel warn')
+    expect(branch).toContain('node .assistant-export/assistant-export.js dist https://steven.wilssens.com/api/notes "$RUNNER_TEMP/assistant-input/branch.json"')
     expect(input).not.toMatch(/--outDir "\$RUNNER_TEMP/)
-    expect(stepOf(input, "main's input")).toContain('git worktree add --detach "$main" origin/main')
-    expect(stepOf(input, "main's input")).toContain('"$RUNNER_TEMP/assistant-input/main.json"')
-    // main's input is built by main's own export, never a copy from the branch.
-    expect(stepOf(input, "main's input")).not.toMatch(/\bcp\b/)
+    // main's input is no longer built here, beside the branch's npm ci and build (AC-14).
+    expect(cutStep(input, "main's input")).toBeNull()
+    expect(input).not.toMatch(/git worktree add|assistant-input\/main\.json/)
+  })
+
+  it('assistant-input-main checks out ref main, on its own runner, with no secret, no branch checkout and no step after a branch checkout (AC-14, C21)', () => {
+    expect(mainInput).toMatch(/^ {4}runs-on: ubuntu-latest$/m)
+    expect(mainInput).toMatch(/^ {4}permissions: \{\}$/m)
+    expect(mainInput).not.toMatch(/secrets\.|github\.token|environment:/)
+    const checkouts = [...mainInput.matchAll(/- uses: actions\/checkout@v\d+\n((?: {8}.+\n)+)/g)].map((match) => match[1])
+    expect(checkouts).toEqual([`${' '.repeat(8)}with:\n${' '.repeat(10)}ref: main\n${' '.repeat(10)}persist-credentials: false\n`])
+    expect(mainInput).not.toMatch(/git (worktree|checkout|fetch)|head\.sha|head_ref|github\.sha/)
+    // No npm cache shared with the branch's job.
+    expect(mainInput).not.toMatch(/cache: npm/)
+    const build = stepOf(mainInput, "main's input")
+    expect(build).toContain('node .assistant-export/assistant-export.js dist https://steven.wilssens.com/api/notes "$RUNNER_TEMP/assistant-input/main.json"')
+    expect(build).not.toMatch(/\bcp\b/)
+  })
+
+  it('outputs the sha256 of each input, and each job uploads under its own name', () => {
+    expect(mainInput).toContain('digest: ${{ steps.main.outputs.digest }}')
+    expect(stepOf(mainInput, "main's input")).toContain(`echo "digest=$(sha256sum "$RUNNER_TEMP/assistant-input/main.json" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"`)
+    expect(input).toContain('digest: ${{ steps.branch.outputs.digest }}')
+    expect(stepOf(input, "The branch's input")).toContain(`echo "digest=$(sha256sum "$RUNNER_TEMP/assistant-input/branch.json" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"`)
+    expect(input).toContain('name: assistant-input-branch')
+    expect(input).not.toContain('name: assistant-input-main')
+    expect(mainInput).toContain('name: assistant-input-main')
+  })
+
+  it("assistant takes each input only when its digest equals its job's output; a mismatch or a missing input reads did not run", () => {
+    const ask = stepOf(check, 'Ask the assistant on the branch and on main')
+    expect(ask).toContain('BRANCH_DIGEST: ${{ needs.assistant-input.outputs.digest }}')
+    expect(ask).toContain('MAIN_DIGEST: ${{ needs.assistant-input-main.outputs.digest }}')
+    expect(check).toContain('name: assistant-input-branch\n          path: ${{ runner.temp }}/assistant-input-branch')
+    expect(check).toContain('name: assistant-input-main\n          path: ${{ runner.temp }}/assistant-input-main')
+    expect(ask).toContain(`[ "$(sha256sum "$file" | cut -d' ' -f1)" != "$want" ]`)
+    expect(ask).toContain('Result: did not run (%s; see the run).')
+    expect(ask.indexOf('problem=')).toBeLessThan(ask.indexOf('node scripts/assistant-check.mjs'))
+  })
+
+  it('the digest check gives its verdict on real files (bash)', () => {
+    const run = /\n {8}run: \|\n([\s\S]*)$/.exec(stepOf(check, 'Ask the assistant on the branch and on main'))[1].replace(/^ {10}/gm, '')
+    const dir = mkdtempSync(join(tmpdir(), 'assistant-digest-'))
+    // Forward slashes, as on the runner: sha256sum escapes a name with a backslash in it.
+    const unix = (path) => path.replaceAll('\\', '/')
+    try {
+      for (const side of ['branch', 'main']) { mkdirSync(join(dir, `assistant-input-${side}`)); writeFileSync(join(dir, `assistant-input-${side}`, `${side}.json`), `{"side":"${side}"}`) }
+      const sha = (side) => createHash('sha256').update(`{"side":"${side}"}`).digest('hex')
+      // scripts/assistant-check.mjs here is a stub that says it ran.
+      mkdirSync(join(dir, 'scripts'))
+      writeFileSync(join(dir, 'scripts/assistant-check.mjs'), "// --main-digest\nimport { writeFileSync } from 'node:fs'\nwriteFileSync(process.argv[process.argv.indexOf('--out') + 1], 'Result: passed')\n")
+      const go = (env) => {
+        try { execFileSync('bash', ['-c', run], { cwd: dir, env: { ...process.env, RUNNER_TEMP: unix(dir), GITHUB_OUTPUT: join(dir, 'out'), ANTHROPIC_API_KEY: 'x', ...env }, encoding: 'utf8', stdio: 'pipe' }); return 0 } catch (error) { return error.status }
+      }
+      const report = () => readFileSync(join(dir, 'assistant-check/assistant-check.md'), 'utf8')
+      expect(go({ BRANCH_DIGEST: sha('branch'), MAIN_DIGEST: sha('main') })).toBe(0)
+      expect(report()).toContain('Result: passed')
+      expect(go({ BRANCH_DIGEST: sha('branch'), MAIN_DIGEST: sha('branch') })).toBe(1)
+      expect(report()).toContain('Result: did not run (the main input is not the one its job built; see the run).')
+      expect(go({ BRANCH_DIGEST: '', MAIN_DIGEST: sha('main') })).toBe(1)
+      expect(report()).toContain('Result: did not run (the branch input is not the one its job built')
+      rmSync(join(dir, 'assistant-input-main/main.json'))
+      expect(go({ BRANCH_DIGEST: sha('branch'), MAIN_DIGEST: sha('main') })).toBe(1)
+      expect(report()).toContain('Result: did not run (the main input is missing; see the run).')
+    } finally { rmSync(dir, { recursive: true, force: true }) }
   })
 
   it('is set up only when main has both the export and the harness, and builds nothing until then', () => {
     expect(scope).toContain('if git cat-file -e origin/main:scripts/assistant-check.mjs 2>/dev/null && git cat-file -e origin/main:scripts/assistant-export.ts 2>/dev/null; then setup=true; fi')
     expect(input).toContain('setup: ${{ steps.scope.outputs.setup }}')
-    for (const name of ["The branch's input", "main's input"]) expect(stepOf(input, name)).toContain("if: steps.scope.outputs.run == 'true' && steps.scope.outputs.setup == 'true'")
+    expect(stepOf(input, "The branch's input")).toContain("if: steps.scope.outputs.run == 'true' && steps.scope.outputs.setup == 'true'")
+    expect(mainInput).toMatch(/^ {4}needs: assistant-input\n {4}if: needs\.assistant-input\.outputs\.run == 'true' && needs\.assistant-input\.outputs\.setup == 'true'$/m)
   })
 
   it('job B holds the key, checks out main only, runs main\'s harness, and has no Cloudflare token or database', () => {
-    expect(check).toMatch(/^ {4}needs: assistant-input\n {4}if: needs\.assistant-input\.outputs\.run == 'true' && needs\.assistant-input\.outputs\.setup == 'true'$/m)
+    expect(check).toMatch(/^ {4}needs: \[assistant-input, assistant-input-main\]\n {4}if: needs\.assistant-input\.outputs\.run == 'true' && needs\.assistant-input\.outputs\.setup == 'true'$/m)
     expect(check).toMatch(/- uses: actions\/checkout@v\d+\n {8}with:\n {10}ref: main\n {10}persist-credentials: false\n/)
     expect(check.match(/uses: actions\/checkout/g)).toHaveLength(1)
     expect(check).toMatch(/^ {4}timeout-minutes: \d+$/m)
     expect(check).toContain('ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}')
     expect(check).not.toMatch(/CLOUDFLARE|wrangler|\bnpm\b|d1 /i)
-    expect(stepOf(check, 'Ask the assistant on the branch and on main')).toContain('node scripts/assistant-check.mjs --branch "$RUNNER_TEMP/assistant-input/branch.json" --main "$RUNNER_TEMP/assistant-input/main.json" --out "$out"')
+    expect(stepOf(check, 'Ask the assistant on the branch and on main')).toContain('node scripts/assistant-check.mjs --branch "$branch" --main "$main" --branch-digest "$BRANCH_DIGEST" --main-digest "$MAIN_DIGEST" --out "$out"')
   })
 
   it('the key is in job B and in the existing team step only', () => {

@@ -9,6 +9,7 @@
 // reads a held update as not passed). It acts as Steven: closing and reopening a pull request
 // (recheck) starts its checks as him.
 import sources from '../../src/articles/sources.json'
+import { appBranch, appWrote, siteBot, type Authored, type BranchActivity, type PullCommit, type SiteBot } from './site-update/app'
 
 // branch is GitHub's head_branch: the branch the workflow ran from, `main` for every run the
 // MCP dispatches. number is the run number, which the workflow puts at the end of the branch
@@ -62,6 +63,9 @@ export type PullStatus = {
   // Required checks with no run on the head yet while another job of their workflow runs there (the Review
   // workflow's team waits for gates and the assistant jobs): coming, not missing.
   pending?: string[]
+  // Required checks whose workflow run is queued on the head and has not started a job yet: waiting to start,
+  // never "has not run" and never a recheck (AC-13).
+  queued?: string[]
   labels: string[]
   verdicts: { sha: string; url: string | null; roles: TeamVerdict[]; stale: boolean } | null
 }
@@ -74,7 +78,10 @@ export type PullStatus = {
 // merge_site_update takes it back: GitHub merges that commit or nothing, so a push after Steven
 // looked never goes live unseen. mergeCommit: the merge commit's full SHA once merged (GitHub's
 // merge_commit_sha; null otherwise).
-export type PullRequest = { number: number; title: string; url: string; branch: string; headRepo: string | null; headSha?: string | null; draft: boolean; state: 'open' | 'closed'; merged: boolean; mergeCommit: string | null; createdAt: string; previewUrl: string; mergeable: boolean | null; mergeableState: string | null; resumeScore: ResumeScore | null; request: UpdateRequest | null }
+// author: who opened it, as REST names it (the site bot is "<slug>[bot]"; null when GitHub did not say).
+// request: the marker as written, for names and lists only; anything that acts on it (a redo, proposals marked
+// applied) reads it again with requestOf, which takes it only when the App wrote the body and nobody edited it.
+export type PullRequest = { number: number; title: string; url: string; branch: string; headRepo: string | null; headSha?: string | null; author?: string | null; draft: boolean; state: 'open' | 'closed'; merged: boolean; mergeCommit: string | null; createdAt: string; previewUrl: string; mergeable: boolean | null; mergeableState: string | null; resumeScore: ResumeScore | null; request: UpdateRequest | null }
 export type MergeResult = { merged: boolean; message: string; sha?: string }
 // The check runs on a commit, by name: the ones still queued or running, and the ones that ended
 // badly (failure, cancelled, timed out, action required). GitHub's mergeable state says only
@@ -114,7 +121,15 @@ export type GitHub = {
   repositoryDispatch(eventType: string, payload: Record<string, unknown>): Promise<void>
   // The commit a branch of another repository is at (a project's main), or null when it cannot be read.
   headOf(repository: string, branch: string): Promise<string | null>
+  // The request marker of a pull request, read again from its body with who wrote and last edited it (GraphQL):
+  // trusted only when the App wrote it and nobody but the App edited it (AC-22). Null when the pull request is not there.
+  requestOf(number: number): Promise<TrustedRequest | null>
+  // A pull request's commits (oldest first, one page) and its branch's pushes (newest first), for isAppPullRequest.
+  pullCommits(number: number): Promise<PullCommit[] | null>
+  activity(branch: string): Promise<BranchActivity[] | null>
 }
+// The marker and whether it counts: trusted is false when someone other than the App wrote or last edited the body.
+export type TrustedRequest = { request: UpdateRequest | null; trusted: boolean; author: string | null; editor: string | null }
 
 // Cloudflare Pages names a branch preview after the branch: lower-case, anything
 // but letters, digits and dashes becomes a dash, cut to 28 characters.
@@ -147,7 +162,9 @@ export const encodeUpdateRequest = (request: UpdateRequest) => `<!-- site-update
 // base64 of UTF-8 JSON back to a value; throws on anything else.
 const decodeMarker = (base64: string): unknown => JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))))
 
-export const updateRequestFromBody = (body: string | null | undefined): UpdateRequest | null => {
+// With `from` (who wrote and last edited the body, AC-22), only a body the App wrote and nobody else edited is read.
+export const updateRequestFromBody = (body: string | null | undefined, from?: Authored, bot: SiteBot = siteBot): UpdateRequest | null => {
+  if (from && !appWrote(from, bot)) return null
   const match = lastMatch(/<!--\s*site-update-request\s+([A-Za-z0-9+/=]+)\s*-->/g, body)
   if (match) {
     try {
@@ -213,6 +230,8 @@ type StatusData = { repository?: { pullRequest?: {
   commits?: { nodes?: { commit?: { statusCheckRollup?: { contexts?: { nodes?: CheckRunNode[] } } | null } }[] }
 } | null } | null }
 export const failedConclusions = ['failure', 'timed_out', 'cancelled', 'startup_failure', 'action_required', 'stale']
+// A workflow run's states before it starts (GitHub's run status): it reads as waiting to start (AC-13).
+export const queuedStatuses = ['queued', 'waiting', 'pending', 'requested']
 
 const shapePull = (pull: Record<string, unknown>): PullRequest => {
   const head = pull.head as { ref: string; sha?: string; repo?: { full_name?: string } | null }
@@ -220,8 +239,9 @@ const shapePull = (pull: Record<string, unknown>): PullRequest => {
   const request = updateRequestFromBody(body)
   const merged = Boolean(pull.merged ?? pull.merged_at)
   const sha = pull.merge_commit_sha
+  const user = pull.user as { login?: unknown } | null | undefined
   return {
-    number: pull.number as number, title: pull.title as string, url: pull.html_url as string, branch: head.ref, headRepo: typeof head.repo?.full_name === 'string' ? head.repo.full_name : null, headSha: typeof head.sha === 'string' ? head.sha : null, draft: Boolean(pull.draft),
+    number: pull.number as number, title: pull.title as string, url: pull.html_url as string, branch: head.ref, headRepo: typeof head.repo?.full_name === 'string' ? head.repo.full_name : null, headSha: typeof head.sha === 'string' ? head.sha : null, author: typeof user?.login === 'string' ? user.login : null, draft: Boolean(pull.draft),
     state: pull.state === 'closed' ? 'closed' : 'open', merged, mergeCommit: merged && typeof sha === 'string' && /^[0-9a-f]{40}$/.test(sha) ? sha : null, createdAt: pull.created_at as string, previewUrl: previewUrl(head.ref),
     mergeable: typeof pull.mergeable === 'boolean' ? pull.mergeable : null, mergeableState: typeof pull.mergeable_state === 'string' ? pull.mergeable_state : null,
     resumeScore: resumeScoreFromBody(body), request: request ? { ...request, title: request.title || (pull.title as string) } : null,
@@ -237,7 +257,14 @@ export const apiUrl = (repo: string, path: string) => {
   throw new GitHubError(`refused to send the token to ${path.slice(0, 80)}`, 400)
 }
 
-export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetch = fetch): GitHub => {
+// Who wrote a pull request's body and who last edited it, with the body (AC-22).
+const requestQuery = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) { pullRequest(number: $number) { body author { __typename login } editor { __typename login } } }
+}`
+type Who = { __typename?: string; login?: string } | null | undefined
+const loginOf = (who: Who) => (who && typeof who.login === 'string' ? who.login : null)
+
+export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetch = fetch, bot: SiteBot = siteBot): GitHub => {
   const api = async (path: string, init: RequestInit = {}) => {
     const response = await fetchImpl(apiUrl(repo, path), {
       ...init,
@@ -366,16 +393,19 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
         checks.push(state)
       }
       // A check waits for approval only when no run of it exists on the head commit: a run held at action_required
-      // puts no check run there, and an old held run stays held after a recheck started a new one.
+      // puts no check run there, and an old held run stays held after a recheck started a new one. The head's runs in
+      // one request, split by state: held for approval (concluded action_required), or queued and not started yet.
       const absent = requiredChecks.filter((check) => !checks.some((state) => state.name === check))
-      const runs = absent.length ? await api(`/actions/runs?head_sha=${headSha}&status=action_required&per_page=20`) as { workflow_runs?: { name?: string }[] } : null
+      const runs = absent.length ? await api(`/actions/runs?head_sha=${headSha}&per_page=50`) as { workflow_runs?: { name?: string; status?: string; conclusion?: string | null }[] } : null
       // Only the required checks' workflows count: a held Deploy run holds nothing branch protection reads.
-      const waiting = [...new Set((runs?.workflow_runs ?? []).flatMap((run) => checksOfWorkflow[run.name ?? ''] ?? []))].filter((name) => !checks.some((state) => state.name === name))
+      const checksOf = (list: { name?: string }[]) => [...new Set(list.flatMap((run) => checksOfWorkflow[run.name ?? ''] ?? []))].filter((name) => !checks.some((state) => state.name === name))
+      const waiting = checksOf((runs?.workflow_runs ?? []).filter((run) => run.conclusion === 'action_required' || run.status === 'action_required'))
+      const queued = checksOf((runs?.workflow_runs ?? []).filter((run) => queuedStatuses.includes(run.status ?? ''))).filter((name) => !waiting.includes(name))
       const workflowOf = (check: string) => Object.keys(checksOfWorkflow).find((name) => checksOfWorkflow[name].includes(check))
       const pending = absent.filter((check) => contexts.some((node) => node.checkSuite?.workflowRun?.workflow?.name === workflowOf(check) && String(node.status ?? '').toUpperCase() !== 'COMPLETED'))
       const prefix = `https://github.com/${repo}/pull/${number}`.toLowerCase()
       const comments = (pull.comments?.nodes ?? []).map((node) => ({ author: node.author?.login ?? null, url: typeof node.url === 'string' && node.url.toLowerCase().startsWith(prefix) ? node.url : null, body: node.body ?? '' }))
-      return { headSha, mergeState: pull.mergeStateStatus ? pull.mergeStateStatus.toLowerCase() : null, checks, waiting, pending, labels: (pull.labels?.nodes ?? []).map((label) => label.name), verdicts: teamVerdictsFrom(comments, headSha) }
+      return { headSha, mergeState: pull.mergeStateStatus ? pull.mergeStateStatus.toLowerCase() : null, checks, waiting, pending: pending.filter((name) => !queued.includes(name)), queued, labels: (pull.labels?.nodes ?? []).map((label) => label.name), verdicts: teamVerdictsFrom(comments, headSha) }
     },
     reopen: async (number) => {
       await api(`/pulls/${number}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed' }) })
@@ -394,6 +424,31 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
         const commit = await api(`https://api.github.com/repos/${repository}/commits/${branch}`) as { sha?: string }
         return typeof commit?.sha === 'string' && /^[0-9a-f]{40}$/.test(commit.sha) ? commit.sha : null
       } catch (error) { console.error('head of', repository, String(error)); return null }
+    },
+    requestOf: async (number) => {
+      const [owner, name] = repo.split('/')
+      const answer = await api('https://api.github.com/graphql', { method: 'POST', body: JSON.stringify({ query: requestQuery, variables: { owner, name, number } }) }) as { data?: { repository?: { pullRequest?: { body?: string | null; author?: Who; editor?: Who } | null } | null } }
+      const pull = answer?.data?.repository?.pullRequest
+      if (!pull) return null
+      const from = { author: pull.author ?? null, editor: pull.editor ?? null }
+      const trusted = appWrote(from, bot)
+      return { request: trusted ? updateRequestFromBody(pull.body, from, bot) : null, trusted, author: loginOf(pull.author), editor: loginOf(pull.editor) }
+    },
+    pullCommits: async (number) => {
+      const list = await api(`/pulls/${number}/commits?per_page=100`) as unknown
+      if (!Array.isArray(list)) return null
+      const person = (value: unknown) => {
+        const who = value as { name?: unknown; email?: unknown } | null
+        return who && typeof who.name === 'string' && typeof who.email === 'string' ? { name: who.name, email: who.email } : null
+      }
+      return (list as { sha?: unknown; commit?: { author?: unknown; committer?: unknown }; parents?: unknown[] }[]).map((item) => ({ sha: typeof item.sha === 'string' ? item.sha : '', author: person(item.commit?.author), committer: person(item.commit?.committer), parents: Array.isArray(item.parents) ? item.parents.length : 0 }))
+    },
+    activity: async (branch) => {
+      // Only a branch the Site update workflow makes: nothing else is ever asked for, so nothing can climb out of the query.
+      if (!appBranch.test(branch)) return null
+      const list = await api(`/activity?ref=${encodeURIComponent(`refs/heads/${branch}`)}&per_page=100`) as unknown
+      if (!Array.isArray(list)) return null
+      return (list as { activity_type?: unknown; actor?: { login?: unknown } | null; before?: unknown; after?: unknown }[]).map((item) => ({ type: typeof item.activity_type === 'string' ? item.activity_type : 'unknown', actor: typeof item.actor?.login === 'string' ? item.actor.login : null, before: typeof item.before === 'string' ? item.before : null, after: typeof item.after === 'string' ? item.after : null }))
     },
   }
 }
