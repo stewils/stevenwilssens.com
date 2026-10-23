@@ -119,14 +119,17 @@ describe('LinkedIn import', () => {
 describe('the recruiter review', () => {
   const pages = { home: '# Steven Wilssens\n\nPrincipal product leader for data and AI. Now building in AI while choosing my next leadership role. Hiring a product leader for data, experimentation or AI?', about: '# About', experience: '# Experience', work: '# Selected work', recommendations: '# Recommendations' }
 
-  it('flags the missing resume report and the missing LinkedIn import, and asks about gaps', () => {
+  it('flags the missing resume report and the missing LinkedIn import, and asks what the roles leave open', () => {
     const review = reviewForRecruiters({ pages, resumeReport: null, linkedin: null, now })
     const areas = review.findings.map((f) => f.area)
     expect(areas.filter((area) => area.startsWith('impact:'))).toEqual([])
     expect(areas).toContain('resume')
     expect(areas).toContain('linkedin')
     expect(areas).not.toContain('scope:windows-devices-data')
-    expect(review.questions.some((q) => /months in between|What were the|overlaps/.test(q.question))).toBe(true)
+    // Cosmos starts the month after Info Support ends, so the real data leaves no overlap to ask
+    // about; Azure DevOps still states no team size as digits.
+    expect(review.questions.some((q) => /overlaps/.test(q.question) || q.about === 'cosmos')).toBe(false)
+    expect(review.questions.some((q) => q.about === 'azure-devops' && /How many product managers/.test(q.question))).toBe(true)
     expect(review.score).toBeLessThan(100)
     expect(review.headline).toMatch(/recruiter's seat/)
     for (const finding of review.findings) { expect(finding.why.length).toBeGreaterThan(20); expect(finding.fix.length).toBeGreaterThan(10) }
