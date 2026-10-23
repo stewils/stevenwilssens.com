@@ -288,7 +288,7 @@ jobs:
         run: |
           roster="$RUNNER_TEMP/review-roster.mjs"
           if git cat-file -e origin/main:scripts/review-roster.mjs 2>/dev/null; then git show origin/main:scripts/review-roster.mjs > "$roster"; else cp scripts/review-roster.mjs "$roster"; fi
-          git diff --name-only origin/main...HEAD > "$RUNNER_TEMP/changed.txt"
+          git -c core.quotePath=false diff --name-only origin/main...HEAD > "$RUNNER_TEMP/changed.txt"
           # The verdicts marker of this workflow's own comment (github-actions[bot]); nobody else's counts.
           gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -q '.[] | select(.user.login == "github-actions[bot]") | .body' > "$RUNNER_TEMP/bot-comments.txt" || true
           marker=$(grep -oE '<!-- team-verdicts [A-Za-z0-9+/=]+ -->' "$RUNNER_TEMP/bot-comments.txt" | tail -n 1 | sed -E 's/<!-- team-verdicts ([A-Za-z0-9+/=]+) -->/\1/' || true)
@@ -298,7 +298,7 @@ jobs:
             prev=$(jq -r '.sha // ""' "$previous" 2>/dev/null || true)
             # Since that commit, only the pull request's own files count (a merge of main brings others).
             if [[ "$prev" =~ ^[0-9a-f]{40}$ ]] && git merge-base --is-ancestor "$prev" HEAD 2>/dev/null; then
-              git diff --name-only "$prev" HEAD | grep -Fx -f "$RUNNER_TEMP/changed.txt" > "$RUNNER_TEMP/since.txt" || true
+              git -c core.quotePath=false diff --name-only "$prev" HEAD | grep -Fx -f "$RUNNER_TEMP/changed.txt" > "$RUNNER_TEMP/since.txt" || true
               since="$RUNNER_TEMP/since.txt"
             fi
           else
@@ -313,7 +313,8 @@ jobs:
     needs: [gates, assistant-input, assistant, roster]
     # Also when the assistant check failed or was skipped: the team then reads that it did not run. Never on a
     # draft: a draft cannot merge, and marking it ready for review starts this run (ready_for_review).
-    if: ${{ !cancelled() && needs.gates.result == 'success' && needs.roster.result == 'success' && github.event.pull_request.draft != true }}
+    # It runs when the roster job failed too, and fails then: a skipped required check would count as passed.
+    if: ${{ !cancelled() && needs.gates.result == 'success' && github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 75
     outputs:
@@ -328,6 +329,11 @@ jobs:
       PANEL: ${{ needs.roster.outputs.run }}
       ROSTER: ${{ needs.roster.outputs.json }}
     steps:
+      - name: The roster job decided who reviews
+        run: |
+          [ "$ROSTER_RESULT" = success ] && [ -n "$ROSTER" ] || { echo "::error::The roster job did not decide who reviews ($ROSTER_RESULT); re-run the workflow."; exit 1; }
+        env:
+          ROSTER_RESULT: ${{ needs.roster.result }}
       - name: Dependabot's own dependency update?
         id: who
         env:
@@ -631,6 +637,11 @@ jobs:
             jq -c '.[] | select(.type == "result") | .permission_denials[]? | {tool: .tool_name, input: .tool_input}' "$RUNNER_TEMP/claude-execution-output.json" 2>/dev/null | head -20 | tee .review/permission-denials.jsonl || true
             exit 1
           fi
+          # The panel's verdicts (from the model, only the roles in "run" count) plus the carried and skipped ones,
+          # from the roster job's output, which nothing in this job can change. Before the verdicts marker is
+          # written, so the next round reads every role, the carried ones included.
+          jq --argjson r "$ROSTER" '.roles = ([(.roles // [])[] | select(.role as $role | $r.run | index($role))] + $r.carried + $r.skipped)' .review/result.json > "$RUNNER_TEMP/result.json"
+          cp "$RUNNER_TEMP/result.json" .review/result.json
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           # The model's text cannot open or close an HTML comment: a marker planted in it stays visible text, and
           # the workflow's own team-verdicts marker below is the last one (functions/_lib/github.ts reads the last).
@@ -646,10 +657,6 @@ jobs:
           if [ -n "$verdicts" ]; then printf '\n<!-- team-verdicts %s -->\n' "$verdicts" >> "$RUNNER_TEMP/comment.md"; fi
           gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none --body-file "$RUNNER_TEMP/comment.md" || gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/comment.md"
           cat "$RUNNER_TEMP/comment.md" >> "$GITHUB_STEP_SUMMARY"
-          # The panel's verdicts (from the model, only the roles in "run" count) plus the carried and skipped ones,
-          # from the roster job's output, which nothing in this job can change.
-          jq --argjson r "$ROSTER" '.roles = ([(.roles // [])[] | select(.role as $role | $r.run | index($role))] + $r.carried + $r.skipped)' .review/result.json > "$RUNNER_TEMP/result.json"
-          cp "$RUNNER_TEMP/result.json" .review/result.json
           # Approved only when the model says so AND six roles each say APPROVE or NOT_APPLICABLE.
           if [ "$(jq -r '.approved' .review/result.json)" != "true" ] || ! jq -e '(.roles | length) == 6 and all(.roles[]; .verdict == "APPROVE" or .verdict == "NOT_APPLICABLE")' .review/result.json >/dev/null; then
             echo "::error::The team asked for changes or waits for Steven: see the comment on the pull request."

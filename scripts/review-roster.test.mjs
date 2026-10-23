@@ -14,7 +14,8 @@ describe('who reviews', () => {
     ['the MCP server', ['functions/_lib/mcp/plain.ts', 'functions/_lib/mcp/plain.test.ts'], ['senior-developer', 'security-engineer', 'senior-tester', 'product-manager']],
     ['a page', ['src/pages/About.tsx'], ['senior-developer', 'senior-tester', 'ux-designer', 'senior-recruiter', 'product-manager']],
     ['a résumé fact on a Site update', ['src/resume.ts', 'public/steven-wilssens-resume-2026.pdf', 'specs/team-size-38.md'], ['senior-developer', 'senior-tester', 'senior-recruiter', 'product-manager']],
-    ['the words of a write-up refresh', ['src/articles/site/SiteArticle.tsx', 'src/articles/site/feed.json', 'specs/building-site-43.md'], ['senior-recruiter', 'product-manager']],
+    ['the words of a write-up refresh', ['src/articles/site/SiteArticle.tsx', 'src/articles/site/feed.json', 'specs/building-site-43.md'], ['senior-developer', 'senior-tester', 'senior-recruiter', 'product-manager']],
+    ['only the numbers of a write-up', ['src/articles/site/feed.json'], ['senior-recruiter', 'product-manager']],
     ['a write-up diagram', ['src/articles/site/Diagrams.tsx'], ['senior-developer', 'senior-tester', 'ux-designer', 'senior-recruiter', 'product-manager']],
     ['the admin', ['src/admin/CostsPage.tsx'], ['senior-developer', 'security-engineer', 'senior-tester', 'ux-designer', 'product-manager']],
     ['only a test', ['functions/_lib/mcp/tools.test.ts'], ['senior-developer', 'senior-tester', 'product-manager']],
@@ -30,7 +31,7 @@ describe('who reviews', () => {
     expect(roster({ changed }).run).toEqual(run)
   })
 
-  it.each([['CLAUDE.md'], ['.claude/agents/senior-tester.md'], ['.github/workflows/review.yml'], ['scripts/recruiter-check.mjs'], ['scripts/review-roster.mjs'], ['functions/_lib/review/score.ts']])('the full panel when %s changes', (path) => {
+  it.each([['"src/caf\\303\\251.tsx"'], ['CLAUDE.md'], ['.claude/agents/senior-tester.md'], ['.github/workflows/review.yml'], ['scripts/recruiter-check.mjs'], ['scripts/review-roster.mjs'], ['functions/_lib/review/score.ts']])('the full panel when %s changes', (path) => {
     const result = roster({ changed: ['README.md', path] })
     expect(result).toMatchObject({ full: true, run: ROLES, skipped: [] })
   })

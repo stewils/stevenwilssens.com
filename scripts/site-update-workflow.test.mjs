@@ -406,8 +406,11 @@ describe('the daily refresh of this site\'s write-up', () => {
     expect(notify).not.toMatch(/^ {2}push:/m)
   })
 
-  it('tells the site only when the sources changed in the last day, naming the newest change', () => {
+  it('tells the site only when the sources changed since the last successful run, naming the newest change', () => {
+    expect(notify).toContain("before=$(gh run list --workflow building-notify.yml --branch main --status success --limit 1 --json headSha -q '.[0].headSha' 2>/dev/null || true)")
+    expect(notify).toContain('git merge-base --is-ancestor "$before" "$sha"')
     expect(notify).toContain("before=$(git rev-list -1 --first-parent --before='24 hours ago' HEAD)")
+    expect(notify).toMatch(/permissions:\n {2}contents: read\n {2}actions: read\n/)
     expect(notify).toContain('git diff --quiet "$before" "$sha" -- "${paths[@]}"')
     expect(notify).toContain('subject="$subject (and $((count - 1)) more)"')
     for (const path of ['CLAUDE.md', '.claude', '.github/workflows/review.yml', '.github/workflows/site-update.yml', 'scripts/review-roster.mjs']) expect(notify).toMatch(new RegExp(`paths=\\(.*${path.replace(/\./g, '\\.')}`))

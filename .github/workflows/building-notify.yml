@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   notify:
@@ -29,15 +30,21 @@ jobs:
       - name: Tell steven.wilssens.com
         env:
           TOKEN: ${{ secrets.BUILDING_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           PROJECT: site
         run: |
           if [ -z "$TOKEN" ]; then echo "::warning::BUILDING_TOKEN is not set; steven.wilssens.com was not told."; exit 0; fi
           # The write-up's sources (src/articles/sources.json lists the same).
           paths=(CLAUDE.md README.md .claude .github/workflows/review.yml .github/workflows/site-update.yml ':(glob)scripts/*-check.mjs' ':(glob)scripts/*-gate.mjs' ':(glob)scripts/*-compare.mjs' scripts/review-roster.mjs)
           sha=$(git rev-parse HEAD)
-          before=$(git rev-list -1 --first-parent --before='24 hours ago' HEAD)
+          # Since the commit the last successful run saw, so a late or missed run neither skips nor repeats a
+          # change; the last day when there is none (the first run, or history rewritten).
+          before=$(gh run list --workflow building-notify.yml --branch main --status success --limit 1 --json headSha -q '.[0].headSha' 2>/dev/null || true)
+          if ! [[ "$before" =~ ^[0-9a-f]{40}$ ]] || ! git merge-base --is-ancestor "$before" "$sha" 2>/dev/null; then
+            before=$(git rev-list -1 --first-parent --before='24 hours ago' HEAD)
+          fi
           if [ -n "$before" ] && git diff --quiet "$before" "$sha" -- "${paths[@]}"; then
-            echo "No change to the write-up's sources in the last day; nothing to refresh."
+            echo "No change to the write-up's sources since ${before::7}; nothing to refresh."
             exit 0
           fi
           # The newest change that touched them names the refresh; the others are counted.

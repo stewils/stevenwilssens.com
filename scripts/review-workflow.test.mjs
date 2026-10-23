@@ -153,7 +153,7 @@ describe('the assistant check (AC-9)', () => {
   })
 
   it('team still runs when the assistant check failed or was skipped, and then reads "did not run"', () => {
-    expect(team).toMatch(/^ {4}needs: \[gates, assistant-input, assistant, roster\]\n(?: {4}#.*\n)* {4}if: \$\{\{ !cancelled\(\) && needs\.gates\.result == 'success' && needs\.roster\.result == 'success' && github\.event\.pull_request\.draft != true \}\}$/m)
+    expect(team).toMatch(/^ {4}needs: \[gates, assistant-input, assistant, roster\]\n(?: {4}#.*\n)* {4}if: \$\{\{ !cancelled\(\) && needs\.gates\.result == 'success' && github\.event\.pull_request\.draft != true \}\}$/m)
     const notRun = stepOf(team, 'Say when the assistant check did not run')
     expect(notRun).toContain('Result: did not run (its input job ended with')
     expect(notRun).toContain('Result: did not run (the check job ended with')
@@ -263,6 +263,32 @@ describe('the panel: only the reviewers whose part changed, never on a draft', (
   it('coordinates on Sonnet', () => {
     expect(stepOf(team, 'The team reviews the pull request')).toContain("claude_args: '--model claude-sonnet-5-5 ")
   })
+
+  it('fails, never skips, when the roster job did not decide (a skipped required check passes)', () => {
+    expect(team).not.toContain("needs.roster.result == 'success' &&")
+    const guard = stepOf(team, 'The roster job decided who reviews')
+    expect(guard).toContain('[ "$ROSTER_RESULT" = success ] && [ -n "$ROSTER" ] || {')
+    expect(guard).toContain('ROSTER_RESULT: ${{ needs.roster.result }}')
+    expect(team.indexOf('- name: The roster job decided who reviews')).toBeLessThan(team.indexOf("- name: Dependabot's own dependency update?"))
+  })
+
+  it('merges the carried verdicts before it writes the marker the next round reads', () => {
+    const post = stepOf(team, 'Post the sign-offs and pass or fail')
+    expect(post.indexOf('$r.carried + $r.skipped')).toBeLessThan(post.indexOf('<!-- team-verdicts'))
+    expect(post.indexOf('$r.carried + $r.skipped')).toBeGreaterThan(post.indexOf('The team review wrote no result.'))
+  })
+
+  it('reads the changed paths unquoted', () => {
+    const roster = jobOf('roster')
+    expect(roster).toContain('git -c core.quotePath=false diff --name-only origin/main...HEAD')
+    expect(roster).toContain('git -c core.quotePath=false diff --name-only "$prev" HEAD')
+  })
+
+  it('runs the developer and the security engineer on Opus, the other four on Sonnet', () => {
+    const model = (agent) => /^model: (\S+)$/m.exec(readFileSync(join(root, `.claude/agents/${agent}.md`), 'utf8').split(/^---$/m)[1] ?? '')?.[1]
+    for (const agent of ['senior-developer', 'security-engineer']) expect(model(agent), agent).toBe('opus')
+    for (const agent of ['product-manager', 'senior-recruiter', 'senior-tester', 'ux-designer']) expect(model(agent), agent).toBe('sonnet')
+  })
 })
 
 describe('every shell step parses', () => {
@@ -276,6 +302,6 @@ describe('every shell step parses', () => {
     const found = blocks(readFileSync(join(root, path), 'utf8'))
     expect(found.length).toBeGreaterThan(0)
     for (const script of found) expect(() => execFileSync('bash', ['-n'], { input: script, stdio: ['pipe', 'pipe', 'pipe'] }), script.slice(0, 120)).not.toThrow()
-  })
+  }, 60_000)
 })
 

@@ -19,23 +19,26 @@ const test = (path) => /\.test\.(ts|tsx|mjs|js)$/.test(path) || path.includes('/
 const spec = (path) => path.startsWith('specs/')
 // Text only: the specs and Markdown other than the rules (CLAUDE.md is the full panel).
 const docs = (path) => spec(path) || (/\.md$/.test(path) && !rules(path))
-// A Building write-up's words and its feed: the recruiter's and the PM's, not code (its diagrams are).
-const articleText = (path) => /^src\/articles\/.+\.(tsx|json)$/.test(path) && !/Diagrams\.tsx$/.test(path)
-// The rules, the team and the gates: a change to any of them is reviewed by everyone.
-const rules = (path) => /^(CLAUDE\.md$|\.claude\/|\.github\/workflows\/|functions\/_lib\/review\/|scripts\/(review-roster|[a-z-]+-(check|gate|compare))\.mjs$)/.test(path)
+// A Building write-up's feed: numbers, not code. Its words (the .tsx) are still code to the developer and
+// the tester, but not a design change unless its diagrams change.
+const articleFeed = (path) => /^src\/articles\/.+\.json$/.test(path)
+const articleWords = (path) => /^src\/articles\/.+\.tsx$/.test(path) && !/Diagrams\.tsx$/.test(path)
+// The rules, the team and the gates: a change to any of them is reviewed by everyone. So is a path git
+// still quotes (a control character in it): the patterns below cannot be trusted to read it.
+const rules = (path) => path.startsWith('"') || /^(CLAUDE\.md$|\.claude\/|\.github\/workflows\/|functions\/_lib\/review\/|scripts\/(review-roster|[a-z-]+-(check|gate|compare))\.mjs$)/.test(path)
 
 const parts = {
-  'senior-developer': (path) => !docs(path) && !articleText(path),
-  'senior-tester': (path) => !docs(path) && !articleText(path),
+  'senior-developer': (path) => !docs(path) && !articleFeed(path),
+  'senior-tester': (path) => !docs(path) && !articleFeed(path),
   'security-engineer': (path) => !test(path) && /^(functions\/|scripts\/|migrations\/|public\/_(headers|redirects)$|wrangler\.jsonc$|package(-lock)?\.json$|src\/(ask|admin)\/|src\/webmcp\.ts$|index\.html$|vite\.config\.)/.test(path),
-  'ux-designer': (path) => !test(path) && (/^src\/.+\.(tsx|css)$/.test(path) && !articleText(path) || /^public\/.+\.(png|jpe?g|svg|webp|ico|css)$/.test(path) || /^(index\.html|scripts\/(resume|og-image)\.mjs)$/.test(path)),
+  'ux-designer': (path) => !test(path) && (/^src\/.+\.(tsx|css)$/.test(path) && !articleWords(path) || /^public\/.+\.(png|jpe?g|svg|webp|ico|css)$/.test(path) || /^(index\.html|scripts\/(resume|og-image)\.mjs)$/.test(path)),
   'senior-recruiter': (path) => !test(path) && (/^src\/(?!admin\/)/.test(path) || /^public\//.test(path) || /^functions\/(api\/ask|_lib\/ask\/|_lib\/assistant-input)/.test(path) || /^scripts\/(resume|assistant)/.test(path)),
   // The PM checks the acceptance criteria: a spec, or code that has to meet one.
   'product-manager': (path) => spec(path) || !docs(path),
 }
 const reasons = {
-  'senior-developer': 'only text changed (specs, Markdown, the words of a write-up)',
-  'senior-tester': 'only text changed (specs, Markdown, the words of a write-up)',
+  'senior-developer': 'only text changed (specs, Markdown, a write-up\'s numbers)',
+  'senior-tester': 'only text changed (specs, Markdown, a write-up\'s numbers)',
   'security-engineer': 'nothing on the server, in the build, the scripts, the assistant or the admin changed',
   'ux-designer': 'no page, component, style, image or résumé layout changed',
   'senior-recruiter': 'nothing a recruiter reads changed (pages, résumé, write-ups, the assistant)',
