@@ -174,7 +174,9 @@ jobs:
           BOT_NAME: ${{ needs.preflight.outputs.name }}
           BOT_EMAIL: ${{ needs.preflight.outputs.email }}
         run: |
-          slug=$(printf '%s' "$TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]\+/-/g; s/^-//; s/-$//' | cut -c1-40)
+          # Cloudflare cuts a preview's address to 28 characters (update-<slug>-<run>), so the slug
+          # leaves room for the run number: two updates never share a preview.
+          slug=$(printf '%s' "$TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]\+/-/g; s/^-//' | cut -c1-$((20 - ${#GITHUB_RUN_NUMBER})) | sed 's/-$//')
           branch="update/${slug:-change}-${GITHUB_RUN_NUMBER}"
           git checkout -b "$branch"
           # The commits are the site bot's (preflight), never Steven's name and address.

@@ -4,6 +4,7 @@
 // no-change decision run main's copies without a secret, a run without a change stops before
 // anything is pushed, and the feed merge keeps the numbers a live feed does not send.
 // The YAML is not measured by coverage; these turn red when it drifts.
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -338,5 +339,42 @@ describe('the request marker and a redo (AC-7)', () => {
 
   it('the pull request body says how to start checks that did not start', () => {
     expect(runOf(publishStep('Open the pull request'))).toContain('ask Claude for \\`merge_site_update\\` with \\`recheck: true\\`')
+  })
+})
+
+describe('the branch name', () => {
+  // Cloudflare cuts a preview's address to 28 characters; the run number has to be inside them.
+  const slugLine = runOf(step('Create the branch')).split('\n').find((line) => line.trim().startsWith('slug='))?.trim() ?? ''
+  const branchFor = (title, run) => execFileSync('bash', ['-c', `${slugLine}\nprintf '%s' "update/\${slug:-change}-\${GITHUB_RUN_NUMBER}"`], { env: { ...process.env, TITLE: title, GITHUB_RUN_NUMBER: run }, encoding: 'utf8' })
+  const alias = (branch) => branch.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 28)
+
+  it('reads the slug line from the step', () => {
+    expect(slugLine).toMatch(/^slug=\$\(.*cut -c1-\$\(\(20 - \$\{#GITHUB_RUN_NUMBER\}\)\)/)
+  })
+
+  it.each([
+    ['Building steven.wilssens.com: Merge mcp-plain-english: your MCP talks t…', '42'],
+    ['Building steven.wilssens.com: Merge dev-costs: your admin shows', '41'],
+    ['Team sizes, Azure DevOps context and Cosmos start date', '1234'],
+    ['x', '7'],
+    // Cut to 18 characters this slug ends on a hyphen ("building-wilssens-"), which is dropped.
+    ['Building wilssens.com: x', '42'],
+  ])('keeps the run number of %j inside the preview address', (title, run) => {
+    const branch = branchFor(title, run)
+    expect(alias(branch)).toBe(branch.replace('/', '-'))
+    expect(branch).toMatch(new RegExp(`^update/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?-${run}$`))
+  })
+
+  it('falls back to "change" for a title with no letters or digits', () => {
+    expect(branchFor('!!! ???', '9')).toBe('update/change-9')
+  })
+
+  it('drops a hyphen the cut leaves at the end of the slug', () => {
+    expect(branchFor('Building wilssens.com: x', '42')).toBe('update/building-wilssens-42')
+  })
+
+  it('gives two refreshes of the same write-up two previews', () => {
+    const title = 'Building steven.wilssens.com: Merge mcp-plain-english: your MCP talks t…'
+    expect(alias(branchFor(title, '41'))).not.toBe(alias(branchFor(title, '42')))
   })
 })
