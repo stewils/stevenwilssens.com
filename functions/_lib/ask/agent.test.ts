@@ -125,7 +125,9 @@ describe('who Steven is, from his About page', () => {
     const fit = rules.split('\n').find((text) => text.startsWith('Rules for a fit check'))!
     expect(fit).toContain(passage)
     expect(fit).not.toContain('willingness to relocate')
-    expect(rules).toContain('never go beyond the relocation fact the dossier states')
+    // Relocation is its own sentence: it is never among the points "for him to answer", so it asks Steven nothing.
+    expect(fit).toContain(' Relocation: never go beyond the relocation fact the dossier states. ')
+    expect(fit.split('. ').find((sentence) => sentence.endsWith('those are for him to answer'))).not.toMatch(/relocat/)
     // The fit check may cover a stated work authorization, but not go beyond it.
     expect(rules).toContain('never go beyond the work authorization the dossier states (a posting that asks for authorization to work in the US can be Covered by what the dossier states; sponsorship is not in the dossier)')
   })
