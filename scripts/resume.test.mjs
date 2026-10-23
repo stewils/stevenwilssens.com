@@ -7,7 +7,7 @@ import { honorLine, layouts, resumeHtml } from './resume.mjs'
 
 describe('the honors line of the resume', () => {
   it('renders the honors line without empty parentheses in every layout', () => {
-    expect(layouts).toHaveLength(4)
+    expect(layouts).toHaveLength(5)
     for (const layout of layouts) {
       const line = resumeHtml(layout).match(/<p class="honors">(.*?)<\/p>/)[1]
       expect(line).toContain('Selected for Microsoft’s High Potential (HiPo) program · ')
@@ -29,5 +29,23 @@ describe('the honors line of the resume', () => {
     // Another issuer still prints in full, as before.
     expect(honorLine(['Other Award', 'Issued by ACM · May 2020'])).toBe('Other Award <small>(Issued by ACM · May 2020)</small>')
     expect(honorLine(['<b>Award</b>', 'Issued by <i>'])).toBe('&lt;b&gt;Award&lt;/b&gt; <small>(Issued by &lt;i&gt;)</small>')
+  })
+})
+
+describe('the layouts of the resume', () => {
+  // The build keeps the first layout that fits two pages: tight margins are tried before the older roles lose their first bullet.
+  it('tries tight margins before dropping the older roles’ bullets, and only there', () => {
+    const tight = layouts.findIndex((layout) => layout.tight)
+    const noBullets = layouts.findIndex((layout) => layout.olderBullets === 0)
+    expect(layouts[tight]).toEqual({ olderBullets: 1, compact: true, tight: true })
+    expect(tight).toBe(noBullets - 1)
+    expect(noBullets).toBe(layouts.length - 1)
+    expect(layouts.filter((layout) => layout.tight)).toHaveLength(1)
+  })
+
+  it('sets the tight margins only in the tight layout', () => {
+    const margin = (layout) => resumeHtml(layout).match(/@page \{ size: Letter; margin: ([^;]+); \}/)[1]
+    for (const layout of layouts) expect(margin(layout)).toBe(layout.tight ? '0.4in 0.5in 0.36in' : '0.45in 0.55in 0.42in')
+    expect(margin()).toBe('0.45in 0.55in 0.42in')
   })
 })
