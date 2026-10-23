@@ -259,6 +259,18 @@ describe('the parts on their own', () => {
     expect(peopleCounts('He worked with designers, led 100 developers.')).toEqual([100])
     expect(peopleCounts('He worked with the platform team and led 100 developers.')).toEqual([100])
     expect(peopleCounts('He led 100 data scientists.')).toEqual([100])
+    expect(peopleCounts('He collaborated with 50 engineers and works with 30 developers.')).toEqual([])
+  })
+
+  it('counts a plain "with" as his team: an organization, teams, people reporting to him (#85)', () => {
+    expect(peopleCounts('He ran an organization with 100 engineers.')).toEqual([100])
+    expect(peopleCounts('He led teams with up to 50 PMs.')).toEqual([50])
+    expect(peopleCounts('He has led 10 to 20 product managers, with 100 engineers reporting to him.')).toEqual([20, 100])
+    expect(peopleCounts('He ran an org with 40 direct reports.')).toEqual([40])
+    expect(peopleCounts('He started with a team of 100 engineers.')).toEqual([100])
+    expect(peopleCounts('He worked with and led 100 developers.')).toEqual([100])
+    expect(peopleCounts('Working with 30 engineers who reported to him.')).toEqual([30])
+    expect(peopleCounts('Working with 12 direct reports.')).toEqual([12])
   })
 
   // PR #84: the assistant's answer to "How large a team has he led?", word for word.
@@ -284,6 +296,12 @@ The full history is on the [Experience page](https://steven.wilssens.com/experie
   it('still fails a team rounded up: 100 developers led, or a team of 25 PMs', () => {
     expect(checkAnswer('team', 'He has led 10 to 20 product managers, and led 100 developers at Compuware.', team)).toEqual({ ok: false, why: 'rounds the team up to 100 (profile.teamSize: "10 to 20 product managers")' })
     expect(checkAnswer('team', 'He has led teams of up to 20, including a team of 25 PMs.', team)).toEqual({ ok: false, why: 'rounds the team up to 25 (profile.teamSize: "10 to 20 product managers")' })
+  })
+
+  it('fails a team inflated after a plain "with" (#85)', () => {
+    for (const [sentence, over] of [['He ran an organization with 100 engineers.', 100], ['He led teams with up to 50 PMs.', 50], ['He has led 10 to 20 product managers, with 100 engineers reporting to him.', 100], ['He ran an org with 40 direct reports.', 40], ['He started with a team of 100 engineers.', 100], ['He worked with and led 100 developers.', 100]]) {
+      expect(checkAnswer('team', `Steven has led 10 to 20 product managers. ${sentence}`, team), sentence).toEqual({ ok: false, why: `rounds the team up to ${over} (profile.teamSize: "10 to 20 product managers")` })
+    }
   })
 
   it('needs every word of a fact', () => {
