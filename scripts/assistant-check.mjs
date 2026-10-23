@@ -106,19 +106,17 @@ export const carries = (answer, fact) => {
 // A number of people: "20 product managers", "a team of 25 PMs", "15+ engineers".
 const PEOPLE = /(\d{1,4})\s*(?:\+|plus)?\s*(?:(?:[a-z-]+)\s+){0,2}(?:people|pms?\b|product managers|managers|reports|engineers|developers|scientists|members|employees|staff|direct reports)/gi
 // The people he worked with are not his team: "working with more than 100 developers",
-// "alongside 40 engineers", "also with about 20 developers". Only a collaboration phrase says
-// so; a plain "with" does not ("an organization with 100 engineers" is his team). The last cue
-// in the clause before the number decides, so "worked with and led 100 developers" and "worked
-// with designers, led 100 developers" still count the 100. People "reporting to him" or his
-// "direct reports" always count.
-const WITH = /\b(?:(?:working|worked|works|work|collaborating|collaborated|partnering|partnered|also)\s+with|alongside)\b/i
-const LED = /\b(?:led|leads?|leading|managed|manages?|managing|teams? of|(?:organi[sz]ations?|orgs?|teams?|groups?)\s+with|grew|hired|ran|runs)\b/i
-const CUES = new RegExp(`${WITH.source}|${LED.source}`, 'gi')
-const REPORTING = /reports$|^\s*(?:reporting|who report(?:ed|s)?)\s+to\b/i
+// "alongside 40 engineers", "also with about 20 developers". Fail-safe: a number is left out
+// only when a collaboration phrase is in its clause and nothing in that clause, the count itself
+// or the rest of the sentence claims ownership ("led and worked with 100 developers", "working
+// with 100 engineers, all reporting to him", "an organization with 100 engineers"). When in
+// doubt, the number counts.
+const WITH = /\b(?:(?:working|worked|works|work|collaborating|collaborated|partnering|partnered)\s+(?:[a-z]+ly\s+)?with|also\s+with|alongside)\b/i
+const OWNS = /\b(?:report(?:s|ed|ing)?|direct reports|manag(?:e|es|ed|ing)|supervis(?:e|es|ed|ing)|direct(?:s|ed|ing)|under him|(?:on )?his team|lead(?:s|ing)?|led|overs(?:aw|ee|ees|eeing)|head(?:s|ed|ing)?|head of|ran|run(?:s|ning)?|recruit(?:s|ed|ing)?|hir(?:e|es|ed|ing)|own(?:s|ed|ing)?|gr(?:ew|ow|ows|owing)|teams? of|(?:organi[sz]ations?|orgs?|teams?|groups?) with)\b/i
 const workedWith = (match) => {
-  if (REPORTING.test(match[0]) || REPORTING.test(match.input.slice(match.index + match[0].length))) return false
-  const cue = [...match.input.slice(0, match.index).split(/[.,;:!?()\n]/).pop().matchAll(CUES)].pop()
-  return Boolean(cue && WITH.test(cue[0]))
+  const clause = match.input.slice(0, match.index).split(/[.,;:!?()\n]/).pop()
+  const rest = match.input.slice(match.index + match[0].length).split(/[.!?\n]/)[0]
+  return WITH.test(clause) && ![clause, match[0], rest].some((text) => OWNS.test(text))
 }
 /** The numbers of people an answer says he led or managed; counts of people he worked with are left out. */
 export const peopleCounts = (text) => [...String(text).matchAll(PEOPLE)].filter((match) => !workedWith(match)).map((match) => Number(match[1]))

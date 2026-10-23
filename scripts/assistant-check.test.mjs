@@ -255,7 +255,8 @@ describe('the parts on their own', () => {
   it('leaves out the people he worked with, but not the people he led', () => {
     expect(peopleCounts('About 20 PMs, initially through three people managers, working with more than 100 developers and data scientists.')).toEqual([20])
     expect(peopleCounts('He led 6 PMs, also with about 20 developers.')).toEqual([6])
-    expect(peopleCounts('He led 12 PMs alongside 40 engineers, partnering with 30 designers and 10 data scientists.')).toEqual([12])
+    expect(peopleCounts('He led 12 PMs. He sat alongside 40 engineers, partnering with 30 designers and 10 data scientists.')).toEqual([12])
+    expect(peopleCounts('Working closely with about 20 developers.')).toEqual([])
     expect(peopleCounts('He worked with designers, led 100 developers.')).toEqual([100])
     expect(peopleCounts('He worked with the platform team and led 100 developers.')).toEqual([100])
     expect(peopleCounts('He led 100 data scientists.')).toEqual([100])
@@ -273,6 +274,20 @@ describe('the parts on their own', () => {
     expect(peopleCounts('Working with 12 direct reports.')).toEqual([12])
   })
 
+  it('reads the collaboration phrase only in the clause of the number, and ownership in the rest of its sentence', () => {
+    for (const separator of ['.', ',', ';', ':', '!', '?', '\n']) expect(peopleCounts(`He led 6 PMs${separator} working with 100 developers`), JSON.stringify(separator)).toEqual([6])
+    expect(peopleCounts('He led 6 PMs (working with 100 developers).')).toEqual([6])
+    expect(peopleCounts('He led 6 PMs (in Redmond) working with 100 developers.')).toEqual([6])
+    expect(peopleCounts('He led 6 PMs working with 100 developers.')).toEqual([6, 100])
+    expect(peopleCounts('Working with 100 developers. He led 6 PMs.')).toEqual([6])
+    expect(peopleCounts('Working with 100 developers, he led 6 PMs.')).toEqual([100, 6])
+  })
+
+  it('counts a number after a collaboration phrase when the sentence claims he owned the team (#85)', () => {
+    for (const sentence of ['He was working with 100 engineers, all reporting to him.', 'He was working with 100 engineers he managed.', 'He was working with 100 engineers on his team.', 'He was working with 100 engineers under him.', 'Working with 100 engineers who report to him.', 'He led and worked with 100 developers.', 'He oversaw and worked with 100 developers.']) expect(peopleCounts(sentence), sentence).toEqual([100])
+    for (const verb of ['oversaw', 'headed', 'recruited', 'managed', 'supervised', 'directed', 'ran', 'owned', 'hired', 'grew']) expect(peopleCounts(`He ${verb} 100 engineers.`), verb).toEqual([100])
+  })
+
   // PR #84: the assistant's answer to "How large a team has he led?", word for word.
   const answer84 = `Steven has led teams of **10 to 20 product managers**. His largest was at Microsoft as Principal Group Product Manager for Windows & Devices Data (Dec 2024 to Sep 2026):
 
@@ -288,8 +303,9 @@ Earlier roles were smaller:
 The full history is on the [Experience page](https://steven.wilssens.com/experience).`
   const team = { ...profile, teamSize: '10 to 20 product managers' }
 
-  it("passes #84's answer, which keeps the 100+ developers as people he worked with", () => {
+  it("passes #84's answer, which keeps the 100+ developers as people he worked with, and an honest 'working closely with'", () => {
     expect(peopleCounts(answer84)).toEqual([20, 20, 15])
+    expect(checkAnswer('team', 'Steven has led 10 to 20 product managers, working closely with about 20 developers.', team)).toMatchObject({ ok: true })
     expect(checkAnswer('team', answer84, team)).toEqual({ ok: true, why: 'gives 10 to 20 product managers and no larger team' })
   })
 
@@ -299,7 +315,7 @@ The full history is on the [Experience page](https://steven.wilssens.com/experie
   })
 
   it('fails a team inflated after a plain "with" (#85)', () => {
-    for (const [sentence, over] of [['He ran an organization with 100 engineers.', 100], ['He led teams with up to 50 PMs.', 50], ['He has led 10 to 20 product managers, with 100 engineers reporting to him.', 100], ['He ran an org with 40 direct reports.', 40], ['He started with a team of 100 engineers.', 100], ['He worked with and led 100 developers.', 100]]) {
+    for (const [sentence, over] of [['He ran an organization with 100 engineers.', 100], ['He led teams with up to 50 PMs.', 50], ['He has led 10 to 20 product managers, with 100 engineers reporting to him.', 100], ['He ran an org with 40 direct reports.', 40], ['He started with a team of 100 engineers.', 100], ['He worked with and led 100 developers.', 100], ['He was working with 100 engineers, all reporting to him.', 100], ['He was working with 100 engineers he managed.', 100], ['He was working with 100 engineers on his team.', 100], ['He was working with 100 engineers under him.', 100], ['He oversaw 100 engineers.', 100], ['He headed 100 engineers.', 100], ['He recruited 100 engineers.', 100], ['He led and worked with 100 developers.', 100]]) {
       expect(checkAnswer('team', `Steven has led 10 to 20 product managers. ${sentence}`, team), sentence).toEqual({ ok: false, why: `rounds the team up to ${over} (profile.teamSize: "10 to 20 product managers")` })
     }
   })

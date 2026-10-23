@@ -121,7 +121,7 @@ describe('what is already there', () => {
     expect(recruiterLens('general').angles.length).toBeGreaterThan(0)
   })
 
-  // The real résumé has no overlap or gap any more, so made-up roles keep the date flags tested.
+  // Made-up roles, so the date flags stay tested whatever the real dates raise (#84 removes the Cosmos overlap).
   it('flags an overlap, a gap, a short stint, a plateau and a company change in made-up roles', () => {
     const roles = [
       { key: 'latest', role: 'Director', company: 'Acme', dates: 'Jan 2023 - Aug 2023' },

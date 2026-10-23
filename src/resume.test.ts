@@ -56,8 +56,8 @@ describe('the resume PDF', () => {
     expect(questions.some((q: { about: string }) => q.about === 'impact')).toBe(false)
   })
 
-  // The real résumé has no overlap, gap or stale last role any more, so made-up roles keep
-  // these three questions tested: latest first, as in src/resume.ts.
+  // Made-up roles, so these three questions stay tested whatever the real dates raise (#84 removes
+  // the Cosmos overlap). Latest first, as in src/resume.ts.
   it('asks about an overlap, a gap and a stale last role in made-up roles, and not about roles that follow on', () => {
     const roles = [
       { key: 'latest', role: 'Director', company: 'Acme', dates: 'Jan 2023 - Mar 2025' },
