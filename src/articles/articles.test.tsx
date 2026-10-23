@@ -270,6 +270,28 @@ describe('the team diagram on /building-this-site', () => {
     expect(sentence).toBe('Changes to the agent team itself reach me in my admin as unread updates until I have seen them.')
     expect(sentence).not.toMatch(/\d/)
   })
+
+  it('says the private MCP merges exactly the version I previewed or nothing, not while checks run, and after a failed check only with my yes (specs/building-steven-wi-49.md, AC-2, AC-4, AC-5)', () => {
+    render(<SiteArticle />)
+    const step = within(document.getElementById('loop')!.closest('section')!).getByText('Put every change past a team.').closest('li')!
+    const text = step.textContent!
+    const match = text.match(/from the same conversation if I like\.\s+([^.]*\.)/)
+    expect(match).not.toBeNull()
+    const sentence = match![1]
+    expect(sentence).toMatch(/^My private MCP merges/)
+    for (const said of [/exactly the version I previewed/, /or nothing/, /still running/, /failed check only with my explicit yes/]) expect(sentence).toMatch(said)
+    expect(sentence).not.toMatch(/\d|https?:|merge_site_update|updateName|\bsay\b|acceptFailingChecks|acceptLowerScore|\bconfirm\b|recheck|\bsha\b|commit|\bhead\b|MCP tool|check run|branch|redo|conflict|\/mcp\/|\bgates\b|ADMIN_TOKEN|token|\bkey\b|pull request/i)
+    // About failed checks the stop is Steven's to overrule, so no absolute word and no claim that GitHub enforces it.
+    expect(sentence).not.toMatch(/cannot|safely|guaranteed|GitHub/i)
+    expect(sentence.match(/never/g)).toHaveLength(1)
+    expect(sentence).toMatch(/never while the checks are still running,/)
+    // "MCP" only as "private MCP", never a bare one a reader could take for the public read-only server.
+    expect(sentence.match(/MCP/g)).toHaveLength((sentence.match(/private MCP/g) ?? []).length)
+    expect(text).not.toMatch(/\d/)
+    // Main's bullet was 175 words (its text content split on spaces); the refresh may add 30.
+    expect(sentence.trim().split(/\s+/).length).toBeLessThanOrEqual(30)
+    expect(text.trim().split(/\s+/).length).toBeLessThanOrEqual(175 + 30)
+  })
 })
 
 describe('the assistant section on /building-this-site', () => {
