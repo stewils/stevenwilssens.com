@@ -133,16 +133,7 @@ describe('the hiring logistics', () => {
     const keys = Object.keys(profile)
     expect(keys.slice(keys.indexOf('workAuthorization'), keys.indexOf('relocation') + 1)).toEqual(['workAuthorization', 'citizenship', 'availability', 'workArrangement', 'employers', 'relocation'])
   })
-
-  it('types the logistics values only in src/resume.ts', () => {
-    const values = [profile.citizenship, profile.workArrangement, profile.employers, profile.relocation].map((value) => value.toLowerCase())
-    // Vite expands the glob when it transforms this file, so a file added since then is read on the next fresh run (as on GitHub).
-    const sources = import.meta.glob<string>(['./**/*.{ts,tsx,mjs}', '../functions/**/*.{ts,mjs}', '../scripts/**/*.{ts,mjs}', '!**/*.test.*', '!**/node_modules/**'], { query: '?raw', import: 'default', eager: true })
-    expect(Object.keys(sources)).toContain('../functions/_lib/ask/prompt.ts')
-    expect(Object.keys(sources)).toContain('../scripts/resume.mjs')
-    const hits = Object.entries(sources).filter(([file]) => file !== './resume.ts').filter(([, text]) => values.some((value) => text.toLowerCase().includes(value))).map(([file]) => file)
-    expect(hits).toEqual([])
-  })
+  // That the four values are typed only here is checked in scripts/resume-facts.test.mjs, which reads the tree at run time.
 })
 
 // The guards and the designer's limits run on this copy in functions/_lib/mcp/about.test.ts.

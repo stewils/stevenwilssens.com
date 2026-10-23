@@ -66,6 +66,9 @@ describe('the recruiter review on thin data', () => {
     data.profile.workArrangement = 'On-site in Seattle'
     data.profile.relocation = ''
     expect(logistics().map((question) => question.question)).toEqual([only[0].question])
+    // So does any stated arrangement, even one without the words remote, hybrid or on-site (D-21).
+    data.profile.workArrangement = 'In the office in Seattle'
+    expect(logistics().map((question) => question.question)).toEqual([only[0].question])
   })
 
   it('a second leadership role without scope is a medium finding', () => {
