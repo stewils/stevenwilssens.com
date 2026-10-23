@@ -348,6 +348,10 @@ describe('the branch name', () => {
   const branchFor = (title, run) => execFileSync('bash', ['-c', `${slugLine}\nprintf '%s' "update/\${slug:-change}-\${GITHUB_RUN_NUMBER}"`], { env: { ...process.env, TITLE: title, GITHUB_RUN_NUMBER: run }, encoding: 'utf8' })
   const alias = (branch) => branch.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 28)
 
+  it('reads the slug line from the step', () => {
+    expect(slugLine).toMatch(/^slug=\$\(.*cut -c1-\$\(\(20 - \$\{#GITHUB_RUN_NUMBER\}\)\)/)
+  })
+
   it.each([
     ['Building steven.wilssens.com: Merge mcp-plain-english: your MCP talks t…', '42'],
     ['Building steven.wilssens.com: Merge dev-costs: your admin shows', '41'],

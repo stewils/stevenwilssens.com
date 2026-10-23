@@ -48,8 +48,15 @@ flowchart LR
 9. `merge_site_update` redoes an update by itself only on a real conflict (`mergeable === false` or `dirty`, or a "not mergeable" refusal confirmed by asking GitHub again), and only for a Site update branch (`update/`). The clash is handled before the score question, because the version that goes live is the new one. Any other refusal is reported as it is. When Steven says yes to a clash, the assistant redoes it with `request_site_update` and `redo`, which never merges anything. In both tools, a redo already under way (a run with the old title, unfinished or started in the last five minutes), or a new version that already exists (with its `headSha`), is returned and never started a second time. A redo always keeps the old title. `site_update_status` does not list an update that is being redone as ready, as a conflict, or as needing a redo.
 10. A run that made no change keeps its own `reason` out of `say`, and a retry still waits for Steven's yes.
 11. The server instructions and CLAUDE.md ("## The MCP server") describe how the tools talk.
-12. The hidden request marker and the workflow inputs are unchanged. The only change on GitHub's side is that the merge call sends the previewed `sha`.
+12. The hidden request marker and the workflow inputs are unchanged. On GitHub's side, the merge call sends the previewed `sha`, and (follow-up, AC 17) the Site update workflow's "Create the branch" step shortens the branch name. Its team step (`Let Claude make the change`) does not change.
 13. `npm run lint`, the tests, and coverage of 90% or more overall and per changed file all pass. Nothing changes in `src/resume.ts`, the PDF or the pages.
+
+Follow-up (PR #77, from a live `site_update_status` after the first version shipped):
+
+14. A Building write-up refresh's pull request ("Building <project name>: <commit subject>", for a project in `src/articles/sources.json`, names with spaces included) is named "<project name> write-up: <subject>". A merge commit's own wording is dropped from the subject (GitHub's "Merge pull request #n from …", git's "Merge branch '…' into …" and "Merge remote-tracking branch '…'", and "Merge <branch>:"). When nothing else is left, the subject is "refresh after a check-in". A title of Steven's that starts with "Building" but names no project stays his. The name is still 60 characters at most.
+15. When " update" is added to a name, the title is cut first (to 53 characters), so " update" is never the part cut off.
+16. An update that GitHub holds (`blocked`) with no failed check is said as "isn't ready to go live yet: it waits for the team's checks to pass", in `site_update_status` as in the single-update answers, never as "the team's checks haven't passed". `mergeTrouble` and `conflicts` name the update in double quotes (a double quote inside the name becomes a single quote). A number appears only where a tool takes it: `redo: <n>`, and `merge_site_update (number: <n>)` in the recheck and try-again hints.
+17. The Site update branch is `update/<slug>-<run number>`, with the slug cut to `20 - <digits of the run number>` characters and no trailing hyphen, so Cloudflare's 28-character preview address keeps the run number and two updates never share a preview.
 
 ## Test plan
 
@@ -68,11 +75,15 @@ flowchart LR
 | 11 instructions and CLAUDE.md | server.test.ts "tells the assistant to speak plainly…" (`initialize`); CLAUDE.md read in review |
 | 12 marker unchanged, sha only | github.test.ts marker tests unchanged; merge body with `sha` |
 | 13 lint, tests, coverage | `npm run lint`, `npm run test:coverage` |
+| 14 write-up names | plain.test.ts "an update's name" (it.each: steven.wilssens.com, wilssens.com, leo.wilssens.com, AI Breaker, Junior Track Cycling; pull request, branch and remote-tracking merges; "Building trust: …" stays Steven's), "cuts a long title…" (a 72-character Building title is 60) |
+| 15 " update" never cut | plain.test.ts "cuts a long title…" (the Windows and Devices title, "Team sizes…", 80 x's, "Fix …") |
+| 16 not ready yet, names in hints | plain.test.ts "says an update the branch rules hold…"; tools-branches.test.ts "lists one open pull request without a tip…" (`say`, no `#<n>` in `conflicts`), the blocked-causes tests (`merge_site_update (number: 60)`) |
+| 17 branch name | site-update-workflow.test.mjs "the branch name" (runs the step's own slug line: run numbers 7, 41, 42, 1234; two refreshes of one write-up get two previews; the slug line is there) |
 
 ## Out of scope
 
 - The public MCP (`/mcp`) and the site assistant.
-- The Site update workflow, the marker format and the admin.
+- The marker format, the admin, and the Site update workflow except the branch name (AC 17).
 - The agent orchestration. The CLAUDE.md change is in "## The MCP server", not in "## The team".
 
 ## Steven's decisions

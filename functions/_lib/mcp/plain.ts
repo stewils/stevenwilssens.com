@@ -1,3 +1,5 @@
+import sources from '../../../src/articles/sources.json'
+
 // What the site-update tools say to Steven. The tools' other fields keep GitHub's ids so they
 // can chain; the `say` line is the one or two sentences his assistant tells him, in his words:
 // "your update", "ready to check", "live on your site", never a pull request, run or branch.
@@ -16,6 +18,11 @@ const cap = (name: string, max = 60) => {
   return `${cut.slice(0, cut.lastIndexOf(' ') > max / 2 ? cut.lastIndexOf(' ') : max - 1)}…`
 }
 
+// The projects with a Building write-up, longest first so no name matches inside another.
+const projectNames = Object.values(sources as Record<string, unknown>)
+  .map((project) => (project && typeof project === 'object' && typeof (project as { name?: unknown }).name === 'string' ? (project as { name: string }).name : ''))
+  .filter(Boolean).sort((a, b) => b.length - a.length)
+
 // An update's short human name, from its title: "Foresight summary" becomes "Foresight summary
 // update". Never a number, never markup: the title is chosen by whoever opened the update, and
 // the name goes into the line Steven's assistant repeats, so links, tags and control characters go.
@@ -33,12 +40,15 @@ export const updateName = (title: string | null | undefined) => {
   // The Building refreshes' runs are titled by the workflow (site-update.yml run-name).
   const refresh = /^Refresh the Building write-up about (.+)$/i.exec(clean)
   if (refresh) return cap(`Building ${refresh[1]} write-up refresh`)
-  // Their pull requests are titled "Building <project>: <the project's commit subject>"
+  // Their pull requests are titled "Building <project name>: <the project's commit subject>"
   // (scripts/building-brief.mjs), and that subject is often a merge commit's.
-  const building = /^Building (\S+): (.+)$/.exec(clean)
-  if (building) {
-    const subject = building[2].replace(/^Merge (?:pull request\s*)?from \S+\s*/i, '').replace(/^Merge [\w./-]+(?::\s*|$)/i, '').trim()
-    return cap(`${building[1]} write-up: ${/[a-z]/i.test(subject) ? subject : 'refresh after a check-in'}`)
+  const project = projectNames.find((name) => clean.startsWith(`Building ${name}: `))
+  if (project) {
+    const subject = clean.slice(`Building ${project}: `.length)
+      .replace(/^Merge (?:pull request\s*)?from \S+\s*/i, '')
+      .replace(/^Merge (?:remote-tracking )?branch '[^']*'(?: of \S+)?(?: into \S+)?\s*/i, '')
+      .replace(/^Merge [\w./-]+(?::\s*|$)/i, '').trim()
+    return cap(`${project} write-up: ${/[a-z]/i.test(subject) ? subject : 'refresh after a check-in'}`)
   }
   const name = clean.charAt(0).toUpperCase() + clean.slice(1)
   // " update" is never the part cut off.
@@ -97,7 +107,7 @@ export const say = {
     if (checking.length) lines.push(`${some(checking, 'is', 'are')} ready to look at while the team finishes checking${checking.length > 1 ? `: ${list(checking)}` : ' it'}.`)
     if (making.length) lines.push(`${some(making, 'is', 'are')} still being made.`)
     if (held.length) lines.push(`${some(held, 'is', 'are')} held back: the team's checks haven't passed${held.length > 1 ? ` (${list(held)})` : ''}.`)
-    if (waiting.length) lines.push(`${some(waiting, "isn't", "aren't")} ready to go live yet: the team's checks haven't finished${waiting.length > 1 ? ` (${list(waiting)})` : ''}.`)
+    if (waiting.length) lines.push(`${some(waiting, "isn't", "aren't")} ready to go live yet: ${waiting.length === 1 ? 'it waits' : 'they wait'} for the team's checks to pass${waiting.length > 1 ? ` (${list(waiting)})` : ''}.`)
     if (clashing.length) lines.push(`${some(clashing, 'needs', 'need')} to be made again before ${clashing.length === 1 ? 'it' : 'they'} can go live${clashing.length > 1 ? `: ${list(clashing)}` : ''}.`)
     if (lowering.length) lines.push(`${list(lowering.map((name, index) => (index ? yours(name) : Yours(name))))} would make your résumé score lower with job-application software.`)
     return lines.length ? lines.join(' ') : 'Nothing is waiting: every update is live or set aside.'

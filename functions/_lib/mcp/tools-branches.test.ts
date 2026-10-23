@@ -313,8 +313,8 @@ describe('site updates', () => {
     expect(status.json).not.toHaveProperty('tip')
     // GitHub's status cannot be read (a 502 here): one plain sentence, never "open the pull request to see which".
     // Held by the branch rules with no check failed: not ready yet, not "the checks haven't passed".
-    expect(status.json!.say).toMatch(/isn't ready to go live yet: the team's checks haven't finished\.$/)
-    expect(status.json!.conflicts).toEqual([`The update "Summary line N update" is held by the repository's branch rules, and what holds it could not be read here (GitHub 502 on /graphql: bad gateway). Call merge_site_update again in a minute.`])
+    expect(status.json!.say).toMatch(/isn't ready to go live yet: it waits for the team's checks to pass\.$/)
+    expect(status.json!.conflicts).toEqual([`The update "Summary line N update" is held by the repository's branch rules, and what holds it could not be read here (GitHub 502 on /graphql: bad gateway). Call merge_site_update (number: 13) again in a minute.`])
     expect((status.json!.pullRequests as { proposals: unknown[]; supersedes: unknown }[])[0]).toMatchObject({ proposals: [], supersedes: null })
   })
 
@@ -552,13 +552,13 @@ const causesOf = async (status: PullStatus, extra: Partial<PullRequest> = {}, bo
 describe('what holds a blocked Site update pull request (AC-8)', () => {
   it('a required check that has not started offers recheck', async () => {
     const result = await causesOf(statusOf({ checks: [green('gates'), green('check')] }))
-    expect(result.text).toBe('"Summary line I update" cannot merge yet: "team" has not run on its latest commit. Call merge_site_update with recheck: true to start it.')
+    expect(result.text).toBe('"Summary line I update" cannot merge yet: "team" has not run on its latest commit. Call merge_site_update (number: 60) with recheck: true to start it.')
     expect(result.recheck).toBe(true)
   })
 
   it('runs waiting for approval offer recheck, as Steven', async () => {
     const result = await causesOf(statusOf({ checks: [], waiting: ['gates', 'team', 'check'] }))
-    expect(result.text).toBe('"Summary line I update": "gates", "team" and "check" wait for approval on GitHub (a run started by a bot). Call merge_site_update with recheck: true to start them as Steven.')
+    expect(result.text).toBe('"Summary line I update": "gates", "team" and "check" wait for approval on GitHub (a run started by a bot). Call merge_site_update (number: 60) with recheck: true to start them as Steven.')
     expect(result.recheck).toBe(true)
   })
 
@@ -589,7 +589,7 @@ describe('what holds a blocked Site update pull request (AC-8)', () => {
 
   it('a reviewer waiting for Steven: the role, the question, the link, then recheck after his reply', async () => {
     const result = await causesOf(statusOf({ checks: [green('gates'), { ...green('team'), conclusion: 'failure' }, green('check')], verdicts: { sha: HEAD, url: commentUrl, stale: false, roles: [{ role: 'security-engineer', verdict: 'NEEDS_STEVEN', summary: 'Should the CI key have a spend limit?' }] } }))
-    expect(result.text).toBe(`"Summary line I update": the security engineer waits for Steven's answer: "Should the CI key have a spend limit?" (${commentUrl}). He replies there; merge_site_update with recheck: true then runs the review again with his reply.`)
+    expect(result.text).toBe(`"Summary line I update": the security engineer waits for Steven's answer: "Should the CI key have a spend limit?" (${commentUrl}). He replies there; merge_site_update (number: 60) with recheck: true then runs the review again with his reply.`)
     expect(result.recheck).toBe(true)
   })
 
@@ -675,7 +675,7 @@ describe('what holds a blocked Site update pull request (AC-8)', () => {
 
   it('every check green and no reviewer waiting, yet blocked: one sentence to try again', async () => {
     const result = await causesOf(statusOf())
-    expect(result.text).toBe('GitHub still reports "Summary line I update" as blocked, although every required check passed and no reviewer is waiting; it may still be working it out. Call merge_site_update again in a minute.')
+    expect(result.text).toBe('GitHub still reports "Summary line I update" as blocked, although every required check passed and no reviewer is waiting; it may still be working it out. Call merge_site_update (number: 60) again in a minute.')
     expect(result.recheck).toBe(false)
   })
 
@@ -822,7 +822,7 @@ describe('what holds a pull request, round 1 of the review (M1, m1, m5, m-5)', (
   it.each([
     ['an unknown role, by its own name', { verdicts: { sha: HEAD, url: commentUrl, stale: false, roles: [{ role: 'Fact Checker', verdict: 'CHANGES_REQUESTED', summary: 'x' }] }, checks: [green('gates'), { ...green('team'), conclusion: 'failure' }, green('check')] }, /^"Summary line I update": the fact checker asked for changes: "x"/],
     ['an empty summary', { verdicts: { sha: HEAD, url: commentUrl, stale: false, roles: [{ role: 'senior-tester', verdict: 'CHANGES_REQUESTED', summary: '' }] }, checks: [green('gates'), { ...green('team'), conclusion: 'failure' }, green('check')] }, /the tester asked for changes: "no summary given"/],
-    ['two checks that have not run', { checks: [green('gates')] }, /^"Summary line I update" cannot merge yet: "team" and "check" have not run on its latest commit\. Call merge_site_update with recheck: true to start them\.$/],
+    ['two checks that have not run', { checks: [green('gates')] }, /^"Summary line I update" cannot merge yet: "team" and "check" have not run on its latest commit\. Call merge_site_update \(number: 60\) with recheck: true to start them\.$/],
     ['a running check without a start time', { checks: [green('gates'), green('team'), { ...green('check'), status: 'queued', conclusion: null, startedAt: null }] }, /^"Summary line I update" is not ready yet: "check" is still running\. Merge it once it passes;/],
     ['two running checks', { checks: [green('gates'), { ...green('team'), status: 'in_progress', conclusion: null, startedAt: '2026-10-20T15:10:00Z' }, { ...green('check'), status: 'in_progress', conclusion: null, startedAt: '2026-10-20T15:05:00Z' }] }, /"team" and "check" are still running \(started 15:05 UTC\)\. Merge it once they pass;/],
   ])('names %s', async (_what, extra, pattern) => {
