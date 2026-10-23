@@ -409,7 +409,8 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: assistant-check
-          path: .review/assistant
+          # Outside the checkout: only assistant-check.md comes in, and only once its digest checks out.
+          path: ${{ runner.temp }}/assistant-artifact
       - name: Say when the assistant check did not run
         if: steps.who.outputs.dependabot != 'true'
         env:
@@ -421,9 +422,17 @@ jobs:
         run: |
           # The recruiter's evidence for the assistant: the answers, or why there are none. Never silence.
           report=.review/assistant/assistant-check.md
+          downloaded="$RUNNER_TEMP/assistant-artifact/assistant-check.md"
+          # Nothing the branch carries under .review/assistant counts, and nothing else from the artifact comes in.
+          rm -rf .review/assistant
           # Only the report the check job wrote: its digest is that job's output, which no other job can set.
-          if [ -f "$report" ] && [ "$(sha256sum "$report" | cut -d' ' -f1)" != "$DIGEST" ]; then
-            printf '# The assistant check\n\nResult: did not run (the report found is not the one the check job wrote; see the run).\n' > "$report"
+          if [ -f "$downloaded" ] && [ ! -L "$downloaded" ]; then
+            mkdir -p .review/assistant
+            if [ "$(sha256sum "$downloaded" | cut -d' ' -f1)" = "$DIGEST" ]; then
+              cp "$downloaded" "$report"
+            else
+              printf '# The assistant check\n\nResult: did not run (the report found is not the one the check job wrote; see the run).\n' > "$report"
+            fi
           fi
           if [ "$INPUT" = success ] && [ "$SCOPE" = true ] && [ "$SETUP" != true ]; then
             mkdir -p .review/assistant

@@ -142,8 +142,14 @@ describe('the assistant check (AC-9)', () => {
     expect(stepOf(check, 'Ask the assistant on the branch and on main')).toContain('if [ -f "$out" ]; then echo "digest=$(sha256sum "$out" | cut -d\' \' -f1)" >> "$GITHUB_OUTPUT"; fi')
     const notRun = stepOf(team, 'Say when the assistant check did not run')
     expect(notRun).toContain('DIGEST: ${{ needs.assistant.outputs.digest }}')
-    expect(notRun).toContain('if [ -f "$report" ] && [ "$(sha256sum "$report" | cut -d\' \' -f1)" != "$DIGEST" ]; then')
-    expect(notRun.indexOf('!= "$DIGEST"')).toBeLessThan(notRun.indexOf('not set up on main yet'))
+    // The artifact lands outside the checkout; only assistant-check.md is copied in, and only when its digest matches.
+    expect(stepOf(team, "The assistant check's answers")).toContain('path: ${{ runner.temp }}/assistant-artifact')
+    expect(notRun).toContain('downloaded="$RUNNER_TEMP/assistant-artifact/assistant-check.md"')
+    expect(notRun).toContain('rm -rf .review/assistant')
+    expect(notRun).toContain('if [ "$(sha256sum "$downloaded" | cut -d\' \' -f1)" = "$DIGEST" ]; then\n              cp "$downloaded" "$report"')
+    expect(notRun.match(/\bcp /g)).toHaveLength(1)
+    expect(notRun.indexOf('rm -rf .review/assistant')).toBeLessThan(notRun.indexOf('= "$DIGEST"'))
+    expect(notRun.indexOf('= "$DIGEST"')).toBeLessThan(notRun.indexOf('not set up on main yet'))
   })
 
   it('team still runs when the assistant check failed or was skipped, and then reads "did not run"', () => {

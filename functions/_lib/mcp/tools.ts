@@ -306,7 +306,7 @@ const checksNext = (pull: PullRequest, where: Standing, checks: CheckState | nul
 // A redo already under way for a clashing update: an open pull request that supersedes it, or an
 // unfinished run with its title. Either one means a second yes starts nothing new.
 const redoUnderWay = async (github: GitHub, pull: PullRequest) => {
-  const title = pull.request?.title.slice(0, 80) ?? null
+  const title = redoRunTitle(pull)
   const [runs, open] = await Promise.all([github.runs(updateWorkflow, 10), github.pulls('open')])
   const replacement = open.find((item) => item.number !== pull.number && ownPull(github, item) && item.request?.supersedes === pull.number) ?? null
   const recent = Date.now() - 5 * 60_000
@@ -386,14 +386,24 @@ const awaitRun = async (ctx: ToolContext, github: GitHub, title: string) => {
 }
 type Project = { name: string; repository: string; article: string | null }
 const projectOf = (key: string | null | undefined) => (key && key !== '_comment' ? (sources as unknown as Record<string, Project>)[key] ?? null : null)
+// The name of the run that makes an update again, as the Site update workflow's run-name gives it: a request runs
+// under its title, a write-up refresh (a repository_dispatch) under its project. Starting a redo and looking for one
+// both use it, so a second yes while the redo runs starts nothing.
+const refreshRunTitle = (key: string) => `Refresh the Building write-up about ${key}`
+const redoRunTitle = (pull: PullRequest) => (!pull.request ? null : projectOf(pull.request.project) ? refreshRunTitle(pull.request.project!) : pull.request.title.slice(0, 80))
 // A Building write-up refresh is redone the way it was started: the check-in event again, at the
 // project's main as it is now (or the commit it was made from, when main cannot be read), so the
 // workflow checks the project out and reads its sources; a request without them refreshes nothing.
 const redoRefresh = async (ctx: ToolContext, github: GitHub, pull: PullRequest, key: string, project: Project) => {
   const sha = (await github.headOf(project.repository, 'main')) ?? pull.request?.sourceSha ?? null
   if (!sha) throw new ToolError(`#${pull.number} refreshes the ${project.name} write-up, and the commit to refresh it from cannot be read. Tell Steven; the next check-in on ${project.repository} refreshes it anyway.`)
-  await github.repositoryDispatch('building-source-changed', { project: key, repository: project.repository, sha, before: '', subject: `redo of #${pull.number}`, supersedes: pull.number })
-  return awaitRun(ctx, github, `Refresh the Building write-up about ${key}`)
+  try {
+    await github.repositoryDispatch('building-source-changed', { project: key, repository: project.repository, sha, before: '', subject: `redo of #${pull.number}`, supersedes: pull.number })
+  } catch (error) {
+    if (!(error instanceof GitHubError && error.status === 403)) throw error
+    throw new ToolError(`#${pull.number} refreshes the ${project.name} write-up, and this server may not start that refresh: its GitHub token needs Contents: write on ${github.repo} to send the check-in again. Tell Steven, in plain words, that the token needs that permission (README, "Changing the site"); until then the next check-in on ${project.repository} refreshes it anyway. Nothing was started.`)
+  }
+  return awaitRun(ctx, github, refreshRunTitle(key))
 }
 // Runs a pull request's update again on a fresh branch from main: a request as it was asked, a refresh as a refresh.
 const redoUpdate = (ctx: ToolContext, github: GitHub, pull: PullRequest & { request: NonNullable<PullRequest['request']> }) => {
@@ -1151,7 +1161,7 @@ export const tools: Tool[] = [
       }))
       const running = runs.filter((run) => run.status !== 'completed')
       // A clashing update that is already being made again (a run with its title, or a newer pull request that supersedes it) is not listed twice, nor offered a second redo.
-      const beingRedone = (pull: PullRequest) => standing(pull) === 'clash' && (running.some((run) => run.title === pull.request?.title.slice(0, 80)) || pulls.some((item) => item.request?.supersedes === pull.number))
+      const beingRedone = (pull: PullRequest) => standing(pull) === 'clash' && (running.some((run) => run.title === redoRunTitle(pull)) || pulls.some((item) => item.request?.supersedes === pull.number))
       const checks = await Promise.all(pulls.map((pull) => checksOf(github, pull)))
       const reviews = await Promise.all(pulls.map((pull, index) => teamReviewOf(github, pull, checks[index])))
       const where = pulls.map((pull, index) => standing(pull, checks[index]))

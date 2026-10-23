@@ -766,15 +766,37 @@ describe('recheck and the redo of a write-up refresh (AC-7)', () => {
     expect(redone.json).toMatchObject({ merged: false, redone: true, run: { id: 201, title: 'Refresh the Building write-up about site' }, supersedes: { number: 61 } })
     expect(fake.calls.events).toEqual([{ type: 'building-source-changed', payload: { project: 'site', repository: 'stewils/stevenwilssens.com', sha: 'c'.repeat(40), before: '', subject: 'redo of #61', supersedes: 61 } }])
     expect(fake.calls.dispatched).toEqual([])
+    // A second yes while that redo runs (its run is named after the project, not the update's title) starts nothing,
+    // and site_update_status shows it as being made again instead of offering the redo.
+    const second = await call(store, 'merge_site_update', { number: 61, confirm: true }, { github: fake.github })
+    expect(second.isError).toBeFalsy()
+    expect(second.json).toMatchObject({ merged: false })
+    expect(fake.calls.events).toHaveLength(1)
+    const listed = await call(store, 'site_update_status', {}, { github: fake.github })
+    expect((listed.json!.pullRequests as { mergeTrouble: string }[])[0].mergeTrouble).toBe('Being made again on top of what is live; nothing to do until the new version is ready.')
+    expect(fake.calls.events).toHaveLength(1)
     // The same through request_site_update; the commit it was made from when main cannot be read.
     const unread = fakeGitHub({ pulls: [blocked(61, { mergeable: false, mergeableState: 'dirty' }, body)] })
     const again = await call(store, 'request_site_update', { redo: 61 }, { github: unread.github })
     expect(again.json).toMatchObject({ started: true, supersedes: { number: 61 } })
     expect(unread.calls.events[0].payload).toMatchObject({ sha: 'abcdef1', supersedes: 61 })
-    expect((await call(store, 'request_site_update', { redo: 61, instruction: 'Also this' }, { github: unread.github })).text).toMatch(/is a Building write-up refresh: it is redone on its own/)
+    expect((await call(store, 'request_site_update', { redo: 61, instruction: 'Also this' }, { github: fakeGitHub({ pulls: [blocked(61, { mergeable: false, mergeableState: 'dirty' }, body)] }).github })).text).toMatch(/is a Building write-up refresh: it is redone on its own/)
     const lost = fakeGitHub({ pulls: [blocked(61, { mergeable: false }, encodeUpdateRequest({ title: 't', instruction: 'i', proposals: [], supersedes: null, project: 'site' }))] })
     expect((await call(store, 'request_site_update', { redo: 61 }, { github: lost.github })).text).toMatch(/the commit to refresh it from cannot be read/)
     expect(lost.calls.events).toEqual([])
+  })
+
+  it('a refresh redo the token may not send (403) says which permission it needs, not the raw error', async () => {
+    const body = encodeUpdateRequest({ title: 'Building steven.wilssens.com: Merge x', instruction: 'Refresh the Building write-up…', proposals: [], supersedes: null, project: 'site', sourceSha: 'abcdef1' })
+    const fake = fakeGitHub({ pulls: [blocked(61, { mergeable: false, mergeableState: 'dirty' }, body)] })
+    const forbidden = { ...fake.github, repositoryDispatch: async () => { throw new GitHubError('GitHub 403 on /dispatches: Resource not accessible by personal access token', 403) } }
+    const result = await call(new MemoryStore(), 'request_site_update', { redo: 61 }, { github: forbidden })
+    expect(result.isError).toBe(true)
+    expect(result.text).toMatch(/^#61 refreshes the .* write-up, and this server may not start that refresh: its GitHub token needs Contents: write on .*Nothing was started\.$/)
+    expect(result.text).not.toMatch(/Resource not accessible|403/)
+    // Any other failure is not dressed up as a permission problem.
+    const broken = { ...fake.github, repositoryDispatch: async () => { throw new GitHubError('GitHub 502 on /dispatches: bad gateway', 502) } }
+    expect((await call(new MemoryStore(), 'request_site_update', { redo: 61 }, { github: broken })).text).not.toMatch(/Contents: write/)
   })
 
   it('a pull request opened before this change (by github-actions) reads the same and gets recheck', async () => {
