@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { about, experiences } from './resume'
+import { about, experiences, profile } from './resume'
 
 const setPath = (path: string) => {
   window.history.pushState({}, '', path)
@@ -32,15 +32,31 @@ describe('resume site', () => {
 
     expect(screen.getByText(/led 10 to 20 product managers/)).toBeInTheDocument()
     expect(screen.getByText('Seattle, Washington · US permanent resident (green card)')).toBeInTheDocument()
-    // The work arrangement is the fourth hero fact, right after the location, with no label.
+    // Three hero facts, as the designer signed off: the work arrangement is on the kicker line instead (D-23).
     const facts = [...document.querySelectorAll('.hero-facts > span')].map((span) => span.textContent)
-    expect(facts).toHaveLength(4)
-    expect(facts.slice(2)).toEqual(['Seattle, Washington · US permanent resident (green card)', 'Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.'])
-    // The contact band does not repeat it.
-    expect(document.querySelector('.contact-band')).not.toHaveTextContent('coordinated travel')
+    expect(facts).toHaveLength(3)
+    expect(facts[2]).toBe('Seattle, Washington · US permanent resident (green card)')
     expect(screen.getByRole('heading', { name: 'Hiring a product leader for data, experimentation or AI?' })).toBeInTheDocument()
     expect(screen.getByText(/Available now, based in Seattle, Washington, a US permanent resident/)).toBeInTheDocument()
     expect(screen.getAllByText(/choosing my next/).length).toBeLessThanOrEqual(1)
+  })
+
+  it('puts the work arrangement next to the location on the first screen, and in the contact band', () => {
+    const { container } = render(<App />)
+
+    // The kicker reads as one phrase in the HTML; CSS puts the arrangement on its own line.
+    expect(container.querySelector('.hero-kicker')!.textContent).toBe(`${profile.name} · ${profile.location} · ${profile.workArrangement}`)
+    expect(container.querySelector('.kicker-sep')!.textContent).toBe(' · ')
+    expect(container.querySelector('.hero-arrangement')!.textContent).toBe(profile.workArrangement)
+    expect([...container.querySelectorAll('.hero-facts span')].map((span) => span.textContent)).toEqual([`Open to: ${profile.lookingFor[0].toLowerCase()}${profile.lookingFor.slice(1)}`, `Principal · Group PM · led ${profile.teamSize}`, `${profile.location} · ${profile.workAuthorization}`])
+    const band = within(screen.getByRole('heading', { name: 'Hiring a product leader for data, experimentation or AI?' }).closest('section')!).getByText(/^Available now/)
+    expect(band.textContent!.startsWith(`${profile.availability}, based in ${profile.location}, a US permanent resident. ${profile.workArrangement}. Email me,`)).toBe(true)
+    expect(band.textContent!.startsWith('Available now, based in Seattle, Washington, a US permanent resident. Hybrid or remote, across time zones. Email me,')).toBe(true)
+    // Twice on the home page, counting each element by its own text: the kicker line and the band.
+    const own = (element: Element) => [...element.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.textContent).join('')
+    expect([...container.querySelectorAll('*')].filter((element) => own(element).toLowerCase().includes(profile.workArrangement.toLowerCase()))).toHaveLength(2)
+    // The facts for a close read stay on the About page.
+    for (const value of [profile.citizenship, profile.travel, profile.employers, profile.relocation]) expect(container.textContent).not.toContain(value)
   })
 
   it('shows the selected work from the data and AI years, and a source only where the case has one', () => {
@@ -74,16 +90,20 @@ describe('resume site', () => {
     setPath('/about')
     render(<App />)
 
-    expect(screen.getByText('US permanent resident (green card)')).toBeInTheDocument()
     expect(screen.getByText('Seattle, Washington')).toBeInTheDocument()
     expect(within(screen.getByRole('list', { name: 'Honors and awards' })).getAllByRole('listitem')).toHaveLength(4)
-    // The work arrangement is its own fact, right after where Steven is based.
-    const note = document.querySelector('.side-note') as HTMLElement
-    const labels = [...note.querySelectorAll(':scope > span')].map((span) => span.textContent)
-    expect(labels.slice(labels.indexOf('Based in'), labels.indexOf('Based in') + 3)).toEqual(['Based in', 'Work arrangement', 'Work authorization'])
-    const label = [...note.querySelectorAll(':scope > span')].find((span) => span.textContent === 'Work arrangement')!
-    expect(label.nextElementSibling?.tagName).toBe('STRONG')
-    expect(label.nextElementSibling).toHaveTextContent(/^Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating\.$/)
+    // The logistics as one group, in the order a recruiter's screen asks them.
+    const aside = document.querySelector('aside.side-note')!
+    const labels = [...aside.querySelectorAll(':scope > span')].map((span) => span.textContent)
+    expect(labels.slice(labels.indexOf('Based in'), labels.indexOf('Education') + 1)).toEqual(['Based in', 'Work authorization', 'Work arrangement', 'Travel', 'Employers', 'Relocation', 'Education'])
+    const valueOf = (label: string) => [...aside.querySelectorAll(':scope > span')].find((span) => span.textContent === label)!.nextElementSibling!.textContent
+    expect(valueOf('Work authorization')).toBe(`${profile.workAuthorization} · ${profile.citizenship}`)
+    expect(valueOf('Work authorization')).toBe('US permanent resident (green card) · Belgian citizen (EU)')
+    expect(valueOf('Work arrangement')).toBe(profile.workArrangement)
+    expect(valueOf('Travel')).toBe(profile.travel)
+    expect(valueOf('Travel')).toBe('Open to coordinated travel')
+    expect(valueOf('Employers')).toBe(profile.employers)
+    expect(valueOf('Relocation')).toBe(profile.relocation)
   })
 
   it('renders the About copy from src/resume.ts, the first paragraph as the green opening', () => {

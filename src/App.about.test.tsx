@@ -6,7 +6,8 @@ import App from './App'
 
 vi.mock('./resume', async (importOriginal) => {
   const real = await importOriginal<typeof import('./resume')>()
-  return { ...real, about: { intro: 'An <i>intro</i> line.', paragraphs: ['<img src=x onerror=alert(1)>', 'Twice.', 'Twice.', 'A [link](https://x) and <b>x</b>.'] } }
+  // A different arrangement, so the band is shown to read the field, not to retype it or lower-case it.
+  return { ...real, profile: { ...real.profile, workArrangement: 'Remote in the US, across time zones' }, about: { intro: 'An <i>intro</i> line.', paragraphs: ['<img src=x onerror=alert(1)>', 'Twice.', 'Twice.', 'A [link](https://x) and <b>x</b>.'] } }
 })
 
 afterEach(() => { cleanup(); window.history.pushState({}, '', '/') })
@@ -22,5 +23,11 @@ describe('the About page', () => {
     expect(main.querySelector('img, b, a')).toBeNull()
     expect(container.querySelector('.page-heading p')!.textContent).toBe('An <i>intro</i> line.')
     expect(container.querySelector('.page-heading i')).toBeNull()
+  })
+
+  it('puts the work arrangement in the contact band as its own sentence, word for word', () => {
+    const { container } = render(<App />)
+    expect(container.querySelector('.contact-band p')!.textContent).toContain('a US permanent resident. Remote in the US, across time zones. Email me')
+    expect(container.querySelector('.hero-arrangement')!.textContent).toBe('Remote in the US, across time zones')
   })
 })

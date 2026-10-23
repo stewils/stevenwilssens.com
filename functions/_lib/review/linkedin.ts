@@ -148,11 +148,14 @@ const norm = (value: string | undefined) => (value ?? '').replace(/[‘’]/g, "
 const words = (value: string) => new Set(norm(value).split(/[^a-z0-9&+]+/).filter((w) => w.length > 2))
 const overlap = (a: string, b: string) => { const wa = words(a); const wb = words(b); let n = 0; for (const w of wa) if (wb.has(w)) n++; return wa.size ? n / wa.size : 0 }
 
+// A phrase continuing a sentence: its first letter lowered, unless it opens with an acronym ("US").
+export const lowerFirst = (value: string) => /^[A-Z][a-z]/.test(value) ? value[0].toLowerCase() + value.slice(1) : value
+
 // The headline, about and position descriptions Steven should paste into LinkedIn so
 // it tells the same story as the site and the resume.
 export const linkedInTexts = () => ({
   headline: `${profile.resumeHeadline} | ex-Microsoft, led Windows & Devices Data PM | ${profile.location}`,
-  about: `${profile.summary}\n\nLooking for: ${profile.lookingFor.toLowerCase()}. ${profile.location}, ${profile.workAuthorization.replace(/ \(.*\)$/, '').toLowerCase()}, ${profile.availability.toLowerCase()}.\n\nMore, including selected work and recommendations: ${profile.site}`,
+  about: `${profile.summary}\n\nLooking for: ${profile.lookingFor.toLowerCase()}. ${profile.location}, ${profile.workAuthorization.replace(/ \(.*\)$/, '').toLowerCase()}, ${profile.availability.toLowerCase()}, ${lowerFirst(profile.workArrangement)}.\n\nMore, including selected work and recommendations: ${profile.site}`,
   position: (key: string) => { const item = experiences.find((entry) => entry.key === key)!; return `${item.summary}\n\n${item.points.map((point) => `• ${point}`).join('\n')}` },
 })
 

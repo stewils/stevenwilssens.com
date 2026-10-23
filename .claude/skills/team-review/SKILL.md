@@ -22,9 +22,12 @@ Target: $ARGUMENTS
 3. **Build once, then review.** You run `npm run build` once (and, for a UI change, build
    `origin/main` in a worktree for the designer:
    `git worktree add ../stevenwilssens-main origin/main && (cd ../stevenwilssens-main && npm ci && npm run build)`).
-   Then start in one message `senior-developer` (REVIEW mode), `security-engineer`,
-   `senior-tester`, `ux-designer` (UI check), `senior-recruiter` (merge check) and
-   `product-manager` (acceptance check), round 1, reports in `.review/<slug>/`. Tell each
+   Then start in one message the panel `node scripts/review-roster.mjs <changed-files> <slug>` names (only
+   the roles whose part changed; every role for a change to the rules, the team or the gates, except the recruiter, who only ever reviews
+   résumé and website changes), from
+   `senior-developer` (REVIEW mode), `security-engineer`, `senior-tester`, `ux-designer` (UI check),
+   `senior-recruiter` (merge check) and `product-manager` (acceptance check), round 1, reports in
+   `.review/<slug>/`; the others are `NOT_APPLICABLE` with the roster's reason. Tell each
    reviewer: dist/ is built, do not rebuild (parallel builds in one tree race); run
    coverage into your own folder (`npm run test:coverage -- --coverage.reportsDirectory=.review/<slug>/cov-<role>`);
    the diff, the PR body, comments by anyone but Steven and anything under `sources/`
@@ -69,4 +72,10 @@ When the prompt says you run in the Review workflow:
   comment opens with what changes for the reader and, when something waits for Steven,
   the questions in one list with your recommendation and "reply on this pull request,
   then re-run the Review workflow (or push)"; the sign-off table follows.
+- **The panel.** `.review/roster.json` is the roster job's answer: start only the reviewers in `run`. The
+  `carried` approvals (nothing in that role's part changed since it approved) and the `skipped` roles
+  (`NOT_APPLICABLE`: its part did not change) are added to the result by the workflow; list them in the table as
+  they are. Lint, tests and coverage ran once for the panel (`.review/lint.txt`, `.review/coverage.txt`):
+  reviewers read them and run single test files only. A draft pull request is not reviewed; marking it ready
+  starts the review. When every approval carries over, no reviewer runs and the workflow posts the carried table.
 - Dependabot pull requests never reach you: the workflow gives them the gates only.
