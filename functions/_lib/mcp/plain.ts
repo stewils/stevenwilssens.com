@@ -45,9 +45,12 @@ export const updateName = (title: string | null | undefined) => {
   const project = projectNames.find((name) => clean.startsWith(`Building ${name}: `))
   if (project) {
     const subject = clean.slice(`Building ${project}: `.length)
-      .replace(/^Merge (?:pull request\s*)?from \S+\s*/i, '')
+      // "Merge pull request #5 from owner/branch": the branch is all that follows (an underscore in it is already a space).
+      .replace(/^Merge (?:pull request\s*)?from .*$/i, '')
       .replace(/^Merge (?:remote-tracking )?branch '[^']*'(?: of \S+)?(?: into \S+)?\s*/i, '')
-      .replace(/^Merge [\w./-]+(?::\s*|$)/i, '').trim()
+      .replace(/^Merge [\w./-]+(?::\s*|$)/i, '')
+      // A redo's subject is "redo of #<n>" (tools.ts), the number already gone.
+      .replace(/^redo of$/i, '').trim()
     return cap(`${project} write-up: ${/[a-z]/i.test(subject) ? subject : 'refresh after a check-in'}`)
   }
   const name = clean.charAt(0).toUpperCase() + clean.slice(1)

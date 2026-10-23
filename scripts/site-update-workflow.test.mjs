@@ -357,10 +357,16 @@ describe('the branch name', () => {
     ['Building steven.wilssens.com: Merge dev-costs: your admin shows', '41'],
     ['Team sizes, Azure DevOps context and Cosmos start date', '1234'],
     ['x', '7'],
+    // Cut to 18 characters this slug ends on a hyphen ("building-wilssens-"), which is dropped.
+    ['Building wilssens.com: x', '42'],
   ])('keeps the run number of %j inside the preview address', (title, run) => {
     const branch = branchFor(title, run)
     expect(alias(branch)).toBe(branch.replace('/', '-'))
     expect(branch).toMatch(new RegExp(`^update/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?-${run}$`))
+  })
+
+  it('drops a hyphen the cut leaves at the end of the slug', () => {
+    expect(branchFor('Building wilssens.com: x', '42')).toBe('update/building-wilssens-42')
   })
 
   it('gives two refreshes of the same write-up two previews', () => {

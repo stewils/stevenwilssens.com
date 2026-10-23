@@ -35,6 +35,8 @@ describe('an update\'s name', () => {
     ["Building Junior Track Cycling: Merge branch 'main' into gearing: the new gear table", 'Junior Track Cycling write-up: the new gear table'],
     ["Building AI Breaker: Merge remote-tracking branch 'origin/main'", 'AI Breaker write-up: refresh after a check-in'],
     ["Building Junior Track Cycling: Merge branch 'fix' of github.com:stewils/jtc into main", 'Junior Track Cycling write-up: refresh after a check-in'],
+    ['Building AI Breaker: Merge pull request #5 from stewils/new_level', 'AI Breaker write-up: refresh after a check-in'],
+    ['Building wilssens.com: redo of #61', 'wilssens.com write-up: refresh after a check-in'],
     // Only a project with a write-up is read as a refresh: Steven's own "Building …:" title stays his.
     ['Building trust: the Cosmos story', 'Building trust: the Cosmos story update'],
   ])('%j is %j', (title, name) => {

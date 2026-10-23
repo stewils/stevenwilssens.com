@@ -318,6 +318,12 @@ describe('site updates', () => {
     expect((status.json!.pullRequests as { proposals: unknown[]; supersedes: unknown }[])[0]).toMatchObject({ proposals: [], supersedes: null })
   })
 
+  it('quotes the name of an update in the hints so a double quote in it cannot close the quote', async () => {
+    const store = new MemoryStore()
+    const closed = fakeGitHub({ pulls: [pull(2, { state: 'closed', title: 'Fix "Lead" title' })] })
+    expect((await call(store, 'merge_site_update', { number: 2, sha: 'sha-2', confirm: true }, { github: closed.github })).text).toMatch(/^The update "Fix 'Lead' title" is set aside\. /)
+  })
+
   it('merges only what exists and is open, and waits once for GitHub to compute mergeability', async () => {
     const store = new MemoryStore()
     expect((await call(store, 'merge_site_update', { number: 1, sha: 'sha-1', confirm: true }, { github: fakeGitHub().github })).text).toBe('no pull request #1')
