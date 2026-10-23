@@ -48,7 +48,7 @@ const H2 = ({ id, kicker, children }: { id: string; kicker: string; children: Re
 // The assistant's report card, live from /api/ask/report (functions/_lib/ask/report.ts):
 // aggregates over its whole life, cached ten minutes. Prerendered pages and readers
 // without JavaScript get the sentence instead.
-type Report = { since: string | null; questions: number; answered: number; gaps: number; gapsCovered: number; gapsOpen: number; helpful: number; unhelpful: number; costMicro: number; costPerAnswerMicro: number | null; publicNotes: number }
+type Report = { since: string | null; questions: number; answered: number; gaps: number; gapsCovered: number; gapsOpen: number; costMicro: number; costPerAnswerMicro: number | null; publicNotes: number }
 const usd = (micro: number) => `$${(micro / 1_000_000).toFixed(2)}`
 export function ReportCard() {
   const [report, setReport] = useState<Report | null>(null)
@@ -58,7 +58,7 @@ export function ReportCard() {
     fetch('/api/ask/report').then(async (response) => (response.ok ? response.json() : null)).then((data: Report | null) => { if (!cancelled && data && typeof data.questions === 'number') setReport(data) }).catch(() => {})
     return () => { cancelled = true }
   }, [])
-  if (!report) return <p className="wx-report-wait">The numbers load here from the site’s own database: questions asked, the share answered with sources, the gaps and how many I have since covered, the votes and the cost.</p>
+  if (!report) return <p className="wx-report-wait">The numbers load here from the site’s own database: questions asked, the share answered with sources, the gaps and how many I have since covered, and the cost.</p>
   const inScope = report.answered + report.gaps
   const since = report.since ? new Date(`${report.since}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : null
   return <figure className="wx-figure wx-report" aria-label="The assistant’s report card">
@@ -67,7 +67,6 @@ export function ReportCard() {
       <div><dt>{inScope ? `${Math.round((report.answered / inScope) * 100)}%` : '—'}</dt><dd>answered with sources, of the questions in scope</dd></div>
       <div><dt>{report.gaps.toLocaleString('en-US')}</dt><dd>{report.gaps === 1 ? 'time' : 'times'} my notes had no answer</dd></div>
       <div><dt>{report.gapsCovered.toLocaleString('en-US')}</dt><dd>{report.gapsCovered === 1 ? 'question' : 'questions'} from readers I answered since, as public notes · {report.gapsOpen} waiting</dd></div>
-      <div><dt>{report.helpful} / {report.unhelpful}</dt><dd>votes, helpful / not helpful</dd></div>
       <div><dt>{report.costPerAnswerMicro === null ? '—' : usd(report.costPerAnswerMicro)}</dt><dd>per answer · {usd(report.costMicro)} in all</dd></div>
     </dl>
     <figcaption>Live from the site’s own database, refreshed every ten minutes. A gap is a question in scope that my notes could not answer; each one reaches me in the private MCP, and my answer becomes a note the assistant uses from then on.</figcaption>
@@ -179,7 +178,7 @@ export default function SiteArticle() {
             <li><strong>Answers are signed,</strong> so nobody can send the assistant an earlier answer it did not give. <strong>Limits are in the code:</strong> thirty questions an hour per visitor, twelve turns, a thousand characters, an optional human check, and a monthly budget counted from the provider’s own token usage. When the budget is spent the button disappears and the site keeps working.</li>
             <li><strong>It checks a job description against my record.</strong> Paste a posting and it answers in a fixed shape: which requirements my record covers, with the role or page that backs each; which it covers partly; which it does not show at all, even when they are probably true; and the questions an interviewer should ask me. The “not shown” list is the point. Every other candidate’s AI says yes to everything; this one is told that a plausible guess is not a fact. The requirements it could not match reach me the same way the unanswered questions do.</li>
           </ul>
-          <p>Questions, cost, votes and the unanswered questions go to the dashboard, which also shows how many different people asked, counted once a day like visitors, and what each of them asked. I keep the log of questions and answers 90 days, and nothing at all when the browser <a href="/privacy">asks not to be tracked</a>. The numbers that matter are public, here, straight from the database. I measured what I shipped at Microsoft; the assistant gets the same treatment, including the numbers that do not flatter it.</p>
+          <p>Questions, cost and the unanswered questions go to the dashboard, which also shows how many different people asked, counted once a day like visitors, and what each of them asked, and where I also read and rate the answers myself, mark the wrong ones and compare the model and instruction versions. I keep the log of questions and answers 90 days, and nothing at all when the browser <a href="/privacy">asks not to be tracked</a>. Those ratings stay private; the counts below are public, straight from the database. I measured what I shipped at Microsoft; the assistant gets the same treatment, including the numbers that do not flatter it.</p>
           <ReportCard />
         </section>
 

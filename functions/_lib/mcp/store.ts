@@ -26,7 +26,7 @@ export type ProposalInput = Omit<Proposal, 'id' | 'createdAt' | 'updatedAt' | 's
 
 // A question from the site that waits for Steven: what the assistant could not answer
 // (gap), a requirement a pasted job description named that the record does not show
-// (fit), or an answer a reader voted down (unhelpful).
+// (fit), an answer a reader voted down (unhelpful), or one Steven rated poor and added (rated).
 export type AskGap = { id: number; question: string; when: string; reason: SavedQuestion['reason']; page: string | null; answer: string | null }
 // One call to the public MCP server, kept so /admin shows whether anyone uses it. No IP, no visitor.
 export type ToolCall = { ts: number; tool: string; query: string | null; role: string | null; hits: number | null; country: string | null; asOrg: string | null }

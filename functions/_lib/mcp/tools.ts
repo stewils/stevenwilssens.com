@@ -680,7 +680,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'site_questions',
-    description: "Questions from the site that wait for Steven, each with an id: what the assistant on steven.wilssens.com could not answer from the public notes (gap), the requirements a recruiter's pasted job description named that his record does not show (fit), and answers readers voted down (unhelpful). A recruiter actually asked these, so they come before the interview's own questions. Take them one at a time: read what exists (get_role, search_dossier), ask him, then answer_site_question or dismiss_site_question.",
+    description: "Questions from the site that wait for Steven, each with an id: what the assistant on steven.wilssens.com could not answer from the public notes (gap), the requirements a recruiter's pasted job description named that his record does not show (fit), answers readers voted down (unhelpful), and answers Steven rated poor himself in the admin and added to his questions (rated). A recruiter actually asked these, so they come before the interview's own questions. Take them one at a time: read what exists (get_role, search_dossier), ask him, then answer_site_question or dismiss_site_question.",
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     readOnly: true,
     run: async (_args, ctx) => {
@@ -688,7 +688,7 @@ export const tools: Tool[] = [
       const count = (reason: AskGap['reason']) => open.filter((gap) => gap.reason === reason).length
       return {
         waiting: open.length,
-        summary: open.length ? `${count('gap')} the assistant could not answer, ${count('fit')} job requirements the record does not show, ${count('unhelpful')} answers voted down.` : 'Nothing waits: every question from the site has been answered or set aside.',
+        summary: open.length ? `${count('gap')} the assistant could not answer, ${count('fit')} job requirements the record does not show, ${count('unhelpful')} answers voted down, ${count('rated')} answers Steven rated poor.` : 'Nothing waits: every question from the site has been answered or set aside.',
         questions: open.map((gap) => ({ id: gap.id, reason: gap.reason, asked: gap.when, page: gap.page, question: gap.question, whatTheAssistantSaid: gap.answer })),
         caution: visitorTextCaution,
         howTo: 'For each: say what a recruiter was after, check the dossier, ask Steven, and save his answer with answer_site_question (public by default, so the assistant can answer the next recruiter). dismiss_site_question for duplicates, off-topic text and anything he will not answer. Similar questions can share one answer: answer the first, then dismiss the others with "answered by entry N".',
@@ -1353,5 +1353,5 @@ export const instructionsFor = async (ctx: ToolContext) => {
   const waiting = await ctx.store.askGaps(50).catch(() => [] as AskGap[])
   if (!waiting.length) return instructions
   const count = (reason: AskGap['reason']) => waiting.filter((gap) => gap.reason === reason).length
-  return `${instructions}\nRight now ${waiting.length} ${waiting.length === 1 ? 'question waits' : 'questions wait'} for Steven from the site: ${count('gap')} the assistant could not answer, ${count('fit')} job requirements his record does not show, ${count('unhelpful')} answers voted down. Tell him in one line before anything else and offer to go through them (site_questions); then do what he came for.`
+  return `${instructions}\nRight now ${waiting.length} ${waiting.length === 1 ? 'question waits' : 'questions wait'} for Steven from the site: ${count('gap')} the assistant could not answer, ${count('fit')} job requirements his record does not show, ${count('unhelpful')} answers voted down, ${count('rated')} answers he rated poor. Tell him in one line before anything else and offer to go through them (site_questions); then do what he came for.`
 }

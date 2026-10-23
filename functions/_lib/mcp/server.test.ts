@@ -354,6 +354,22 @@ describe('questions from the site', () => {
     const quiet = await send(rpc({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-06-18' } }), store)
     expect(((await quiet.json()) as { result: { instructions: string } }).result.instructions).not.toContain('wait for Steven')
   })
+
+  it('offers a question Steven rated poor like a voted-down one, as text typed by strangers', async () => {
+    const store = new MemoryStore()
+    store.gaps.push({ id: 4, question: 'When can he start?', when: '2026-10-18', reason: 'rated', page: 'home', answer: 'He can start in March.' }, { id: 5, question: 'Is he good?', when: '2026-10-18', reason: 'unhelpful', page: 'home', answer: 'Yes.' })
+    const init = await send(rpc({ jsonrpc: '2.0', id: 0, method: 'initialize', params: { protocolVersion: '2025-06-18' } }), store)
+    expect(((await init.json()) as { result: { instructions: string } }).result.instructions).toContain('1 answers voted down, 1 answers he rated poor')
+    const waiting = parse((await call(store, 'site_questions')).text)
+    expect(waiting.summary).toContain('1 answers voted down, 1 answers Steven rated poor')
+    expect(waiting.questions).toEqual([
+      { id: 4, reason: 'rated', asked: '2026-10-18', page: 'home', question: 'When can he start?', whatTheAssistantSaid: 'He can start in March.' },
+      { id: 5, reason: 'unhelpful', asked: '2026-10-18', page: 'home', question: 'Is he good?', whatTheAssistantSaid: 'Yes.' },
+    ])
+    expect(waiting.caution).toContain('typed by anonymous visitors')
+    const list = (await (await send(rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' }), store)).json()) as { result: { tools: { name: string; description: string }[] } }
+    expect(list.result.tools.find((tool) => tool.name === 'site_questions')?.description).toContain('answers Steven rated poor himself in the admin and added to his questions (rated)')
+  })
 })
 
 describe('the public server', () => {

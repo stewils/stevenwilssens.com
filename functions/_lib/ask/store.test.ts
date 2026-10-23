@@ -44,15 +44,14 @@ describe.each(stores)('the %s assistant store', (_, make) => {
     expect((await store.daily('2026-10-02')).map((row) => row.outcome)).toEqual(['gap'])
   })
 
-  it('counts votes per day and over all time', async () => {
+  it('counts votes per day', async () => {
     const store = make()
-    expect(await store.allVotes()).toEqual({ helpful: 0, unhelpful: 0 })
+    expect(await store.votes('2026-10-01')).toEqual([])
     await store.recordVote('2026-10-01', true)
     await store.recordVote('2026-10-01', false)
     await store.recordVote('2026-10-02', true)
     expect(await store.votes('2026-10-02')).toEqual([{ day: '2026-10-02', helpful: 1, unhelpful: 0 }])
-    expect(await store.votes('2026-10-01')).toHaveLength(2)
-    expect(await store.allVotes()).toEqual({ helpful: 2, unhelpful: 1 })
+    expect(await store.votes('2026-10-01')).toEqual([{ day: '2026-10-01', helpful: 1, unhelpful: 1 }, { day: '2026-10-02', helpful: 1, unhelpful: 0 }])
   })
 
   it('keeps open questions for a while and lists them newest first', async () => {

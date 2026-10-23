@@ -1,22 +1,26 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AnswerQuality } from './AnswerQuality'
+import { isRateable, type Filter } from './askQuality'
 import { TrendChart } from './Charts'
 import { DataTable, type Column } from './DataTable'
 import { dayLabel, fillDays, formatDuration, formatNumber, formatTime, formatUsd, monthName, projectMonth } from './format'
 import { askPeople, type Asker, type PeopleDay } from './askPeople'
+import { cachedLoader, outcomeBadge, outcomeLabel, type LoadEntry } from './askEntries'
+import { AnswerText, RateAnswers, RatingBadge, SourceList, VersionBadge, type RateAnswer } from './RateAnswers'
+import { RatingForm } from './RatingForm'
 import type { AskInfo, AskLogEntry, VisitorRow } from './types'
 
 type Question = AskInfo['questions'][number]
-const reasonLabel: Record<Question['reason'], string> = { gap: 'not covered', unhelpful: 'not helpful', fit: 'job requirement' }
+const reasonLabel: Record<Question['reason'], string> = { gap: 'not covered', unhelpful: 'not helpful', fit: 'job requirement', rated: 'you rated it poor' }
 const questionColumns: Column<Question>[] = [
   { key: 'ts', label: 'When', value: (row) => row.ts, render: (row) => formatTime(row.ts) },
-  { key: 'reason', label: 'Why', value: (row) => reasonLabel[row.reason], render: (row) => <span className={`badge ${row.reason}`}>{reasonLabel[row.reason]}</span> },
+  { key: 'reason', label: 'Why', value: (row) => reasonLabel[row.reason], render: (row) => <span className={`badge ${row.reason === 'rated' ? 'unhelpful' : row.reason}`}>{reasonLabel[row.reason]}</span> },
   { key: 'question', label: 'Question', value: (row) => row.question, strong: true },
   { key: 'answer', label: 'What it answered', value: (row) => row.answer ?? '', className: 'muted' },
   { key: 'page', label: 'Page', value: (row) => row.page },
   { key: 'network', label: 'Network', value: (row) => [row.asOrg, row.country].filter(Boolean).join(', ') },
 ]
 
-const outcomeLabel: Record<AskLogEntry['outcome'], string> = { answered: 'answered', gap: 'not covered', off: 'off topic', limited: 'turned away', failed: 'failed' }
-const outcomeBadge: Record<AskLogEntry['outcome'], string> = { answered: '', gap: 'warn', off: 'info', limited: 'warn', failed: 'error' }
 const askerColumns: Column<Asker>[] = [
   { key: 'ts', label: 'When', value: (row) => row.firstTs, render: (row) => formatTime(row.firstTs) },
   { key: 'count', label: 'Questions', value: (row) => row.entries.length, num: true },
@@ -25,17 +29,40 @@ const askerColumns: Column<Asker>[] = [
   { key: 'network', label: 'Network', value: (row) => row.network },
 ]
 
-// One person's conversation, and their visit that day when the traffic data has it.
-function Conversation({ person, visit }: { person: Asker; visit?: VisitorRow }) {
+// One person's conversation, and their visit that day when the traffic data has it. Each
+// answer the model gave shows whole, with its version, its sources and Steven's rating, or
+// Rate this answer; the rubric opens under it.
+function Conversation({ person, visit, onRate, load }: { person: Asker; visit?: VisitorRow; onRate: RateAnswer; load: LoadEntry }) {
   return (
     <>
       {visit && <p><b>Visit:</b> {visit.journey}{visit.referrer ? ` (from ${visit.referrer})` : ''}{visit.downloaded ? ' · downloaded the résumé' : ''}</p>}
       {person.entries.map((entry) => (
-        <div key={entry.id}>
+        <div key={entry.id} className="turn">
           <p><b>{formatTime(entry.ts)}{entry.page ? ` on ${entry.page}` : ''}:</b> {entry.question} <span className={`badge ${outcomeBadge[entry.outcome]}`}>{entry.kind === 'fit' ? 'fit check' : outcomeLabel[entry.outcome]}</span></p>
-          {entry.answer && <p className="muted">{entry.answer}</p>}
+          {isRateable(entry) ? <RatedAnswer entry={entry} onRate={onRate} load={load} /> : entry.answer && <p className="muted">{entry.answer}</p>}
         </div>
       ))}
+    </>
+  )
+}
+
+function RatedAnswer({ entry, onRate, load }: { entry: AskLogEntry; onRate: RateAnswer; load: LoadEntry }) {
+  const [open, setOpen] = useState(false)
+  const toggle = useRef<HTMLButtonElement>(null)
+  const refocus = useRef(false)
+  // Closing (saved, Cancel or Escape) gives focus back to the button: Change rating after a save.
+  useEffect(() => { if (!open && refocus.current) { refocus.current = false; toggle.current?.focus() } }, [open])
+  const close = () => { refocus.current = true; setOpen(false) }
+  return (
+    <>
+      <AnswerText entry={entry} load={load} />
+      <div className="turn-meta">
+        <VersionBadge entry={entry} />
+        <SourceList sources={entry.sources} />
+        {entry.rating && <RatingBadge rating={entry.rating} />}
+        <button ref={toggle} type="button" className="ghost" aria-expanded={open} onClick={() => setOpen(!open)}>{entry.rating ? 'Change rating' : 'Rate this answer'}</button>
+      </div>
+      {open && <RatingForm entry={entry} saveLabel="Save" onCancel={close} onSave={async (draft) => { const result = await onRate(draft); if (result.ok) close(); return result }} />}
     </>
   )
 }
@@ -65,11 +92,21 @@ function BudgetMeter({ spent, budgetUsd, now = new Date() }: { spent: number; bu
   )
 }
 
-// "Ask about Steven", the assistant on the site: this month against its budget,
-// questions and cost per day, votes, and the questions that wait for Steven (what the
-// dossier could not answer, the job requirements his record does not show, the answers
-// voted down), which he closes in an MCP session.
-export function AssistantPage({ info, days, visitors }: { info: AskInfo; days: number; visitors?: VisitorRow[] }) {
+// "Ask about Steven", the assistant on the site: who asked what, Steven's ratings of the
+// answers (Answer quality) and the queue to rate them (Rate answers), this month against its
+// budget, questions and cost per day, votes, and the questions that wait for Steven (what the
+// dossier could not answer, the job requirements his record does not show, the answers voted
+// down or rated poor), which he closes in an MCP session. `request` is the filter a Needs you
+// line asked for (#assistant?rate=wrong).
+const unavailable: RateAnswer = async () => ({ ok: false, reason: 'not signed in' })
+const nothing: LoadEntry = async () => null
+export function AssistantPage({ info, days, visitors, onRate = unavailable, onLoadEntry = nothing, request }: { info: AskInfo; days: number; visitors?: VisitorRow[]; onRate?: RateAnswer; onLoadEntry?: LoadEntry; request?: string | null }) {
+  const load = useMemo(() => cachedLoader(onLoadEntry), [onLoadEntry])
+  // A Needs you line opens the page on its filter, with focus on the queue's first question.
+  const opened = request === 'wrong' || request === 'unrated' ? request : null
+  const [filter, setFilter] = useState<Filter>(opened ?? 'unrated')
+  const [focusQueue, setFocusQueue] = useState(opened ? 1 : 0)
+  const showQueue = (value: Filter) => { setFilter(value); setFocusQueue((count) => count + 1) }
   const perDay = new Map<string, Day>()
   for (const row of info.daily) {
     const entry = perDay.get(row.day) ?? { day: row.day, questions: 0, costMicro: 0, off: 0, gap: 0 }
@@ -109,8 +146,11 @@ export function AssistantPage({ info, days, visitors }: { info: AskInfo; days: n
         <div className="trends">
           <TrendChart title={`People per day (${logDays === 1 ? 'today' : `${logDays} days`})`} unit="people" points={peopleSeries.map((row) => ({ key: row.day, label: dayLabel(row.day), value: row.people, detail: `${formatNumber(row.people)} people · ${formatNumber(row.questions)} questions` }))} />
         </div>
-        <DataTable columns={askerColumns} rows={people} rowKey={(row) => row.visitor} empty={info.log ? `Nobody asked the assistant anything in ${period}.` : 'No log to show.'} rowName={(row) => `${formatTime(row.firstTs)}: ${row.entries[0].question.slice(0, 60)}`} label="People who asked" expand={(row) => <Conversation person={row} visit={visits.get(row.visitor)} />} />
+        <DataTable columns={askerColumns} rows={people} rowKey={(row) => row.visitor} empty={info.log ? `Nobody asked the assistant anything in ${period}.` : 'No log to show.'} rowName={(row) => `${formatTime(row.firstTs)}: ${row.entries[0].question.slice(0, 60)}`} label="People who asked" expand={(row) => <Conversation person={row} visit={visits.get(row.visitor)} onRate={onRate} load={load} />} />
       </section>
+
+      <AnswerQuality info={info} days={days} onShowWrong={() => showQueue('wrong')} onRateFirst={() => showQueue('unrated')} />
+      <RateAnswers info={info} filter={filter} onFilter={setFilter} focusRequest={focusQueue} onRate={onRate} load={load} />
 
       <section className="card" data-part="Use and cost">
         <div className="card-head"><h2>Use and cost</h2></div>
