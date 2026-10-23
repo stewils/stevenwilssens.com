@@ -14,10 +14,14 @@ import { pathToFileURL } from 'node:url'
 const { _comment, ...projects } = JSON.parse(readFileSync(resolve('src/articles/sources.json'), 'utf8'))
 void _comment
 
-export const brief = ({ event, title, instruction, payload, today = new Date(), projects: map = projects }) => {
+// The pull request a run redoes (closed when the new one opens): the input of a request, or the payload of a
+// refresh the MCP server sends again (merge_site_update with redo). Only a number counts.
+const prNumber = (value) => (/^[1-9][0-9]{0,9}$/.test(String(value ?? '')) ? String(value) : '')
+
+export const brief = ({ event, title, instruction, payload, supersedes, today = new Date(), projects: map = projects }) => {
   if (event !== 'repository_dispatch') {
     if (!title?.trim() || !instruction?.trim()) return { skip: 'The title and the instruction are both needed.' }
-    return { title: title.trim(), instruction: instruction.trim(), project: '', repository: '', ref: '', before: '', sources: '', origin: 'a request made through the MCP server' }
+    return { title: title.trim(), instruction: instruction.trim(), project: '', repository: '', ref: '', before: '', sources: '', origin: 'a request made through the MCP server', supersedes: prNumber(supersedes) }
   }
   const key = String(payload?.project ?? '')
   const project = map[key]
@@ -58,13 +62,14 @@ export const brief = ({ event, title, instruction, payload, today = new Date(), 
     before,
     sources: project.sources.join(' '),
     origin: `a check-in on ${project.repository}${payload.compare ? ` (${payload.compare})` : ''}`,
+    supersedes: prNumber(payload.supersedes),
   }
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   let payload = null
   try { payload = process.env.PAYLOAD ? JSON.parse(process.env.PAYLOAD) : null } catch { payload = null }
-  const result = brief({ event: process.env.EVENT, title: process.env.INPUT_TITLE, instruction: process.env.INPUT_INSTRUCTION, payload })
+  const result = brief({ event: process.env.EVENT, title: process.env.INPUT_TITLE, instruction: process.env.INPUT_INSTRUCTION, supersedes: process.env.INPUT_SUPERSEDES, payload })
   const out = process.env.GITHUB_OUTPUT
   const write = (name, value) => { if (out) appendFileSync(out, `${name}<<BRIEF_EOF\n${value}\nBRIEF_EOF\n`); else console.log(`${name}=${value}`) }
   if (result.skip) {

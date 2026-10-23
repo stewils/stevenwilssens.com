@@ -444,7 +444,9 @@ a.team-link:hover { text-decoration: underline; }
 .team-jobs ol, .team-site-step ol, .team-words ol { margin: 0; padding-left: 22px; display: grid; gap: 4px; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .team-levels { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; line-height: 1.5; }
 .team-scripts { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; }
-.team-site-step { display: grid; gap: 10px; }
+.team-site-step { display: grid; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; }
+.team-site-step + .team-site-step { margin-top: 12px; }
+.team-step-description { margin: 0; font-size: 13px; line-height: 1.5; }
 .team-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; }
 .team-tools .badge { white-space: normal; overflow-wrap: anywhere; }
 .team-words { margin-top: 14px; font-size: 13px; }

@@ -63,7 +63,7 @@ export function LoopDiagram() {
 // Two drawings of the same flow: across on a wide screen, stacked on a phone (article.css
 // shows one of them), so it is readable at 390px without swiping.
 const flowTitle = 'How a change reaches the site: a team of AI agents, and Steven deciding'
-const flowDescription = 'Steven asks. A product manager agent writes the spec with a recruiter and a designer; a security engineer, a tester and a developer add their sections. Steven’s open questions are asked once, all together. A developer builds it with its tests. A build that changes nothing stops there: the run fails and Steven is told, so no empty pull request is opened. Six reviews run in parallel, by fresh agents that did not write the code: code, security, tests at 90% coverage per file, design with screenshots, the recruiter’s check that the site is not worse, and the product manager’s acceptance check. Changes go back to the developer for at most three rounds. When all approve, the pull request has a required Review check that runs main’s gates and the team review. Steven merges, and the site deploys. The agents’ runs, on GitHub and in Steven’s own Claude Code sessions, are metered against the change they belong to, and in his sessions against the role that ran them; a change can have a budget, and the rounds that had to be redone are counted, so he can see which kind of change is worth the full team.'
+const flowDescription = 'Steven asks. A product manager agent writes the spec with a recruiter and a designer; a security engineer, a tester and a developer add their sections. Steven’s open questions are asked once, all together. A developer builds it with its tests. A build that changes nothing stops there: the run fails and Steven is told, so no empty pull request is opened. Six reviews run in parallel, by fresh agents that did not write the code: code, security, tests at 90% coverage per file, design with screenshots, the recruiter’s check that the site is not worse, and the product manager’s acceptance check. Changes go back to the developer for at most three rounds. When all approve, the pull request runs its own required checks on GitHub: main’s gates, the team review, which also tries the assistant when a change touches it, and the site checks. Steven merges, and the site deploys. The agents’ runs, on GitHub and in Steven’s own Claude Code sessions, are metered against the change they belong to, and in his sessions against the role that ran them; a change can have a budget, and the rounds that had to be redone are counted, so he can see which kind of change is worth the full team.'
 // main: where Steven decides (the accent); stop: where a run ends without a change (the stop colour).
 const flowSteps: { title: string; lines: string[]; main?: boolean; stop?: boolean }[] = [
   { title: 'I ask', lines: ['in Claude, the MCP or a refresh'], main: true },
@@ -71,7 +71,7 @@ const flowSteps: { title: string; lines: string[]; main?: boolean; stop?: boolea
   { title: 'My questions', lines: ['asked once, all together'], main: true },
   { title: 'Build', lines: ['developer, with tests'] },
   { title: 'Nothing changed', lines: ['the run fails', 'and I am told'], stop: true },
-  { title: 'Pull request', lines: ['required Review check:', 'main’s gates + team review'] },
+  { title: 'Pull request', lines: ['its own checks: gates, team review,', 'site checks, assistant tested in CI'] },
   { title: 'I merge', lines: ['after the preview'], main: true },
   { title: 'Deploy', lines: ['steven.wilssens.com'] },
 ]

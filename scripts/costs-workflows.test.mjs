@@ -69,7 +69,11 @@ describe.each(Object.entries(workflows))('the %s workflow', (workflow, meta) => 
     // Only the three numbers become job outputs (and, for Site update, its branch and pull request).
     const afterOutputs = job.slice(job.indexOf('    outputs:') + '    outputs:'.length)
     const outputs = afterOutputs.slice(0, afterOutputs.search(/\n {4}\S/))
-    expect([...outputs.matchAll(/^ {6}(\w+):/gm)].map((match) => match[1])).toEqual(workflow === 'review' ? ['micro', 'turns', 'ms'] : ['micro', 'turns', 'ms', 'branch', 'pr'])
+    const names = [...outputs.matchAll(/^ {6}(\w+):/gm)].map((match) => match[1])
+    // Site update's update job also hands its change on to the publish job, which opens the pull request (specs/mcp-prs-flow.md).
+    if (workflow === 'review') expect(names).toEqual(['micro', 'turns', 'ms'])
+    else expect(names).toEqual(expect.arrayContaining(['micro', 'turns', 'ms', 'branch']))
+    expect(outputs.match(/steps\.cost\.outputs/g)).toHaveLength(3)
     if (workflow === 'site-update') {
       expect(outputs).toContain('branch: ${{ steps.branch.outputs.branch }}')
       // The branch step runs before Claude: nothing Claude runs can change its output.
@@ -79,7 +83,8 @@ describe.each(Object.entries(workflows))('the %s workflow', (workflow, meta) => 
 
   it('posts from its own job: after the Claude job, no permissions, no checkout, no action, no npm', () => {
     expect(costs).not.toBeNull()
-    expect(costs).toContain(`    needs: ${meta.job}\n`)
+    // Site update: after publish too, which opens the pull request (specs/mcp-prs-flow.md).
+    expect(costs).toContain(workflow === 'review' ? `    needs: ${meta.job}\n` : '    needs: [update, publish]\n')
     const skipsDependabot = workflow === 'review' ? " && !(github.event.pull_request.user.login == 'dependabot[bot]' && github.actor == 'dependabot[bot]' && github.triggering_actor == 'dependabot[bot]' && startsWith(github.head_ref, 'dependabot/'))" : ''
     expect(costs).toContain(`    if: always() && needs.${meta.job}.result != 'skipped'${skipsDependabot}\n`)
     expect(costs).toContain('    permissions: {}\n')
@@ -129,7 +134,7 @@ describe.each(Object.entries(workflows))('the %s workflow', (workflow, meta) => 
     expect(costs).toContain(`          WORKFLOW: ${workflow}\n`)
     expect(costs).toContain(`          JOB: ${meta.job}\n`)
     expect(costs).toContain(workflow === 'review' ? 'BRANCH: ${{ github.head_ref || github.ref_name }}' : 'BRANCH: ${{ needs.update.outputs.branch }}')
-    expect(costs).toContain(workflow === 'review' ? 'PR: ${{ github.event.pull_request.number || inputs.pr }}' : 'PR: ${{ needs.update.outputs.pr }}')
+    expect(costs).toContain(workflow === 'review' ? 'PR: ${{ github.event.pull_request.number || inputs.pr }}' : 'PR: ${{ needs.publish.outputs.number }}')
   })
 
   it('adds no trigger', () => {

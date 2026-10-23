@@ -15,8 +15,10 @@ import { execFileSync } from 'node:child_process'
 
 export const SCHEMA = 'team-manifest/1'
 export const REPO = 'https://github.com/stewils/stevenwilssens.com'
-// The step of site-update.yml where the team works; a change elsewhere in that file is not a team change.
+// The steps of site-update.yml that hand work on: where the team works, and where the site bot
+// opens the pull request (specs/mcp-prs-flow.md); a change elsewhere in that file is not a team change.
 export const TEAM_STEP = 'Let Claude make the change'
+export const PR_STEP = 'Open the pull request'
 // The section of CLAUDE.md with the team's rules; a change elsewhere in that file is not a team change.
 export const TEAM_RULES = 'The team'
 
@@ -27,8 +29,9 @@ export const ORCHESTRATION = [
   { glob: '.claude/agents/*.md', section: 'roles' },
   { glob: '.claude/skills/*/SKILL.md', section: 'commands' },
   { glob: '.github/workflows/review.yml', section: 'checks' },
-  { glob: '.github/workflows/site-update.yml', section: 'siteUpdate', steps: [TEAM_STEP] },
+  { glob: '.github/workflows/site-update.yml', section: 'siteUpdate', steps: [TEAM_STEP, PR_STEP] },
   { glob: 'scripts/recruiter-check.mjs', section: 'checks' },
+  { glob: 'scripts/assistant-check.mjs', section: 'checks' },
   { glob: 'scripts/recruiter-compare.mjs', section: 'checks' },
   { glob: 'scripts/resume-gate.mjs', section: 'checks' },
   { glob: 'functions/_lib/review/**', exclude: '**/*.test.*', section: 'checks' },
@@ -405,8 +408,12 @@ export const cutSection = (text, heading) => {
 const READABLE = { 'steps.branch.outputs.spec': 'specs/<slug>.md' }
 export const readable = (text) => text.replace(/\$\{\{\s*([^}]*?)\s*\}\}/g, (_, name) => READABLE[name] ?? `<${name.split('.').pop() || 'value'}>`)
 
+// The comment lines right under a step's `- name:` say in a line what the step does.
+const stepDescription = (block) => (/^[^\n]*\n((?:[ \t]*#[^\n]*\n)+)/.exec(block.replace(/\r\n/g, '\n'))?.[1] ?? '').split('\n').map((line) => line.replace(/^\s*#\s?/, '').trim()).filter(Boolean).join(' ')
+
 const stepDetails = (name, block) => ({
   name: clean(name, 120),
+  description: clean(stepDescription(block), 300),
   lines: [...block.matchAll(/^\s*\d+\.\s+(.+)$/gm)].slice(0, 20).map((match) => clean(readable(plain(match[1])), 1000)),
   tools: (/--allowedTools\s+\\?"([^"\\]*)\\?"/.exec(block)?.[1] ?? '').split(',').map((tool) => clean(tool, 80)).filter(Boolean).slice(0, 60),
 })

@@ -194,7 +194,7 @@ export const makeTeamManifest = (overrides: Partial<TeamManifest> = {}): TeamMan
       protection: 'Protection on main requires proof and panel.',
     },
     commands: { items: [{ id: 'publish', name: 'publish', description: 'Run the editors on an ask.', hint: '<the ask>', file: '.team/commands/publish.md' }] },
-    siteUpdate: { file: '.ci/site.yml', steps: [{ name: 'Let the editor write', lines: ['Draft first.', 'Then the panel.'], tools: ['Read', 'Edit'] }] },
+    siteUpdate: { file: '.ci/site.yml', steps: [{ name: 'Let the editor write', description: 'The editors write the change.', lines: ['Draft first.', 'Then the panel.'], tools: ['Read', 'Edit'] }, { name: 'Open the pull request', description: 'The change becomes a pull request.', lines: [], tools: [] }] },
     rules: { file: 'RULES.md', heading: 'The editors', paragraphs: ['Every draft goes through the editors.', 'The panel signs off; a reply never clears a stop.'] },
   },
   history: {
