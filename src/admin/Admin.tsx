@@ -7,7 +7,7 @@ import { CrawlersPage } from './CrawlersPage'
 import { formatAgo, formatTime } from './format'
 import { LinksPage } from './LinksPage'
 import { McpPage } from './McpPage'
-import { badgeCounts, computeNeeds, computeSummaries } from './needs'
+import { badgeCounts, computeNeeds, computeSummaries, rangeForLink } from './needs'
 import { Overview } from './Overview'
 import { pageById, pages, type PageDef } from './pages'
 import { ResumePage } from './ResumePage'
@@ -151,7 +151,11 @@ export default function Admin() {
   const askData = ask.data ? withRatings(ask.data, newerRatings(ask.data, saved)) : ask.data
 
   useEffect(() => {
-    const onChange = () => setHash(readHash())
+    const onChange = () => {
+      const next = readHash()
+      setHash(next)
+      setDays((current) => rangeForLink(next.split('?')[1] ?? '', current))
+    }
     addEventListener('hashchange', onChange)
     return () => removeEventListener('hashchange', onChange)
   }, [])

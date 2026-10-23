@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { badgeCounts, computeNeeds, computeSummaries } from './needs'
+import { badgeCounts, computeNeeds, computeSummaries, rangeForLink } from './needs'
 import { makeRating, makeTeamManifest, makeTeamReads, makeUpdate, sha } from '../test/admin-fixtures'
 import type { AdminData, AskInfo, McpInfo, ResumeInfo, Stats, TeamData } from './types'
 
@@ -193,5 +193,15 @@ describe('the assistant ratings in Needs you and on the tile', () => {
     const ratings = Array.from({ length: 25 }, (_, i) => rating('yes', i < 18 ? 5 : 3, i + 1))
     expect(computeSummaries(withRatings({ ratings })).assistant).toBe('$1.25 of $25.00 this month · 10 questions · 2 gaps · 0 people asked in 30 days · 72% rated good (25)')
     expect(computeSummaries(withRatings({ ratings: [] })).assistant).toBe('$1.25 of $25.00 this month · 10 questions · 2 gaps · 0 people asked in 30 days')
+  })
+})
+
+describe('the range a Needs you link opens on', () => {
+  it('widens a range shorter than 7 days to 7 for the unrated answers of the last 7 days, and leaves every other range and link alone', () => {
+    expect(rangeForLink('rate=unrated', 1)).toBe(7)
+    expect(rangeForLink('rate=unrated', 7)).toBe(7)
+    expect(rangeForLink('rate=unrated', 30)).toBe(30)
+    expect(rangeForLink('rate=wrong', 1)).toBe(1)
+    expect(rangeForLink('', 1)).toBe(1)
   })
 })

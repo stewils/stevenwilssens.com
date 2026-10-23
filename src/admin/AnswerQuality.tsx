@@ -77,7 +77,7 @@ export function AnswerQuality({ info, days, onShowWrong, onRateFirst }: { info: 
         </>
       )}
       <div className="trends">
-        <TrendChart title="Answered with a source, by week" unit="answered share" per="week" max={100} format={(value) => `${value}%`} readout={answeredWeeks.length ? `now ${pct(answeredWeeks[answeredWeeks.length - 1].answeredShare!)}` : ''} points={context.map((week) => ({ key: week.week, label: weekLabel(week.week), value: week.answeredShare === null ? null : Math.round(week.answeredShare * 100), detail: week.answeredShare === null ? 'No questions in scope' : `${week.answered} of ${week.inScope} answered with a source` }))} />
+        <TrendChart title="Answered with a source, by week" unit="answered share" per="week" empty={`No questions in ${period}.`} max={100} format={(value) => `${value}%`} readout={answeredWeeks.length ? `now ${pct(answeredWeeks[answeredWeeks.length - 1].answeredShare!)}` : ''} points={context.map((week) => ({ key: week.week, label: weekLabel(week.week), value: week.answeredShare === null ? null : Math.round(week.answeredShare * 100), detail: week.answeredShare === null ? 'No questions in scope' : `${week.answered} of ${week.inScope} answered with a source` }))} />
         {votedWeeks.length ? (
           <TrendChart title="Reader votes, by week" unit="helpful share" per="week" max={100} format={(value) => `${value}%`} readout={`${votes.helpful} helpful of ${votes.total}`} points={context.map((week) => ({ key: week.week, label: weekLabel(week.week), value: week.votes ? Math.round((week.helpful / week.votes) * 100) : null, detail: week.votes ? `${week.helpful} helpful of ${week.votes}` : 'No reader votes' }))} />
         ) : (

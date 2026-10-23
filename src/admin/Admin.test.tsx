@@ -484,6 +484,21 @@ describe('rating answers from the dashboard', () => {
     expect(screen.getByText(/· 100% rated good \(1\)/)).toBeInTheDocument()
   })
 
+  it('the unrated answers of the last 7 days open on a range that holds them: Today widens to 7 days', async () => {
+    rateServe()
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    fireEvent.click(screen.getByRole('button', { name: 'Today' }))
+    await waitFor(() => expect(urls()).toContain('/api/ask/admin?days=1&r=0'))
+    go('assistant?rate=unrated')
+    expect(screen.getByRole('button', { name: '7 days' })).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(() => expect(urls()).toContain('/api/ask/admin?days=7&r=0'))
+    // Another page, or a range Steven picks there, is left as he chose it.
+    fireEvent.click(screen.getByRole('button', { name: 'Today' }))
+    go('overview')
+    expect(screen.getByRole('button', { name: 'Today' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
   it('a Needs you line lands on the question it asked for: the page goes to the top first, then focus moves to the question', async () => {
     rateServe()
     render(<Admin />)

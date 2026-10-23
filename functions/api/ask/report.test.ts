@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { D1AskStore, dayOf } from '../../_lib/ask/store'
 import type { Env } from '../../_lib/env'
 import { context, fakeD1, type FakeD1 } from '../../_lib/testing/d1'
@@ -63,10 +63,15 @@ describe('GET /api/ask/report', () => {
 })
 
 describe('GET /api/ask/report keeps votes and ratings private', () => {
+  // A fixed clock, so the report's days bound the rows the same way whenever the test runs.
+  const NOW = Date.UTC(2026, 9, 20, 12)
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(NOW) })
+  afterEach(() => { vi.useRealTimers() })
+
   it("returns main's fields without the votes, and no rating, version, model or note", async () => {
     const db = fakeD1()
     const store = new D1AskStore(db)
-    const now = Date.now()
+    const now = NOW
     await store.recordUsage(dayOf(now), 'answered', { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 }, 1_000, 500, 900)
     await store.recordVote(dayOf(now), true)
     await store.recordVote(dayOf(now), false)

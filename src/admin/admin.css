@@ -554,6 +554,8 @@ p.answer-sources { padding: 0; }
 .seg label.on { background: var(--ink); color: var(--paper); }
 .seg input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
 .seg label:has(:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; z-index: 1; }
+/* On the chosen option the fill is --ink, so the ring turns --paper and sits inside it: about 15:1 in both themes. */
+.seg label.on:has(:focus-visible) { outline-color: var(--paper); outline-offset: -5px; }
 .rubric-anchor { display: block; font-size: 12px; }
 .rubric-note { display: grid; gap: 4px; font-size: 13px; font-weight: 700; }
 .rubric-note textarea { font: inherit; font-size: 14px; font-weight: 400; color: var(--ink); background: var(--card); border: 1.5px solid var(--line); border-radius: 8px; padding: 8px 10px; resize: vertical; min-height: 44px; }
@@ -566,10 +568,12 @@ p.answer-sources { padding: 0; }
 .rubric-status { margin: 0; min-height: 1.4em; font-size: 13px; color: var(--muted); }
 @media (max-width: 600px) {
   .rate-filters { width: 100%; }
+  /* The keyboard shortcuts mean nothing on a phone. */
+  .rate-keys { display: none; }
   .seg label, .rubric-actions button { min-height: 44px; }
   .rubric-actions .primary { flex: 1 0 100%; }
   .rubric-actions .ghost { flex: 1; justify-content: center; }
   .turn-meta .ghost { min-height: 44px; }
   .rate-filters { border-radius: 14px; }
-  .rate-filters button { flex: 1 0 auto; white-space: nowrap; padding: 0 12px; }
+  .rate-filters button { flex: 1 0 auto; white-space: nowrap; padding: 0 12px; min-height: 44px; }
 }

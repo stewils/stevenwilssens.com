@@ -29,7 +29,7 @@ function useWidth<T extends HTMLElement>() {
 // value (a week with no reading) keeps its place on the axis and breaks the line there,
 // with no wash under a broken line.
 export type TrendPoint = Omit<Point, 'value'> & { value: number | null }
-export function TrendChart({ title, points, unit, max: fixedMax, format = formatNumber, readout, per = 'day' }: { title: string; points: TrendPoint[]; unit: string; max?: number; format?: (value: number) => string; readout?: ReactNode; per?: string }) {
+export function TrendChart({ title, points, unit, max: fixedMax, format = formatNumber, readout, per = 'day', empty = 'No data yet' }: { title: string; points: TrendPoint[]; unit: string; max?: number; format?: (value: number) => string; readout?: ReactNode; per?: string; empty?: string }) {
   const [host, width] = useWidth<HTMLDivElement>()
   const [hover, setHover] = useState<number | null>(null)
   const W = Math.max(width, 220)
@@ -56,7 +56,7 @@ export function TrendChart({ title, points, unit, max: fixedMax, format = format
   return (
     <figure className="trend">
       <figcaption><span>{title}</span><span className="chart-readout">{readout ?? (known.length ? `Total ${format(total)} · peak ${format(peak)}` : '')}</span></figcaption>
-      {!known.length ? <p className="empty">No data yet</p> : (
+      {!known.length ? <p className="empty">{empty}</p> : (
         <div className="trend-plot" ref={host} onPointerLeave={() => setHover(null)}>
           <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${title}: ${unit} per ${per}. Latest ${format(points[last].value!)}, peak ${format(peak)}.`}>
             {[0, max / 2, max].map((tick) => (
@@ -236,15 +236,17 @@ export function ShareChart({ title, weeks, labels, series, counts, readout, labe
       {drawn.length > 0 && (
         <details className="notes">
           <summary>The weeks as a table</summary>
-          <table className="data">
-            <thead><tr><th>Week</th><th>Version</th><th className="num">Rated</th><th className="num">Good</th><th className="num">Range</th></tr></thead>
-            <tbody>
-              {weeks.flatMap((week, index) => drawn.flatMap((item) => {
-                const point = item.points[index]
-                return point ? [<tr key={`${week}-${item.key}`}><td>{labels[index]}</td><td>{item.label}</td><td className="num">{point.n}</td><td className="num">{percent(point.share)}{point.thin ? ' (too few)' : ''}</td><td className="num">{Math.round(point.range.low * 100)} to {percent(point.range.high)}</td></tr>] : []
-              }))}
-            </tbody>
-          </table>
+          <div className="table-scroll">
+            <table className="data">
+              <thead><tr><th>Week</th><th>Version</th><th className="num">Rated</th><th className="num">Good</th><th className="num">Range</th></tr></thead>
+              <tbody>
+                {weeks.flatMap((week, index) => drawn.flatMap((item) => {
+                  const point = item.points[index]
+                  return point ? [<tr key={`${week}-${item.key}`}><td>{labels[index]}</td><td>{item.label}</td><td className="num">{point.n}</td><td className="num">{percent(point.share)}{point.thin ? ' (too few)' : ''}</td><td className="num">{Math.round(point.range.low * 100)} to {percent(point.range.high)}</td></tr>] : []
+                }))}
+              </tbody>
+            </table>
+          </div>
         </details>
       )}
     </figure>

@@ -6,6 +6,7 @@
 // Steven has closed (admin token). GET /api/ask/admin?entry=<id>: one logged answer whole.
 import type { Env } from '../../_lib/env'
 import { isAdmin } from '../../_lib/auth'
+import { json } from '../../_lib/http'
 import { budgetMicro, checkAfterMicro, DEFAULT_BUDGET_USD, humanCheck, MODEL } from '../../_lib/ask/agent'
 import { sources } from '../../_lib/ask/prompt'
 import { D1AskStore, dayOf, monthStart, type LogEntry, type Rating } from '../../_lib/ask/store'
@@ -16,8 +17,6 @@ const LOG_LIMIT = 2000
 const ANSWER_CHARS = 1500
 // Needs you counts the unrated answers of the last seven days, whatever the range.
 const UNRATED_DAYS = 7
-
-const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })
 
 // A logged answer as the admin shows it: each cited source by its title and link from the
 // site's own data (`titles`, read once per request; an id no longer in it as the id alone),

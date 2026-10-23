@@ -66,6 +66,10 @@ export const computeNeeds = ({ stats, mcp, ask, resume, team }: AdminData, now =
   return needs
 }
 
+// The range a Needs you link opens on: the unrated answers of the last 7 days are only all in
+// the Rate answers queue when the range holds at least those 7 days, so a shorter one widens to 7.
+export const rangeForLink = (query: string, days: number) => (new URLSearchParams(query).get('rate') === 'unrated' ? Math.max(days, 7) : days)
+
 // Badge per page: the sum of what needs Steven there.
 export const badgeCounts = (needs: Need[]) => {
   const counts: Partial<Record<PageId, number>> = {}

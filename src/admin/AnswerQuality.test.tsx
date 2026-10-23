@@ -106,13 +106,14 @@ describe('Answer quality', () => {
   })
 
   it('with nothing rateable it shows dashes and no verdict', () => {
-    show(makeAsk({ model: MODEL, log: [makeLogEntry({ outcome: 'limited' })], ratings: [] }), 7)
+    show(makeAsk({ model: MODEL, log: [makeLogEntry({ outcome: 'limited' })], ratings: [], daily: [] }), 7)
     expect(card().querySelector('.quality-verdict')).toBeNull()
     expect(tile('Rated good')).toHaveTextContent('—no ratings')
     expect(tile('Wrong answers')).toHaveTextContent('—no ratings')
     expect(tile('Mean score')).toHaveTextContent('—1 to 5')
     expect(tile('Rated')).toHaveTextContent('—nothing to rate')
     expect(within(card()).getByText('No answers in the last 7 days.')).toBeInTheDocument()
+    expect(within(card()).getByText('No questions in the last 7 days.')).toBeInTheDocument()
     expect(card().textContent).not.toMatch(/NaN|Infinity|0 to 100%/)
   })
 

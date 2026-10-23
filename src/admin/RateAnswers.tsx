@@ -116,7 +116,7 @@ export function RateAnswers({ info, filter, onFilter, focusRequest, onRate, load
           ))}
         </div>
       </div>
-      <p className="note">Rate each answer as a recruiter read it. In this card: Y, P or N answers the next criterion, 1 to 5 sets the overall score, Enter saves and opens the next. Skip leaves an answer for later.</p>
+      <p className="note">Rate each answer as a recruiter read it. <span className="rate-keys">In this card: Y, P or N answers the next criterion, 1 to 5 sets the overall score, Enter saves and opens the next. </span>Skip leaves an answer for later.</p>
       {!entry ? (
         <div className="rate-empty">
           <p className="empty" tabIndex={-1} ref={emptyLine}>{counts.all === 0 ? `No answers to rate in ${period}.` : filter === 'unrated' ? `Every answer from ${period} is rated.` : `No answers here from ${period}.`}</p>
