@@ -10,6 +10,14 @@ describe('the Site update brief', () => {
     expect(result).toMatchObject({ title: 'Team size', instruction: 'Say the team was 10 to 20 PMs.', project: '', origin: 'a request made through the MCP server' })
   })
 
+  it('carries the pull request a run redoes, as a number only, from the input or the payload', () => {
+    expect(brief({ event: 'workflow_dispatch', title: 't', instruction: 'i', supersedes: '61', payload: null, today }).supersedes).toBe('61')
+    expect(brief({ event: 'workflow_dispatch', title: 't', instruction: 'i', supersedes: '61; rm -rf /', payload: null, today }).supersedes).toBe('')
+    expect(brief({ event: 'workflow_dispatch', title: 't', instruction: 'i', payload: null, today }).supersedes).toBe('')
+    expect(brief({ event: 'repository_dispatch', payload: { project: 'site', sha: 'abcdef1', supersedes: 59 }, today }).supersedes).toBe('59')
+    expect(brief({ event: 'repository_dispatch', payload: { project: 'site', sha: 'abcdef1', supersedes: '0' }, today }).supersedes).toBe('')
+  })
+
   it('refuses a request without a title or an instruction', () => {
     expect(brief({ event: 'workflow_dispatch', title: 'x', instruction: ' ', payload: null, today }).skip).toMatch(/both needed/)
   })

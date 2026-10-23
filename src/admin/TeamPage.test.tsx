@@ -51,6 +51,13 @@ describe('the Team page, from the manifest', () => {
     expect(part('Site update')).toHaveTextContent('Let the editor write')
     expect(within(part('Site update')).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Draft first.', 'Then the panel.'])
     expect(within(part('Site update')).getByText('Edit')).toHaveClass('badge')
+    // Each step in its own block, its name and a line saying what it does, not one step's chips running into the next.
+    const steps = [...part('Site update').querySelectorAll('.team-site-step')]
+    expect(steps.map((step) => step.querySelector('code')?.textContent)).toEqual(['Let the editor write', 'Open the pull request'])
+    expect(steps[0]).toHaveTextContent('The editors write the change.')
+    expect(steps[1]).toHaveTextContent('Open the pull requestThe change becomes a pull request.')
+    expect(steps[1].querySelector('.badge')).toBeNull()
+    expect(part('Site update')).toHaveTextContent('Only a change to these steps counts')
     expect(within(part('Flow')).getByText('The steps in words')).toBeInTheDocument()
     expect(within(part('Flow')).getByText('Intake').closest('li')).toHaveTextContent('Intake (lead). Restate the ask.')
   })
@@ -87,7 +94,7 @@ describe('the Team page, from the manifest', () => {
     expect(screen.queryByText(/changes? you have not seen/)).not.toBeInTheDocument()
     cleanup()
     show({ manifest: makeTeamManifest({ history: { updates: [], older: 0, truncated: false } }) })
-    expect(part('What changed')).toHaveTextContent("No changes recorded yet. Every change to the agents, the team flow, the commands, the Review workflow, the gates, the Site update team step or the team's rules will show up here.")
+    expect(part('What changed')).toHaveTextContent("No changes recorded yet. Every change to the agents, the team flow, the commands, the Review workflow, the gates, the Site update team steps or the team's rules will show up here.")
   })
 
   it('says how many older changes are not listed', () => {

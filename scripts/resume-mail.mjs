@@ -15,10 +15,10 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
+import { resumeAt } from './resume-data.mjs'
 
 const SITE = 'https://steven.wilssens.com'
 const RESUME_PDF = `${SITE}/steven-wilssens-resume-2026.pdf`
@@ -35,16 +35,27 @@ export const isCommit = (ref) => {
   try { git('cat-file', '-e', `${ref}^{commit}`); return true } catch { return false }
 }
 
+// The résumé data as JSON, by commit (--resume-json <ref>=<file>): the Site update workflow's
+// `resume-data` job, which holds no secret, turns the branch's src/resume.ts into data, so the
+// email job, which holds the mail password, never imports a file from the branch. With
+// --no-import a commit without its JSON is an error, never an import.
+const resumeJson = new Map()
+let importAllowed = true
+export const setResumeJson = (pairs = [], noImport = false) => {
+  resumeJson.clear()
+  for (const pair of pairs) {
+    const at = pair.indexOf('=')
+    if (at < 1) throw new Error(`--resume-json takes <ref>=<file>, not "${pair}"`)
+    resumeJson.set(pair.slice(0, at), pair.slice(at + 1))
+  }
+  importAllowed = !noImport
+}
+
 /** The exports of src/resume.ts as they were at a commit, or null when the file did not exist there. */
 export async function loadResumeAt(ref) {
-  let source
-  try { source = git('show', `${ref}:src/resume.ts`) } catch { return null }
-  // resume.ts is plain data with no imports, so a copy anywhere imports the same. Node strips the types.
-  const dir = resolve(tmpdir(), 'resume-mail')
-  mkdirSync(dir, { recursive: true })
-  const file = resolve(dir, `resume-${git('rev-parse', '--short', ref).trim()}-${Date.now()}.ts`)
-  writeFileSync(file, source)
-  return { ...(await import(pathToFileURL(file).href)) }
+  if (resumeJson.has(ref)) return JSON.parse(readFileSync(resumeJson.get(ref), 'utf8'))
+  if (!importAllowed) throw new Error(`No résumé data for ${ref}, and this run imports no résumé file (--no-import).`)
+  return resumeAt(ref)
 }
 
 // ---------------------------------------------------------------------------------
@@ -264,14 +275,16 @@ export async function summarize(input, { apiKey = process.env.ANTHROPIC_API_KEY,
 const esc = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
 /** The score, from the report the build wrote, with its baseline (the live site or main). */
+// The report can come from a Site update's branch (its build wrote it): only whole numbers reach the email's HTML.
+const whole = (value) => (Number.isInteger(value) ? value : null)
 export function scoreOf(report) {
-  if (!report || typeof report.score !== 'number') return null
+  if (!report || !Number.isInteger(report.score)) return null
   const baseline = report.baseline ?? null
-  const before = baseline && typeof baseline.score === 'number' ? baseline.score : null
+  const before = baseline ? whole(baseline.score) : null
   const verdict = before == null ? 'unknown' : baseline.lower ? 'lower' : report.score > before ? 'higher' : 'unchanged'
-  const count = (severity) => report.findings?.filter((finding) => finding.severity === severity).length ?? null
+  const count = (severity) => (Array.isArray(report.findings) ? report.findings.filter((finding) => finding?.severity === severity).length : null)
   // The score is the ATS score; the counts beside it are the findings that make it.
-  return { score: report.score, before, verdict, lower: verdict === 'lower', pages: report.pages ?? null, warnings: report.ats?.warnings ?? report.warnings ?? count('warn'), errors: report.ats?.errors ?? report.errors ?? count('error') }
+  return { score: report.score, before, verdict, lower: verdict === 'lower', pages: whole(report.pages), warnings: whole(report.ats?.warnings) ?? whole(report.warnings) ?? count('warn'), errors: whole(report.ats?.errors) ?? whole(report.errors) ?? count('error') }
 }
 
 const palette = { paper: '#f4f6f1', card: '#ffffff', ink: '#172121', body: '#3c4847', muted: '#6a7473', green: '#096b50', deep: '#0f4a38', halo: '#dbeae5', line: '#d7dfd8', yellow: '#e8b84a', warnBg: '#fff8e5', warnInk: '#6b4e00', red: '#b4382c' }
@@ -415,8 +428,10 @@ async function main() {
       before: { type: 'string' }, after: { type: 'string', default: 'HEAD' }, report: { type: 'string' }, 'new-findings': { type: 'string' },
       title: { type: 'string', default: '' }, instruction: { type: 'string', default: '' }, pr: { type: 'string' }, preview: { type: 'string' }, 'run-url': { type: 'string' },
       'dry-run': { type: 'boolean', default: false }, out: { type: 'string', default: '.' },
+      'resume-json': { type: 'string', multiple: true, default: [] }, 'no-import': { type: 'boolean', default: false },
     },
   })
+  setResumeJson(values['resume-json'], values['no-import'])
   const kind = positionals[0]
   if (kind !== 'live' && kind !== 'review') { console.error('Usage: node scripts/resume-mail.mjs live|review --before <ref> --after <ref> --report <json> [options]'); process.exit(2) }
 

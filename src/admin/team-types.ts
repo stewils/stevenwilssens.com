@@ -26,7 +26,7 @@ export type Role = { id: string; title: string; agent: string | null; owns: stri
 export type Command = { id: string; name: string; description: string; hint: string; file: string }
 export type Job = { key: string; name: string | null; needs: string[]; steps: string[] }
 export type Checks = { file: string; jobs: Job[]; levels: { level: string; meaning: string }[]; scripts: string[]; protection: string | null }
-export type SiteUpdate = { file: string; steps: { name: string; lines: string[]; tools: string[] }[] }
+export type SiteUpdate = { file: string; steps: { name: string; description?: string; lines: string[]; tools: string[] }[] }
 // The team's section of CLAUDE.md, as paragraphs of text.
 export type Rules = { file: string; heading: string; paragraphs: string[] }
 
