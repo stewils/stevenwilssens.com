@@ -4,9 +4,10 @@
 // back, merges them, closes them and waits for them. Needs a GitHub token (GITHUB_TOKEN
 // secret) with Actions: write, Contents: write (to delete a closed pull request's branch and
 // to send a write-up refresh again; read is enough for everything else), Pull requests: write
-// and Checks: read (the reason a run made no change, from its annotations; without it the MCP
-// points to the run instead). It acts as Steven: closing and reopening a pull request (recheck)
-// starts its checks as him.
+// and Checks: read (the reason a run made no change, from its annotations, and whether an
+// update's checks are still running or failed; without it the MCP points to the run instead and
+// reads a held update as not passed). It acts as Steven: closing and reopening a pull request
+// (recheck) starts its checks as him.
 import sources from '../../src/articles/sources.json'
 
 // branch is GitHub's head_branch: the branch the workflow ran from, `main` for every run the
@@ -47,7 +48,7 @@ export const requiredChecks = ['gates', 'team', 'check'] as const
 export const checksOfWorkflow: Record<string, string[]> = { Review: ['gates', 'team'], 'Site checks': ['check'] }
 // A required check on the pull request's head commit, as the pull request counts it (its newest run).
 // step: the first failed step of a failed check, when GitHub said which.
-export type CheckState = { name: string; status: string; conclusion: string | null; startedAt: string | null; url: string | null; step?: string | null }
+export type RequiredCheck = { name: string; status: string; conclusion: string | null; startedAt: string | null; url: string | null; step?: string | null }
 // One reviewer's latest verdict, from the Review workflow's sign-off comment.
 export type TeamVerdict = { role: string; verdict: string; summary: string }
 // What holds a pull request, from its own data: GitHub's merge state, the required checks on
@@ -56,7 +57,7 @@ export type TeamVerdict = { role: string; verdict: string; summary: string }
 export type PullStatus = {
   headSha: string
   mergeState: string | null
-  checks: CheckState[]
+  checks: RequiredCheck[]
   waiting: string[]
   // Required checks with no run on the head yet while another job of their workflow runs there (the Review
   // workflow's team waits for gates and the assistant jobs): coming, not missing.
@@ -69,9 +70,16 @@ export type PullStatus = {
 // protection), dirty (conflicts with main), unknown (still being computed), or null
 // when it was not asked for (the list endpoint does not compute it). headRepo is the
 // repository the branch lives in (owner/name): a fork's pull request can carry any branch name.
-// mergeCommit: the merge commit's full SHA once merged (GitHub's merge_commit_sha; null otherwise).
-export type PullRequest = { number: number; title: string; url: string; branch: string; headRepo: string | null; draft: boolean; state: 'open' | 'closed'; merged: boolean; mergeCommit: string | null; createdAt: string; previewUrl: string; mergeable: boolean | null; mergeableState: string | null; resumeScore: ResumeScore | null; request: UpdateRequest | null }
+// headSha is the commit the preview was built from. The MCP hands it out with every preview and
+// merge_site_update takes it back: GitHub merges that commit or nothing, so a push after Steven
+// looked never goes live unseen. mergeCommit: the merge commit's full SHA once merged (GitHub's
+// merge_commit_sha; null otherwise).
+export type PullRequest = { number: number; title: string; url: string; branch: string; headRepo: string | null; headSha?: string | null; draft: boolean; state: 'open' | 'closed'; merged: boolean; mergeCommit: string | null; createdAt: string; previewUrl: string; mergeable: boolean | null; mergeableState: string | null; resumeScore: ResumeScore | null; request: UpdateRequest | null }
 export type MergeResult = { merged: boolean; message: string; sha?: string }
+// The check runs on a commit, by name: the ones still queued or running, and the ones that ended
+// badly (failure, cancelled, timed out, action required). GitHub's mergeable state says only
+// "unstable" for both, and the Site update workflow starts the checks as it opens the pull request.
+export type CheckState = { pending: string[]; failed: string[] }
 
 export class GitHubError extends Error { constructor(message: string, public status: number) { super(message) } }
 
@@ -89,7 +97,13 @@ export type GitHub = {
   allPulls(pages?: number): Promise<PullRequest[]>
   // How many closed pull requests from branches with this prefix were merged (the site's own Building feed).
   mergedPulls(branchPrefix: string): Promise<number>
-  merge(number: number): Promise<MergeResult>
+  // With sha, GitHub merges only when the branch still points at that commit (else 409).
+  merge(number: number, sha?: string | null): Promise<MergeResult>
+  // The check runs on a commit; null when the token may not read them (Checks: read).
+  checks(sha: string): Promise<CheckState | null>
+  // The Review workflow's own sign-off comment on a pull request (by github-actions[bot] and
+  // starting "## Team review"), or null. Anyone can comment, so nobody else's text is taken.
+  teamReview(number: number): Promise<string | null>
   // Closes a pull request with a comment saying why; the branch is deleted when the token may (best effort).
   close(number: number, comment: string): Promise<{ closed: boolean; branchDeleted: boolean }>
   // What holds an open pull request (see PullStatus): one GraphQL query, the runs waiting for approval, the failed steps.
@@ -201,13 +215,13 @@ type StatusData = { repository?: { pullRequest?: {
 export const failedConclusions = ['failure', 'timed_out', 'cancelled', 'startup_failure', 'action_required', 'stale']
 
 const shapePull = (pull: Record<string, unknown>): PullRequest => {
-  const head = pull.head as { ref: string; repo?: { full_name?: string } | null }
+  const head = pull.head as { ref: string; sha?: string; repo?: { full_name?: string } | null }
   const body = pull.body as string | null
   const request = updateRequestFromBody(body)
   const merged = Boolean(pull.merged ?? pull.merged_at)
   const sha = pull.merge_commit_sha
   return {
-    number: pull.number as number, title: pull.title as string, url: pull.html_url as string, branch: head.ref, headRepo: typeof head.repo?.full_name === 'string' ? head.repo.full_name : null, draft: Boolean(pull.draft),
+    number: pull.number as number, title: pull.title as string, url: pull.html_url as string, branch: head.ref, headRepo: typeof head.repo?.full_name === 'string' ? head.repo.full_name : null, headSha: typeof head.sha === 'string' ? head.sha : null, draft: Boolean(pull.draft),
     state: pull.state === 'closed' ? 'closed' : 'open', merged, mergeCommit: merged && typeof sha === 'string' && /^[0-9a-f]{40}$/.test(sha) ? sha : null, createdAt: pull.created_at as string, previewUrl: previewUrl(head.ref),
     mergeable: typeof pull.mergeable === 'boolean' ? pull.mergeable : null, mergeableState: typeof pull.mergeable_state === 'string' ? pull.mergeable_state : null,
     resumeScore: resumeScoreFromBody(body), request: request ? { ...request, title: request.title || (pull.title as string) } : null,
@@ -290,9 +304,27 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
       const closed = (await api(`/pulls?state=closed&per_page=100&sort=created&direction=desc`)) as unknown as Record<string, unknown>[]
       return closed.filter((pull) => pull.merged_at && String((pull.head as Record<string, unknown>)?.ref ?? '').startsWith(branchPrefix)).length
     },
-    merge: async (number) => {
-      const body = await api(`/pulls/${number}/merge`, { method: 'PUT', body: JSON.stringify({ merge_method: 'merge' }) }) as { merged: boolean; message: string; sha?: string }
+    merge: async (number, sha) => {
+      const body = await api(`/pulls/${number}/merge`, { method: 'PUT', body: JSON.stringify({ merge_method: 'merge', ...(sha ? { sha } : {}) }) }) as { merged: boolean; message: string; sha?: string }
       return { merged: body.merged, message: body.message, sha: body.sha }
+    },
+    checks: async (sha) => {
+      let body: { check_runs?: { name: string; status: string; conclusion: string | null }[] }
+      try { body = await api(`/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`) as typeof body } catch (error) {
+        if (error instanceof GitHubError && (error.status === 403 || error.status === 404)) return null
+        throw error
+      }
+      const runs = body.check_runs ?? []
+      const names = (list: typeof runs) => [...new Set(list.map((item) => item.name))]
+      return {
+        pending: names(runs.filter((item) => item.status !== 'completed')),
+        failed: names(runs.filter((item) => item.status === 'completed' && ['failure', 'cancelled', 'timed_out', 'action_required'].includes(item.conclusion ?? ''))),
+      }
+    },
+    teamReview: async (number) => {
+      const comments = (await api(`/issues/${number}/comments?per_page=100`)) as unknown as { body?: string; user?: { login?: string; type?: string } }[]
+      const own = comments.filter((item) => item.user?.login === 'github-actions[bot]' && item.user.type === 'Bot' && typeof item.body === 'string' && item.body.startsWith('## Team review'))
+      return own.at(-1)?.body ?? null
     },
     close: async (number, comment) => {
       const pull = (await api(`/pulls/${number}`)) as Record<string, unknown>
@@ -317,12 +349,12 @@ export const gitHubClient = (token: string, repo: string, fetchImpl: typeof fetc
       // Each required check as the pull request counts it: its newest run on the head commit. A queued run has not
       // started yet, so it is newer than any run that has; only the first failed check is asked where it stopped
       // (one request more, not one per check: the MCP server counts its requests).
-      const checks: CheckState[] = []
+      const checks: RequiredCheck[] = []
       let stepRead = false
       for (const check of requiredChecks) {
         const newest = contexts.filter((node) => node.name === check).sort((a, b) => String(b.startedAt ?? '9999').localeCompare(String(a.startedAt ?? '9999')))[0]
         if (!newest) continue
-        const state: CheckState = { name: check, status: String(newest.status ?? '').toLowerCase(), conclusion: newest.conclusion ? newest.conclusion.toLowerCase() : null, startedAt: newest.startedAt ?? null, url: newest.detailsUrl ?? null }
+        const state: RequiredCheck = { name: check, status: String(newest.status ?? '').toLowerCase(), conclusion: newest.conclusion ? newest.conclusion.toLowerCase() : null, startedAt: newest.startedAt ?? null, url: newest.detailsUrl ?? null }
         // Where a failed check stopped: an Actions check run is its job, whose steps say which failed.
         if (state.conclusion && failedConclusions.includes(state.conclusion) && newest.databaseId && !stepRead) {
           stepRead = true

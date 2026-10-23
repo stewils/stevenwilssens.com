@@ -13,7 +13,7 @@ const pages: Record<string, string> = { '/index.md': '# Steven Wilssens\n\nPrinc
 const now = Date.UTC(2026, 9, 17)
 
 const pull = (number: number, title: string, branch: string, body: string, extra: Partial<PullRequest> = {}): PullRequest => ({
-  number, title, url: `https://github.com/x/pull/${number}`, branch, headRepo: 'stewils/stevenwilssens.com', draft: false, state: 'open', merged: false, mergeCommit: null, createdAt: '2026-10-17T00:00:00Z', previewUrl: previewUrl(branch),
+  number, title, url: `https://github.com/x/pull/${number}`, branch, headRepo: 'stewils/stevenwilssens.com', draft: false, state: 'open', merged: false, mergeCommit: null, createdAt: '2026-10-17T00:00:00Z', previewUrl: previewUrl(branch), headSha: `sha-${number}`,
   mergeable: true, mergeableState: 'clean', resumeScore: resumeScoreFromBody(body), request: updateRequestFromBody(body), ...extra,
 })
 const pullSeven = pull(7, 'Team size', 'update/team-size-1', '**Instruction**\n\nSay the team was 10 to 20 PMs.\n\n**Resume score:** 90 → 90, unchanged\n<!-- resume-score before=90 after=90 -->')
@@ -27,7 +27,8 @@ const fakeGitHub = (options: { mergeError?: string } = {}): Fake => {
   const calls: Fake['calls'] = { dispatched: [], merged: [], closed: [] }
   // Like GitHub, every dispatched run's branch is main; its pull request is found by the run number (update/team-size-1).
   const runs: WorkflowRun[] = [{ id: 1, number: 1, event: 'workflow_dispatch', status: 'completed', conclusion: 'success', createdAt: '2026-10-17T00:00:00Z', url: 'https://github.com/x/runs/1', branch: 'main', title: 'Team size' }]
-  const pulls: PullRequest[] = [pullSeven, pullNine, pullEleven]
+  // Copies, so a test that merges or closes one leaves the next test its own.
+  const pulls: PullRequest[] = [pullSeven, pullNine, pullEleven].map((item) => ({ ...item }))
   const github: GitHub = {
     repo: 'stewils/stevenwilssens.com',
     dispatch: async (workflow, ref, inputs) => {
@@ -43,6 +44,8 @@ const fakeGitHub = (options: { mergeError?: string } = {}): Fake => {
     allPulls: async () => pulls,
     merge: async (number) => { if (options.mergeError) throw new Error(options.mergeError); calls.merged.push(number); return { merged: true, message: 'Pull Request successfully merged', sha: 'abc' } },
     close: async (number, comment) => { calls.closed.push({ number, comment }); const item = pulls.find((p) => p.number === number)!; item.state = 'closed'; return { closed: true, branchDeleted: true } },
+    checks: async () => null,
+    teamReview: async () => null,
     mergedPulls: async () => 5,
     status: async () => { throw new Error('not used') },
     reopen: async () => undefined,
@@ -138,7 +141,9 @@ describe('site updates', () => {
     expect(calls.dispatched).toEqual([{ workflow: 'site-update.yml', ref: 'main', inputs: { title: 'Team size on the Group PM role', instruction: 'Say the team was 10 to 20 PMs.' } }])
     expect((started.json!.run as { id: number; title: string }).title).toBe('Team size on the Group PM role')
     expect(started.json!.next).toMatch(/wait_for_site_update \(run_id 2\)/)
-    expect(started.json!.next).toMatch(/goes live only when he merges/)
+    expect(started.json!.next).toMatch(/Nothing goes live until he has seen the preview and says yes/)
+    expect(started.json).toMatchObject({ name: 'Team size on the Group PM role update', say: "I've started on your Team size on the Group PM role update. It takes about 10 minutes; I'll tell you when it's ready to check." })
+    expect(started.json!.say).not.toMatch(/pull request|branch|run|merge|workflow|#/i)
 
     const status = await call(store, 'site_update_status', {}, github)
     const pulls = status.json!.pullRequests as { number: number; previewUrl: string; mergeTrouble: string | null; proposals: number[] }[]
@@ -146,29 +151,33 @@ describe('site updates', () => {
     expect(pulls[0].mergeTrouble).toBeNull()
     expect(pulls[2]).toMatchObject({ number: 11, proposals: [1, 2] })
     expect(pulls[2].mergeTrouble).toMatch(/conflicts with main/)
-    expect(status.json!.warning).toMatch(/#9 lowers the resume score from 90 to 80/)
+    expect(status.json!.warning).toMatch(/Shorter bullets update lowers the résumé's ATS score from 90 to 80/)
+    expect(status.json!.say).toBe("2 updates are ready to check: Team size update and Shorter bullets update. Your Team size on the Group PM role update is still being made. Your Two bullets update needs to be made again before it can go live. Your Shorter bullets update would make your résumé score lower with job-application software.")
+    expect(pulls.map((p) => (p as unknown as { name: string }).name)).toEqual(['Team size update', 'Shorter bullets update', 'Two bullets update'])
     expect(status.json!.tip).toMatch(/regenerates the same résumé file/)
+    expect(status.json!.tip).toMatch(/redoes a clashing one by itself/)
 
-    const refused = await call(store, 'merge_site_update', { number: 7, confirm: false }, github)
+    const refused = await call(store, 'merge_site_update', { number: 7, sha: 'sha-7', confirm: false }, github)
     expect(refused.isError).toBe(true)
     expect(calls.merged).toEqual([])
-    const missing = await call(store, 'merge_site_update', { number: 8, confirm: true }, github)
+    const missing = await call(store, 'merge_site_update', { number: 8, sha: 'sha-8', confirm: true }, github)
     expect(missing.isError).toBe(true)
-    const merged = await call(store, 'merge_site_update', { number: 7, confirm: true }, github)
+    const merged = await call(store, 'merge_site_update', { number: 7, sha: 'sha-7', confirm: true }, github)
     expect(merged.isError).toBe(false)
     expect(calls.merged).toEqual([7])
     expect(merged.json!.merged).toBe(true)
+    expect(merged.json!.say).toBe('Your Team size update is going live on your site; it shows within a few minutes.')
   })
 
   it('warns before merging a pull request that lowers the resume score, and merges once Steven accepts', async () => {
     const store = new MemoryStore()
     const { github, calls } = fakeGitHub()
-    const warned = await call(store, 'merge_site_update', { number: 9, confirm: true }, github)
+    const warned = await call(store, 'merge_site_update', { number: 9, sha: 'sha-9', confirm: true }, github)
     expect(warned.isError).toBe(true)
-    expect(warned.text).toMatch(/lowers the resume score from 90 to 80/)
+    expect(warned.text).toMatch(/^Not live yet: Shorter bullets update lowers the resume score from 90 to 80/)
     expect(warned.text).toMatch(/acceptLowerScore/)
     expect(calls.merged).toEqual([])
-    const accepted = await call(store, 'merge_site_update', { number: 9, confirm: true, acceptLowerScore: true }, github)
+    const accepted = await call(store, 'merge_site_update', { number: 9, sha: 'sha-9', confirm: true, acceptLowerScore: true }, github)
     expect(accepted.isError).toBe(false)
     expect(calls.merged).toEqual([9])
   })
@@ -200,36 +209,32 @@ describe('site updates', () => {
 
     // The workflow put the request into the pull request; merging it applies the proposals.
     pulls.push(pull(12, 'Batch', 'update/batch-4', `**Instruction**\n\nx\n\n**Resume score:** 90 → 90\n<!-- resume-score before=90 after=90 -->\n${encodeUpdateRequest({ title: 'Batch', instruction: inputs.instruction, proposals: [1, 2], supersedes: null })}`))
-    const merged = await call(store, 'merge_site_update', { number: 12, confirm: true }, github)
+    const merged = await call(store, 'merge_site_update', { number: 12, sha: 'sha-12', confirm: true }, github)
     expect(merged.isError).toBe(false)
     expect(merged.json!.proposalsApplied).toEqual([1, 2])
     expect(merged.json!.next).toMatch(/Proposals #1, #2 are now applied/)
+    expect(merged.json!.say).toBe('Your Batch update is going live on your site; it shows within a few minutes. The 2 changes you approved are now marked done.')
     expect(store.proposals.map((p) => [p.id, p.status, p.decisionNote])).toEqual([[1, 'applied', 'Keep "organization". · merged in #12'], [2, 'applied', 'merged in #12'], [3, 'proposed', null]])
     expect((await call(store, 'request_site_update', { title: 'Again', proposals: [1] }, github)).text).toMatch(/already applied/)
   })
 
-  it('says why a pull request will not merge and redoes it on a fresh branch when asked', async () => {
+  it('redoes a pull request that conflicts with main by itself, and says so in plain English', async () => {
     const store = new MemoryStore()
     const { github, calls, pulls } = fakeGitHub()
-    const stuck = await call(store, 'merge_site_update', { number: 11, confirm: true }, github)
-    expect(stuck.isError).toBe(true)
-    expect(stuck.text).toMatch(/#11 conflicts with main/)
-    expect(stuck.text).toMatch(/merged first/)
-    expect(stuck.text).toMatch(/redo: true/)
-    expect(calls.merged).toEqual([])
-
-    const redone = await call(store, 'merge_site_update', { number: 11, confirm: true, redo: true }, github)
+    const redone = await call(store, 'merge_site_update', { number: 11, sha: 'sha-11', confirm: true }, github)
     expect(redone.isError).toBe(false)
-    expect(redone.json!.redone).toBe(true)
+    expect(calls.merged).toEqual([])
+    expect(redone.json).toMatchObject({ merged: false, redone: true, name: 'Two bullets update', why: expect.stringMatching(/#11 conflicts with main.*merged first/) })
+    expect(redone.json!.say).toBe("Your Two bullets update clashed with an update that just went live, so I'm making it again on top of that one. About 10 minutes; I'll tell you when it's ready to check.")
     expect(calls.dispatched).toEqual([{ workflow: 'site-update.yml', ref: 'main', inputs: { title: 'Two bullets', instruction: 'Apply the proposals.', proposals: '1,2', supersedes: '11' } }])
     expect((redone.json!.run as { id: number }).id).toBe(2)
-    expect(redone.json!.next).toMatch(/#11 is closed when the new pull request opens/)
+    expect(redone.json!.next).toMatch(/nothing about conflicts or numbers.*wait_for_site_update \(run_id 2\)/)
 
-    // GitHub refusing the merge outright gets the same explanation.
+    // GitHub refusing the merge as not mergeable while the pull request, asked again, has no conflict is no clash: it is said as it is and nothing is redone.
     const refusing = fakeGitHub({ mergeError: 'GitHub 405 on /pulls/7/merge: Pull Request is not mergeable' })
-    const refused = await call(store, 'merge_site_update', { number: 7, confirm: true }, refusing.github)
-    expect(refused.isError).toBe(true)
-    expect(refused.text).toMatch(/#7 conflicts with main/)
+    const refused = await call(store, 'merge_site_update', { number: 7, sha: 'sha-7', confirm: true }, refusing.github)
+    expect(refused.text).toBe('GitHub refused the merge: GitHub 405 on /pulls/7/merge: Pull Request is not mergeable')
+    expect(refusing.calls.dispatched).toEqual([])
 
     // request_site_update can redo as well, and a pull request from before the marker says what to do instead.
     const viaRequest = await call(store, 'request_site_update', { redo: 11 }, github)
@@ -264,7 +269,8 @@ describe('site updates', () => {
     expect(done.isError).toBe(false)
     expect(done.json!.done).toBe(true)
     expect((done.json!.pullRequest as { number: number }).number).toBe(7)
-    expect(done.json!.next).toMatch(/Pull request https:\/\/github.com\/x\/pull\/7 is ready/)
+    expect(done.json!.next).toMatch(/^Tell Steven the say line with the preview link.*merge_site_update with number 7, sha "sha-7" \(the version he saw\) and confirm: true/)
+    expect(done.json!.say).toBe('Your Team size update is ready to check. Want it live? Preview: https://update-team-size-1.stevenwilssens.pages.dev')
 
     runs.unshift({ id: 5, number: 5, event: 'workflow_dispatch', status: 'in_progress', conclusion: null, createdAt: '2026-10-17T02:00:00Z', url: 'https://github.com/x/runs/5', branch: 'main', title: 'Slow one' })
     const waiting = await call(store, 'wait_for_site_update', { seconds: 5 }, github)
