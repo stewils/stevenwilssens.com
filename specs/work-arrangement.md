@@ -1,10 +1,11 @@
 # Recruiters see that Steven works hybrid or remote, across time zones
 
-Slug: `work-arrangement` · Branch: `work-arrangement` · Status: built (PM acceptance check, round 4, at c9f52f5 on top of main 40d84f9: every criterion met; every role signed the merge, see Sign-offs)
+Slug: `work-arrangement` · Branch: `work-arrangement` · Status: built (PM acceptance check, round 4, at c9f52f5 on top of main 40d84f9: every criterion met; every role signed the merge, see Sign-offs). Round 5: main moved to 6ad0939 with PR #80 merged in between; merged into this branch with D-23 (travel), see "Round 5" below.
 Asked by Steven on 2026-10-22: "my work authorization is that I have a green card, I live in the Seattle WA area and I am available for hybrid and remote work across time zones."
 Answered by Steven on 2026-10-22 (Open questions 1 to 4, round 1): "Hybrid or remote, across time zones" as recommended; he is not relocating; nothing to say about a hybrid office outside the Seattle area; yes to employers outside the US, and he is a Belgian citizen.
 Answered by Steven on 2026-10-22 (Open questions 5 and 6, round 2): the citizenship reads "Belgian citizen (EU)"; yes, the site says "Open to employers outside the US" (About side note, assistant, MCP; not the home page or the PDF).
 Answered by Steven on 2026-10-22 (Open question 7, fix round 2, the tester's A11 blocker): "I keep saying not relocating, but I would work remotely for them during their working hours" and "I would work remote for an Amsterdam company". He chose the wording `profile.employers: 'Open to remote roles with employers outside the US, in their working hours'` (D-22); relocation stays "Not relocating" and the arrangement stays exactly "Hybrid or remote, across time zones".
+Decided by Steven on 2026-10-22 (Seattle time), after PR #80 ("Work arrangement, Cosmos story and outcome numbers", a Site update run) merged into main while this branch waited: keep this branch's facts, and add coordinated travel from #80 as he stated it (D-23).
 
 ## Problem
 
@@ -99,6 +100,12 @@ no longer holds.
 | # | Question | Decision | From |
 |---|---|---|---|
 | D-22 | Does "not relocating" rule out remote work for a company abroad? (A11: the assistant said "so working from Amsterdam isn't on the table") | No. Steven, 2026-10-22: "I keep saying not relocating, but I would work remotely for them during their working hours" and "I would work remote for an Amsterdam company". He chose the wording `profile.employers: 'Open to remote roles with employers outside the US, in their working hours'`; `relocation` stays `'Not relocating'` and `workArrangement` stays exactly `'Hybrid or remote, across time zones'`. The rules: "not relocating" answers only whether he would move and never rules out remote work for an employer elsewhere; asked about remote work for a company abroad or its working hours, the assistant states the employers fact as given, with no specific hours, zones or schedule beyond it; still forbidden: working from another country, EU residence, payroll, a contract or employer of record, sponsorship, other countries' authorization. In the fit check a requirement to work the employer's own (e.g. EU) working hours remotely is Covered by the employers fact; "remote for a company in <city abroad>" is Covered by the arrangement with the employers fact; being based or located there stays "does not match" (D-18 unchanged). The About guard's arrangement rule accepts the employers value too, since it says "remote". | Steven (fact and wording), developer (rules) |
+
+**Round 5 (main merged PR #80 in between; Steven's choice of 2026-10-22)**
+
+| # | Question | Decision | From |
+|---|---|---|---|
+| D-23 | PR #80 set `profile.workArrangement` to "Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating." and added it as a fourth hero-facts line, an About row and a PDF facts row. Which wins? | This branch's facts stay exactly as they are (`workArrangement: 'Hybrid or remote, across time zones'`, `citizenship`, `employers`, `relocation`), and #80's travel becomes its own field after `relocation`: `travel: 'Open to coordinated travel'` (Steven's #80 wording, no frequency). #80's fourth hero-facts line and its 4-line CSS (`align-items: start`, `gap: 12px`, the two-column tablet facts) are dropped: the hero keeps the three facts the designer signed off and the arrangement on its own kicker line. #80's PDF facts row is dropped: the PDF prints the arrangement as header line 2 (AC-12) and no travel. Travel is an About row `Travel` after `Work arrangement`, before `Employers`; off the home page, the PDF and the suggested LinkedIn About, like the citizenship, employers and relocation. The assistant, `about_steven` (both MCPs, WebMCP), `get_resume`, the résumé email labels and `ResumeData` carry it like the other three. The rule states travel as given and still forbids a frequency, a percentage, on-site days or an office outside the Seattle area; in the fit check an occasional, as-needed or coordinated travel requirement is Covered by the travel fact, a specific frequency or percentage is at most Partly covered and a question for Steven. The About guard gains a travel rule (`/\btravel\w*\b/i`, value `travel`). Everything else #80 brought (the Cosmos story, the outcome numbers, the experimentation bullet) and the rest of main (plain-English MCP text, the building refresh) is kept. | Steven (choice and wording), developer (merge) |
 
 ## Acceptance criteria
 
@@ -323,6 +330,21 @@ Every criterion maps to a test or a named check in the Test plan (its AC column)
   unchanged, no new high or medium finding, and one question fewer than main (the
   "Remote, hybrid or on-site" question is gone, because main's checker reads the About
   rows of AC-10).
+
+### Round 5: what D-23 changes in the criteria
+
+Where this list and an earlier criterion disagree, this list wins.
+
+- AC-1: `profile` gains a fifth field, `travel: 'Open to coordinated travel'`, directly after `relocation`; `scripts/resume-facts.test.mjs` scans for it too (no file but `src/resume.ts` types it). The #80 sentence ("Seattle-based, ...") is in no field.
+- AC-3: `WhoData.profile` carries `travel`; the who text reads `... Work arrangement: <value>. Travel: <value>. Employers: ...` (left out when empty). The rule names travel among the facts stated as given, adds "Travel: state the travel fact as given; it names no frequency, percentage or share of time on the road, and never turn it into one.", and no longer says "say nothing about travel"; on-site days and an office outside the Seattle area stay forbidden. The rule never types the value.
+- AC-4: in the fit passage, travel leaves the "Not shown on the site" list: a travel requirement stated as occasional, as needed or coordinated is Covered by the travel fact; one with a specific frequency or percentage is at most Partly covered, saying the travel fact gives no frequency, and becomes a question for Steven.
+- AC-5, AC-6: `about_steven` (public and owner MCP, WebMCP) returns `travel` after `workArrangement`; `get_resume` too; the `propose_resume_change` and `request_site_update` descriptions name travel among the profile facts; `check_fit`'s `howTo` and the public instructions state the travel rule (Covered for occasional or coordinated, at most Partly covered for a frequency) without the value.
+- AC-7, AC-8: unchanged, measured again on the merge (the kicker still carries only the arrangement; three hero facts; no travel on the home page).
+- AC-10, AC-11: the About side note reads `Based in`, `Work authorization`, `Work arrangement`, `Travel`, `Employers`, `Relocation`, `Education`; `dist/about.*` contain the travel value, `dist/index.html` does not.
+- AC-12: unchanged; the PDF prints none of the citizenship, travel, employers or relocation values (#80's facts row is gone). `npm run resume:build` must not lower the ATS score.
+- AC-13: seven side-note rules: the six above plus travel (`/\btravel\w*\b/i`, value `travel`); a travel sentence that does not carry the value is refused, and an empty value refuses.
+- AC-15: the résumé email labels add "travel"; `ResumeData.profile` requires `travel`; the suggested LinkedIn About still leaves it out.
+- AC-17: travel strings are now allowed in the rule and fit sentences of AC-3 and AC-4, the `check_fit` `howTo`, the public instructions and the guard pattern of AC-13, never with a frequency.
 
 ## Out of scope
 
@@ -1411,6 +1433,20 @@ file above; no AC needs to change. One detail is mine: the WebMCP key order move
 `availability` after the citizenship.
 
 ## Test plan (senior-tester)
+
+**Round 5 rows (D-23).** These replace or extend the rows below where they cover the same criterion.
+
+| AC | File | Test | Kind |
+|---|---|---|---|
+| AC-1 travel | `src/resume.test.ts` | `describe('the travel fact')`: `profile.travel` toBe `'Open to coordinated travel'` and matches no digit, `%`, weekly, monthly, quarterly or days; `workArrangement` still the 35-character value; no profile field contains "Seattle-based"; the PDF text holds neither the travel value nor "coordinated travel", and still the Cosmos summary and the experimentation bullet; `App.tsx` renders `{profile.travel}` and types no value. The AC-12 test adds `profile.travel` to the values kept off the PDF. | unit |
+| AC-1 one source | `scripts/resume-facts.test.mjs` | the scan's values include `profile.travel`. | unit |
+| AC-3, AC-4 | `functions/_lib/ask/agent.test.ts` | the who line pins `Travel: ${profile.travel}.` after the arrangement; the rule and the fit passage are pinned verbatim with the travel sentences; `logistics` includes `profile.travel` (never in the rule, always in `systemPrompt([])`); the empty-value loop includes `travel` / `Travel:`. | unit |
+| AC-5 | `functions/_lib/mcp/server.test.ts`, `tools-branches.test.ts` | `about_steven` keys include `travel` after `workArrangement` (public and owner); `get_resume.profile` keys and values include it; both descriptions name travel; `check_fit` `howTo` and the instructions carry the travel rule and not the value. | unit |
+| AC-6 | `src/webmcp.test.ts` | `about_steven` order `location, workAuthorization, citizenship, availability, workArrangement, travel, employers, relocation`; the description names travel. | unit |
+| AC-8, AC-10 | `src/App.test.tsx` | three hero facts (no fourth line); the travel value nowhere on the home page; the About labels in the D-23 order with `Travel` = `profile.travel`. | unit |
+| AC-13 | `functions/_lib/mcp/about.test.ts` | travel phrases without the value are refused ("I travel 25% of the time.", "Happy to travel monthly.", "I am open to travel." ...); the value in any case or quotes passes; the per-rule empty-value test includes `travel`. | unit |
+| AC-15 | `scripts/resume-mail.test.mjs`, `functions/_lib/review/review.test.ts` | the email names "travel" when it is added; the suggested LinkedIn About contains no travel value. | unit |
+| AC-7 | named check | the first phone screen measured again on the merge's build (390x844), numbers in the hand-over. | check |
 
 Read against main 737017c and the tests already next to the code. Every row is a test
 that would fail if the criterion broke, or a named check with what it must print. New

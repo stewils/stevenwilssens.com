@@ -17,7 +17,7 @@ const resume: ResumeData = {
     { key: 'windows-devices-data', role: 'Principal Group Product Manager - Windows & Devices Data', company: 'Microsoft', dates: 'Dec 2024 - Sep 2026', location: 'Redmond, Washington', summary: 'Led the org.', points: ['Led a PM organization of 10 to 20.', 'Telemetry from more than 1.6 billion Windows devices.'] },
     { key: 'spatial', role: 'Senior Product Manager - Silicon, Graphics, Media', company: 'Microsoft', dates: 'Oct 2008 - Aug 2017', location: 'Redmond', summary: 'Audio.', points: ['Grew it 250% over 1.5 years.'] },
   ],
-  profile: { resumeHeadline: 'Product leader', headline: 'Product leader', summary: 'Product leader with nearly 20 years at Microsoft.', location: 'Seattle, Washington', workAuthorization: 'US permanent resident (green card)', citizenship: 'Belgian citizen (EU)', availability: 'Available now', workArrangement: 'Hybrid or remote, across time zones', employers: 'Open to remote roles with employers outside the US, in their working hours', relocation: 'Not relocating' },
+  profile: { resumeHeadline: 'Product leader', headline: 'Product leader', summary: 'Product leader with nearly 20 years at Microsoft.', location: 'Seattle, Washington', workAuthorization: 'US permanent resident (green card)', citizenship: 'Belgian citizen (EU)', availability: 'Available now', workArrangement: 'Hybrid or remote, across time zones', travel: 'Open to coordinated travel', employers: 'Open to remote roles with employers outside the US, in their working hours', relocation: 'Not relocating' },
   skills: [],
   education: { degree: 'BSc', school: 'KdG', dates: '2000 - 2004' },
   impact: [{ value: '+5%', label: 'Perfect Day', backing: 'windows-devices-data' }],
@@ -160,10 +160,10 @@ describe('the side-note facts (recruiter guard 1)', () => {
       expect(refusals[0]).toContain(`"${text}"`)
     }
     expect(refusalsFor('Most recently I was a Director at Google.')[0]).toContain('the title "Director"')
-    expect(refusalsFor('I am based in Austin, Texas.')[0]).toContain('a location, work authorization, citizenship, availability, work arrangement, employers or relocation')
+    expect(refusalsFor('I am based in Austin, Texas.')[0]).toContain('a location, work authorization, citizenship, availability, work arrangement, travel, employers or relocation')
   })
 
-  const factRefusal = (text: string) => [`"${text}" states a location, work authorization, citizenship, availability, work arrangement, employers or relocation that the résumé does not: ${sideNoteRefusal}`]
+  const factRefusal = (text: string) => [`"${text}" states a location, work authorization, citizenship, availability, work arrangement, travel, employers or relocation that the résumé does not: ${sideNoteRefusal}`]
 
   it('refuses each location, authorization and availability phrase when it does not say what profile says', () => {
     const phrases = ['I live in Austin.', 'I am living in Austin.', 'I am located in Austin.', 'I am relocating to Austin.', 'I would relocate for it.', 'I am moving to Austin.', 'I have a green card.', 'I hold a visa.', 'I need an H-1B.', 'My employer will sponsor me.', 'I am a citizen of Belgium.', 'I am a permanent resident.', 'I am authorised to work in the EU.', 'I am authorized to work in the EU.', 'I am available from May.', 'I am available in May.', 'I am available immediately.', 'I am available starting May.', 'My start date is open.', 'My notice period is short.']
@@ -175,6 +175,14 @@ describe('the side-note facts (recruiter guard 1)', () => {
     for (const text of phrases) expect(refusalsFor(text), text).toEqual(factRefusal(text))
     const refusal = factRefusal('x')[0]
     for (const word of ['citizenship', 'work arrangement', 'relocation']) expect(refusal).toContain(word)
+  })
+
+  // D-23: travel is a side-note fact like the other three; a frequency or a share of time is not its words.
+  it('refuses a travel sentence that does not carry the travel fact', () => {
+    const phrases = ['I travel 25% of the time.', 'Happy to travel monthly.', 'I am open to travel.', 'Travel is fine.', 'I enjoy travelling to customers.', 'I traveled weekly at Microsoft.']
+    for (const text of phrases) expect(refusalsFor(text), text).toEqual(factRefusal(text))
+    expect(factRefusal('x')[0]).toContain('travel')
+    for (const text of ['I am open to coordinated travel.', 'I am “Open to coordinated travel”.', 'I AM OPEN TO COORDINATED TRAVEL.']) expect(refusalsFor(text), text).toEqual([])
   })
 
   it('takes what profile and the roles say, and sentences that only mention a place or a team', () => {
@@ -192,6 +200,7 @@ describe('the side-note facts (recruiter guard 1)', () => {
     ['citizenship', 'I am a Belgian citizen (EU).'],
     ['availability', 'I am available now.'],
     ['workArrangement', 'I work hybrid or remote, across time zones.'],
+    ['travel', 'I am open to coordinated travel.'],
     ['employers', 'I am open to remote roles with employers outside the US, in their working hours.'],
     ['relocation', 'I am not relocating.'],
   ] as const) {

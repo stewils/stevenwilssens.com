@@ -50,7 +50,7 @@ describe('diffResume', () => {
   })
 
   it('names each logistics fact in plain words when it is added', () => {
-    for (const [field, label] of [['citizenship', 'citizenship'], ['workArrangement', 'work arrangement'], ['employers', 'employers'], ['relocation', 'relocation']]) {
+    for (const [field, label] of [['citizenship', 'citizenship'], ['workArrangement', 'work arrangement'], ['travel', 'travel'], ['employers', 'employers'], ['relocation', 'relocation']]) {
       const changes = diffResume(resume(), resume({ profile: { ...resume().profile, [field]: 'Stated' } }))
       expect(changes, field).toHaveLength(1)
       expect(changes[0].section).toBe('Profile')

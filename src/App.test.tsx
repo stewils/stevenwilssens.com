@@ -32,6 +32,10 @@ describe('resume site', () => {
 
     expect(screen.getByText(/led 10 to 20 product managers/)).toBeInTheDocument()
     expect(screen.getByText('Seattle, Washington · US permanent resident (green card)')).toBeInTheDocument()
+    // Three hero facts, as the designer signed off: the work arrangement is on the kicker line instead (D-23).
+    const facts = [...document.querySelectorAll('.hero-facts > span')].map((span) => span.textContent)
+    expect(facts).toHaveLength(3)
+    expect(facts[2]).toBe('Seattle, Washington · US permanent resident (green card)')
     expect(screen.getByRole('heading', { name: 'Hiring a product leader for data, experimentation or AI?' })).toBeInTheDocument()
     expect(screen.getByText(/Available now, based in Seattle, Washington, a US permanent resident/)).toBeInTheDocument()
     expect(screen.getAllByText(/choosing my next/).length).toBeLessThanOrEqual(1)
@@ -52,17 +56,33 @@ describe('resume site', () => {
     const own = (element: Element) => [...element.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.textContent).join('')
     expect([...container.querySelectorAll('*')].filter((element) => own(element).toLowerCase().includes(profile.workArrangement.toLowerCase()))).toHaveLength(2)
     // The facts for a close read stay on the About page.
-    for (const value of [profile.citizenship, profile.employers, profile.relocation]) expect(container.textContent).not.toContain(value)
+    for (const value of [profile.citizenship, profile.travel, profile.employers, profile.relocation]) expect(container.textContent).not.toContain(value)
   })
 
-  it('shows the selected work from the data and AI years, each case with its source', () => {
+  it('shows the selected work from the data and AI years, and a source only where the case has one', () => {
     setPath('/work')
     render(<App />)
+    const card = (title: string) => screen.getByRole('heading', { name: title }).closest('article') as HTMLElement
 
     expect(screen.getByRole('heading', { name: 'Selected work' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Windows quality, measured from preview channels to retail' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'An OKR tool, rebuilt with AI when the old one retired' })).toBeInTheDocument()
-    expect(screen.getAllByRole('link', { name: 'Amit Gupte' }).length).toBeGreaterThan(0)
+    // Windows quality is in Steven's own words: the measured outcome, no attribution and no empty meta row.
+    const quality = card('Windows quality, measured from preview channels to retail')
+    expect(within(quality).getByText('Adopted by every Windows team, and behind the roughly 30% drop in issue days across Perfect Day scenarios.')).toBeInTheDocument()
+    expect(within(quality).queryByText(/As described by/)).toBeNull()
+    expect(within(quality).queryByRole('link', { name: 'Amit Gupte' })).toBeNull()
+    expect(quality.querySelector('.work-meta')).toBeNull()
+    // The forecast and the OKR tool keep Amit Gupte's attribution.
+    for (const title of ['Forecasting how a Windows AI feature would land', 'An OKR tool, rebuilt with AI when the old one retired']) {
+      const other = card(title)
+      expect(within(other).getByText(/As described by/)).toBeInTheDocument()
+      expect(within(other).getByRole('link', { name: 'Amit Gupte' })).toBeInTheDocument()
+    }
+    expect(within(card('An OKR tool, rebuilt with AI when the old one retired')).getByText(/Built in six months to replace Viva Goals, Microsoft’s acquired OKR product, after it was retired\.$/)).toBeInTheDocument()
+    // A card with a link and no source keeps its meta row, with the link only.
+    const audio = card('Spatial audio, from a Windows feature to a platform')
+    expect(within(audio).getByText('Monthly active devices playing spatial audio grew more than 250% in 18 months, and the work produced 19 granted US patents.')).toBeInTheDocument()
+    expect(audio.querySelector('.work-meta')).toHaveTextContent('See the patents →')
+    expect(within(audio).queryByText(/As described by/)).toBeNull()
     expect(screen.getByRole('link', { name: /Read the write-up/ })).toHaveAttribute('href', '/building-wilssens')
   })
 
@@ -75,11 +95,13 @@ describe('resume site', () => {
     // The logistics as one group, in the order a recruiter's screen asks them.
     const aside = document.querySelector('aside.side-note')!
     const labels = [...aside.querySelectorAll(':scope > span')].map((span) => span.textContent)
-    expect(labels.slice(labels.indexOf('Based in'), labels.indexOf('Education') + 1)).toEqual(['Based in', 'Work authorization', 'Work arrangement', 'Employers', 'Relocation', 'Education'])
+    expect(labels.slice(labels.indexOf('Based in'), labels.indexOf('Education') + 1)).toEqual(['Based in', 'Work authorization', 'Work arrangement', 'Travel', 'Employers', 'Relocation', 'Education'])
     const valueOf = (label: string) => [...aside.querySelectorAll(':scope > span')].find((span) => span.textContent === label)!.nextElementSibling!.textContent
     expect(valueOf('Work authorization')).toBe(`${profile.workAuthorization} · ${profile.citizenship}`)
     expect(valueOf('Work authorization')).toBe('US permanent resident (green card) · Belgian citizen (EU)')
     expect(valueOf('Work arrangement')).toBe(profile.workArrangement)
+    expect(valueOf('Travel')).toBe(profile.travel)
+    expect(valueOf('Travel')).toBe('Open to coordinated travel')
     expect(valueOf('Employers')).toBe(profile.employers)
     expect(valueOf('Relocation')).toBe(profile.relocation)
   })

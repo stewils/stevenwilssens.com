@@ -9,7 +9,7 @@ import { MemoryStore, type Proposal } from './store'
 
 const resume: ResumeData = {
   experiences: [{ key: 'pm', role: 'PM', company: 'Contoso', dates: '2020 - 2022', location: 'Seattle', summary: 'Built things.', points: ['Same bullet.'] }],
-  profile: { resumeHeadline: 'Leader', headline: 'Leader who builds', summary: 'Twenty years.', location: 'Seattle', workAuthorization: 'Citizen', citizenship: 'Belgian', availability: 'Now', workArrangement: 'Remote', employers: 'Anywhere', relocation: 'No' },
+  profile: { resumeHeadline: 'Leader', headline: 'Leader who builds', summary: 'Twenty years.', location: 'Seattle', workAuthorization: 'Citizen', citizenship: 'Belgian', availability: 'Now', workArrangement: 'Remote', travel: 'Some', employers: 'Anywhere', relocation: 'No' },
   skills: ['SQL', 'Python'],
   education: { degree: 'BSc', school: 'KdG', dates: '2000 - 2004' },
   impact: [{ value: '10x', label: 'faster' }],

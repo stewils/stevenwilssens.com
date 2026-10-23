@@ -12,7 +12,7 @@ import '../wilssens/article.css'
 
 // The write-up of how this site is built and run, linked from /projects. Numbers come
 // from the site's own analytics database, the résumé checker and the MCP server as of
-// 20 October 2026; update them together with the date in the closing section.
+// 23 October 2026; update them together with the date in the closing section.
 
 const sections = [
   ['source', 'One file, five outputs'],
@@ -179,7 +179,7 @@ export default function SiteArticle() {
             <li><strong>Answers are signed,</strong> so nobody can send the assistant an earlier answer it did not give. <strong>Limits are in the code:</strong> thirty questions an hour per visitor, twelve turns, a thousand characters, an optional human check, and a monthly budget counted from the provider’s own token usage. When the budget is spent the button disappears and the site keeps working.</li>
             <li><strong>It checks a job description against my record.</strong> Paste a posting and it answers in a fixed shape: which requirements my record covers, with the role or page that backs each; which it covers partly; which it does not show at all, even when they are probably true; and the questions an interviewer should ask me. The “not shown” list is the point. Every other candidate’s AI says yes to everything; this one is told that a plausible guess is not a fact. The requirements it could not match reach me the same way the unanswered questions do.</li>
           </ul>
-          <p>Questions, cost, votes and the unanswered questions go to the dashboard, and the numbers that matter are public, here, straight from the database. I measured what I shipped at Microsoft; the assistant gets the same treatment, including the numbers that do not flatter it.</p>
+          <p>Questions, cost, votes and the unanswered questions go to the dashboard, which also shows how many different people asked, counted once a day like visitors, and what each of them asked. I keep the log of questions and answers 90 days, and nothing at all when the browser <a href="/privacy">asks not to be tracked</a>. The numbers that matter are public, here, straight from the database. I measured what I shipped at Microsoft; the assistant gets the same treatment, including the numbers that do not flatter it.</p>
           <ReportCard />
         </section>
 

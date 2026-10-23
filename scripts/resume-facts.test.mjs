@@ -14,7 +14,7 @@ const sources = () => ['src', 'functions', 'scripts']
 
 describe('the hiring logistics', () => {
   it('types the logistics values only in src/resume.ts', () => {
-    const values = [profile.citizenship, profile.workArrangement, profile.employers, profile.relocation].map((value) => value.toLowerCase())
+    const values = [profile.citizenship, profile.workArrangement, profile.travel, profile.employers, profile.relocation].map((value) => value.toLowerCase())
     const files = sources()
     expect(files).toContain('functions/_lib/ask/prompt.ts')
     expect(files).toContain('scripts/resume.mjs')

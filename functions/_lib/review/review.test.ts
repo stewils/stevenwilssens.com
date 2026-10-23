@@ -105,7 +105,7 @@ describe('LinkedIn import', () => {
     // The arrangement follows the availability, first letter lowered; the facts kept off the home page stay off LinkedIn too.
     const about = linkedInTexts().about
     expect(about).toContain(`${profile.location}, us permanent resident, available now, hybrid or remote, across time zones.\n`)
-    for (const value of [profile.citizenship, profile.employers, profile.relocation]) expect(about).not.toContain(value)
+    for (const value of [profile.citizenship, profile.travel, profile.employers, profile.relocation]) expect(about).not.toContain(value)
   })
 
   it('lowers the first letter of a phrase inside a sentence, but not an acronym', () => {

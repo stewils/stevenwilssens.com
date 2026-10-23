@@ -62,7 +62,7 @@ const readPage = async (page: Page, signal?: AbortSignal) => {
 export const siteTools: ModelContextTool[] = [
   {
     name: 'about_steven',
-    description: `Start here: who Steven Wilssens is, what he is looking for, where he is, his work authorization, citizenship, availability, work arrangement, employers and relocation, how to reach him, the key numbers with the role behind each, his skills, and the role keys and page names the other tools take. Steven's own words from ${siteUrl}.`,
+    description: `Start here: who Steven Wilssens is, what he is looking for, where he is, his work authorization, citizenship, availability, work arrangement, travel, employers and relocation, how to reach him, the key numbers with the role behind each, his skills, and the role keys and page names the other tools take. Steven's own words from ${siteUrl}.`,
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true },
     execute: () => text({
@@ -75,6 +75,7 @@ export const siteTools: ModelContextTool[] = [
       citizenship: profile.citizenship,
       availability: profile.availability,
       workArrangement: profile.workArrangement,
+      travel: profile.travel,
       employers: profile.employers,
       relocation: profile.relocation,
       teamSize: `Led teams of ${profile.teamSize}`,
