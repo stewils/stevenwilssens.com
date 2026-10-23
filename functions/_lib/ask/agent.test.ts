@@ -109,7 +109,7 @@ describe('who Steven is, from his About page', () => {
     const line = rules.split('\n').find((text) => text.startsWith('Work authorization, citizenship'))!
     expect(line).toBe(rule)
     for (const word of ['work arrangement', 'citizenship', 'relocate', 'sponsorship', 'start date', 'travel', 'on-site days', 'outside the Seattle area', 'time zones', 'regions', 'hours', 'visa', 'no other country', 'employers', 'employer-of-record', 'payroll', 'residence in the EU', 'working from or living in another country', 'steven@wilssens.com', 'LinkedIn']) expect(line).toContain(word)
-    // Steven, 2026-10-23: "not relocating" says only that he would not move; remote work for an
+    // Steven, 2026-10-22: "not relocating" says only that he would not move; remote work for an
     // employer abroad, in its hours, is the employers fact (A11).
     expect(line).toContain('it answers only whether Steven would move, and never rules out remote work for an employer elsewhere')
     // The rule names no value, so it survives a change of wording in src/resume.ts (AC-1).

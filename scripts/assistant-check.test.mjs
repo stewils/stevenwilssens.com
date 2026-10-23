@@ -302,7 +302,9 @@ describe("the checks against the profile lines the assistant's prompt states (#5
   it('pass on the facts as the prompt gives them, from the real profile', async () => {
     const { profile: live } = await import('../src/resume.ts')
     const { systemPrompt } = await import('../functions/_lib/ask/prompt.ts')
-    const line = systemPrompt([]).split('\n').find((text) => text.includes('Work authorization:'))
+    // The profile line opens with his name; the logistics rule also says "Work authorization:".
+    const line = systemPrompt([]).split('\n').find((text) => text.startsWith(`${live.name}:`))
+    expect(line).toBeDefined()
     expect(line).toContain(`Based in ${live.location}.`)
     expect(line).toContain(`Work authorization: ${live.workAuthorization}.`)
     expect(line).toContain(`Availability: ${live.availability}.`)

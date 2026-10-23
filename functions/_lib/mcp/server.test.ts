@@ -381,7 +381,7 @@ describe('the public server', () => {
     // The recruiter's own assistant gets the same boundary on logistics as the site's (C-2').
     for (const words of neverInfer) expect(result.instructions).toContain(words)
     expect(result.instructions).toContain('A requirement to relocate is a mismatch with the relocation fact about_steven states.')
-    // Steven, 2026-10-23: remote for an employer abroad, in its hours, is not ruled out by the relocation fact.
+    // Steven, 2026-10-22: remote for an employer abroad, in its hours, is not ruled out by the relocation fact.
     expect(result.instructions).toContain("The relocation fact answers only whether he would move: remote work for a company outside the US, in that employer's own working hours, is what the employers fact about_steven states, never a mismatch.")
     for (const value of [profile.employers, profile.relocation]) expect(result.instructions.toLowerCase()).not.toContain(value.toLowerCase())
   })

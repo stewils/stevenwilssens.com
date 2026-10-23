@@ -4,7 +4,7 @@ Slug: `work-arrangement` · Branch: `work-arrangement` · Status: approved (PM, 
 Asked by Steven on 2026-10-22: "my work authorization is that I have a green card, I live in the Seattle WA area and I am available for hybrid and remote work across time zones."
 Answered by Steven on 2026-10-22 (Open questions 1 to 4, round 1): "Hybrid or remote, across time zones" as recommended; he is not relocating; nothing to say about a hybrid office outside the Seattle area; yes to employers outside the US, and he is a Belgian citizen.
 Answered by Steven on 2026-10-22 (Open questions 5 and 6, round 2): the citizenship reads "Belgian citizen (EU)"; yes, the site says "Open to employers outside the US" (About side note, assistant, MCP; not the home page or the PDF).
-Answered by Steven on 2026-10-23 (Open question 7, fix round 2, the tester's A11 blocker): "I keep saying not relocating, but I would work remotely for them during their working hours" and "I would work remote for an Amsterdam company". He chose the wording `profile.employers: 'Open to remote roles with employers outside the US, in their working hours'` (D-22); relocation stays "Not relocating" and the arrangement stays exactly "Hybrid or remote, across time zones".
+Answered by Steven on 2026-10-22 (Open question 7, fix round 2, the tester's A11 blocker): "I keep saying not relocating, but I would work remotely for them during their working hours" and "I would work remote for an Amsterdam company". He chose the wording `profile.employers: 'Open to remote roles with employers outside the US, in their working hours'` (D-22); relocation stays "Not relocating" and the arrangement stays exactly "Hybrid or remote, across time zones".
 
 ## Problem
 
@@ -94,11 +94,11 @@ no longer holds.
 | D-20 | Guard patterns (security's condition) | AC-13 carries `Belgian`, `nationals?` in the citizenship rule and `right to work\|work permits?` in the authorization rule; the empty-value refusal is tested once per rule. With the "(EU)" value, the guard accepts a sentence only when it contains `Belgian citizen (EU)`: "I am a Belgian citizen." is now refused. The employers value matches none of the six patterns; an employers rule is a follow-up beside C-4 (Out of scope). (Since D-22 the value says "remote", so the arrangement rule accepts either the arrangement or the employers value.) | security, PM |
 | D-21 | AC-14 with an on-site arrangement (tester's note) | Any non-empty `workArrangement` answers the remote/hybrid/on-site half of the question; only relocation can still be asked. So `'On-site in Seattle'` raises "Would you relocate?" (with `relocation` empty), not main's question. | tester, PM |
 
-**Round 4 (fix round 2: the tester's A11 blocker, Steven's answer of 2026-10-23)**
+**Round 4 (fix round 2: the tester's A11 blocker, Steven's answer of 2026-10-22)**
 
 | # | Question | Decision | From |
 |---|---|---|---|
-| D-22 | Does "not relocating" rule out remote work for a company abroad? (A11: the assistant said "so working from Amsterdam isn't on the table") | No. Steven, 2026-10-23: "I keep saying not relocating, but I would work remotely for them during their working hours" and "I would work remote for an Amsterdam company". He chose the wording `profile.employers: 'Open to remote roles with employers outside the US, in their working hours'`; `relocation` stays `'Not relocating'` and `workArrangement` stays exactly `'Hybrid or remote, across time zones'`. The rules: "not relocating" answers only whether he would move and never rules out remote work for an employer elsewhere; asked about remote work for a company abroad or its working hours, the assistant states the employers fact as given, with no specific hours, zones or schedule beyond it; still forbidden: working from another country, EU residence, payroll, a contract or employer of record, sponsorship, other countries' authorization. In the fit check a requirement to work the employer's own (e.g. EU) working hours remotely is Covered by the employers fact; "remote for a company in <city abroad>" is Covered by the arrangement with the employers fact; being based or located there stays "does not match" (D-18 unchanged). The About guard's arrangement rule accepts the employers value too, since it says "remote". | Steven (fact and wording), developer (rules) |
+| D-22 | Does "not relocating" rule out remote work for a company abroad? (A11: the assistant said "so working from Amsterdam isn't on the table") | No. Steven, 2026-10-22: "I keep saying not relocating, but I would work remotely for them during their working hours" and "I would work remote for an Amsterdam company". He chose the wording `profile.employers: 'Open to remote roles with employers outside the US, in their working hours'`; `relocation` stays `'Not relocating'` and `workArrangement` stays exactly `'Hybrid or remote, across time zones'`. The rules: "not relocating" answers only whether he would move and never rules out remote work for an employer elsewhere; asked about remote work for a company abroad or its working hours, the assistant states the employers fact as given, with no specific hours, zones or schedule beyond it; still forbidden: working from another country, EU residence, payroll, a contract or employer of record, sponsorship, other countries' authorization. In the fit check a requirement to work the employer's own (e.g. EU) working hours remotely is Covered by the employers fact; "remote for a company in <city abroad>" is Covered by the arrangement with the employers fact; being based or located there stays "does not match" (D-18 unchanged). The About guard's arrangement rule accepts the employers value too, since it says "remote". | Steven (fact and wording), developer (rules) |
 
 ## Acceptance criteria
 
@@ -335,8 +335,11 @@ Every criterion maps to a test or a named check in the Test plan (its AC column)
   LinkedIn suggested About (D-19); contract, employer-of-record or payroll terms with an
   employer outside the US (not stated by Steven).
 - A seventh About-guard rule for the employers fact (for example refusing "open to
-  employers worldwide"): a follow-up beside C-4. The employers value matches none of the
-  six patterns, so the guard neither blocks nor checks it in this pull request.
+  employers worldwide"): a follow-up beside C-4. Since D-22 the employers value says
+  "remote", so the arrangement rule checks a remote sentence against either value (AC-13);
+  a sentence about employers abroad without "remote", "hybrid" or the like is still not
+  checked in this pull request, and neither is a sentence about working hours ("I work CET
+  hours."): the follow-up names an hours rule too.
 - The citizenship on the résumé PDF (for applications outside the US) and any of the new
   facts on the home page or the LinkedIn suggested About (D-13): a follow-up with its own
   measurement of the PDF header and the ATS location parse.
@@ -1273,8 +1276,9 @@ and this list disagree, this list holds.
 **PM, round 3: additions to the list above (D-12', D-18 to D-21).** Where this and the
 lists above disagree, this holds.
 
-- `src/resume.ts`: `citizenship: 'Belgian citizen (EU)'`; `employers: 'Open to employers
-  outside the US'` between `workArrangement` and `relocation` (AC-1).
+- `src/resume.ts`: `citizenship: 'Belgian citizen (EU)'`; `employers: 'Open to remote roles
+  with employers outside the US, in their working hours'` (D-22) between `workArrangement`
+  and `relocation` (AC-1).
 - `src/App.tsx` `renderAbout`: `<span>Employers</span><strong>{profile.employers}</strong>`
   directly after the Work arrangement pair (AC-10). `renderHome`, `renderContactBand` and
   `scripts/resume.mjs` do not read `employers` (AC-8, AC-11, AC-12).
@@ -1283,7 +1287,9 @@ lists above disagree, this holds.
   employers clause in the fit passage (AC-4). Neither contains the value.
 - `functions/_lib/mcp/tools.ts`, `src/webmcp.ts`: `employers` in `about_steven`,
   `get_resume` and the descriptions, in AC-5 and AC-6's order.
-- `functions/_lib/mcp/about.ts`: security's round-2 patterns (AC-13); no employers rule.
+- `functions/_lib/mcp/about.ts`: security's round-2 patterns (AC-13); no employers rule
+  of its own, and since D-22 the arrangement rule accepts the arrangement or the employers
+  value.
 - `functions/_lib/mcp/proposals.ts`: `ResumeData.profile.employers`, required.
 - `functions/_lib/review/recruiter.ts`: any non-empty `workArrangement` answers the
   remote/hybrid/on-site half (AC-14, D-21).
@@ -1479,7 +1485,7 @@ rewritten or removed (D-4, D-8).
 | One question fewer on main's checker | AC-20. |
 | Round 2: relocation and citizenship stated exactly, never stretched (no willingness to relocate implied, no country beyond the US and the EU) | AC-3 rule row, A4, A7, A9, F3 to F5 (AC-19). |
 | Round 3: the citizenship never covers living or being based in the EU (D-18) | AC-4 fit passage row, F5, F6 (AC-19). |
-| Round 3: the employers fact stated as given, on About and in the assistant and MCP, not on the home page or the PDF; it covers only the employer's location (D-19) | AC-5, AC-6, AC-8 kicker text, AC-10, AC-10/AC-11 prerendered, AC-12 text rows; A7, A11, F6 (AC-19). |
+| Round 3: the employers fact stated as given, on About and in the assistant and MCP, not on the home page or the PDF; it covers the employer's location and, since D-22, remote work for that employer in its working hours, never residence (D-19, D-22) | AC-5, AC-6, AC-8 kicker text, AC-10, AC-10/AC-11 prerendered, AC-12 text rows; A6, A7, A11, F5 to F7 (AC-19). |
 | Round 2: neither new fact on the home page or in the PDF (D-13) | AC-8 kicker text row, AC-10/AC-11 prerendered row, AC-12 text in PDF row. |
 
 ### The assistant: must and must not (AC-19; proves AC-3, AC-4, C-1, C-2)
@@ -1649,7 +1655,7 @@ although the arrangement answers it; the row tests the AC as written.
    arrangement), the assistant and both MCP surfaces; not the home page or the PDF.
    Folded into AC-1, AC-3 to AC-6, AC-10 to AC-12, AC-15.
 
-### Answered (Steven, 2026-10-23, fix round 2)
+### Answered (Steven, 2026-10-22, fix round 2)
 
 7. **Does "not relocating" rule out remote work for a company abroad?** (The tester's A11
    blocker: the assistant said "so working from Amsterdam isn't on the table".) Answer: "I

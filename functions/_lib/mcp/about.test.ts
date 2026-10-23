@@ -160,10 +160,10 @@ describe('the side-note facts (recruiter guard 1)', () => {
       expect(refusals[0]).toContain(`"${text}"`)
     }
     expect(refusalsFor('Most recently I was a Director at Google.')[0]).toContain('the title "Director"')
-    expect(refusalsFor('I am based in Austin, Texas.')[0]).toContain('a location, work authorization, citizenship, availability, work arrangement or relocation')
+    expect(refusalsFor('I am based in Austin, Texas.')[0]).toContain('a location, work authorization, citizenship, availability, work arrangement, employers or relocation')
   })
 
-  const factRefusal = (text: string) => [`"${text}" states a location, work authorization, citizenship, availability, work arrangement or relocation that the résumé does not: ${sideNoteRefusal}`]
+  const factRefusal = (text: string) => [`"${text}" states a location, work authorization, citizenship, availability, work arrangement, employers or relocation that the résumé does not: ${sideNoteRefusal}`]
 
   it('refuses each location, authorization and availability phrase when it does not say what profile says', () => {
     const phrases = ['I live in Austin.', 'I am living in Austin.', 'I am located in Austin.', 'I am relocating to Austin.', 'I would relocate for it.', 'I am moving to Austin.', 'I have a green card.', 'I hold a visa.', 'I need an H-1B.', 'My employer will sponsor me.', 'I am a citizen of Belgium.', 'I am a permanent resident.', 'I am authorised to work in the EU.', 'I am authorized to work in the EU.', 'I am available from May.', 'I am available in May.', 'I am available immediately.', 'I am available starting May.', 'My start date is open.', 'My notice period is short.']
@@ -179,7 +179,7 @@ describe('the side-note facts (recruiter guard 1)', () => {
 
   it('takes what profile and the roles say, and sentences that only mention a place or a team', () => {
     for (const text of ['I am based in Seattle, Washington.', 'I am a US permanent resident (green card).', 'I am available now.', 'I was a Senior Product Manager at Microsoft.', 'I was a developer and team lead in Belgium.', 'The Operating System Group shipped it.', 'I led a team of engineers.', 'I worked with the Chief Data Officer of Fabrikam.', 'Lead with the customer, I tell my teams.']) expect(refusalsFor(text), text).toEqual([])
-    // The four facts of 2026-10-22 (employers as worded on 2026-10-23), in profile's words, in any
+    // The four facts of 2026-10-22 (employers as reworded later that day), in profile's words, in any
     // case and with curly quotes; the employers fact says "remote" and backs the sentence by itself.
     for (const text of ['I work hybrid or remote, across time zones.', 'I am a Belgian citizen (EU).', 'I am open to remote roles with employers outside the US, in their working hours.', 'I am “Open to remote roles with employers outside the US, in their working hours”.', 'I am not relocating.', 'I work HYBRID OR REMOTE, ACROSS TIME ZONES.', 'I am “not relocating”.', 'I am a ‘Belgian citizen (EU)’.']) expect(refusalsFor(text), text).toEqual([])
   })

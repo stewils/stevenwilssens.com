@@ -120,7 +120,7 @@ export const profile = {
   citizenship: 'Belgian citizen (EU)',
   availability: 'Available now',
   // How he works, for whom and whether he would move, each its own field next to when (availability): Steven's words, 2026-10-22;
-  // employers as he worded it on 2026-10-23 (remote for an employer abroad, in its working hours; still not relocating).
+  // employers as he reworded it later that day (remote for an employer abroad, in its working hours; still not relocating).
   workArrangement: 'Hybrid or remote, across time zones',
   employers: 'Open to remote roles with employers outside the US, in their working hours',
   relocation: 'Not relocating',

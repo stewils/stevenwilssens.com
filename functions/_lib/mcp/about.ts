@@ -82,7 +82,7 @@ export const checkAboutText = (about: About): string[] => {
 }
 
 // The side-note facts (recruiter guard 1): a sentence about location, work authorization,
-// citizenship, availability, work arrangement or relocation must say what profile says; a
+// citizenship, availability, work arrangement, employers or relocation must say what profile says; a
 // job title must be one of the roles. "Belgian" is a citizenship word but "Belgium" is not,
 // so the About copy can say where he worked. A remote sentence can also be the employers
 // fact, which is about remote roles too.
@@ -139,7 +139,7 @@ export const checkAboutProposal = (p: AboutChange, resume: ResumeData): AboutChe
     // An empty profile value states nothing, so it backs no sentence ('' is in every string).
     const fact = sideNote.find(({ pattern, value }) => pattern.test(sentence) && ![value(resume)].flat().some((text) => { const stated = norm(text).toLowerCase(); return stated && lower.includes(stated) }))
     const title = titlesIn(sentence).find((name) => !roles.some((role) => role.includes(name.toLowerCase())))
-    if (fact || title) refusals.push(`"${sentence}" states ${title ? `the title "${title}"` : 'a location, work authorization, citizenship, availability, work arrangement or relocation'} that the résumé does not: ${sideNoteRefusal}`)
+    if (fact || title) refusals.push(`"${sentence}" states ${title ? `the title "${title}"` : 'a location, work authorization, citizenship, availability, work arrangement, employers or relocation'} that the résumé does not: ${sideNoteRefusal}`)
   }
   const flags = sentenceFlags(texts, resume)
   // Recruiter guard 6: what a recruiter's search and a hiring manager's skim look for.
