@@ -63,7 +63,7 @@ export function LoopDiagram() {
 // Two drawings of the same flow: across on a wide screen, stacked on a phone (article.css
 // shows one of them), so it is readable at 390px without swiping.
 const flowTitle = 'How a change reaches the site: a team of AI agents, and Steven deciding'
-const flowDescription = 'Steven asks. A product manager agent writes the spec with a recruiter and a designer; a security engineer, a tester and a developer add their sections. Steven’s open questions are asked once, all together. A developer builds it with its tests. A build that changes nothing stops there: the run fails and Steven is told, so no empty pull request is opened. Six reviews run in parallel, by fresh agents that did not write the code: code, security, tests at 90% coverage per file, design with screenshots, the recruiter’s check that the site is not worse, and the product manager’s acceptance check. Changes go back to the developer for at most three rounds. When all approve, the pull request has a required Review check that runs main’s gates and the team review. Steven merges, and the site deploys.'
+const flowDescription = 'Steven asks. A product manager agent writes the spec with a recruiter and a designer; a security engineer, a tester and a developer add their sections. Steven’s open questions are asked once, all together. A developer builds it with its tests. A build that changes nothing stops there: the run fails and Steven is told, so no empty pull request is opened. The reviews run in parallel, by fresh agents that did not write the code, and only for the parts the change touches: code, security, tests at 90% coverage per file, design with screenshots, the recruiter’s check that the site is not worse, and the product manager’s acceptance check; a change to the rules or the team gets every role but the recruiter, who reviews only changes to the résumé and the site. Changes go back to the developer for at most three rounds, and only the reviewers who asked, or whose part the fix touched, review again. When all approve, the pull request runs its own required checks on GitHub: main’s gates, the team review, which also tries the assistant when a change touches it, and the site checks. Steven merges, and the site deploys. The agents’ runs, on GitHub and in Steven’s own Claude Code sessions, are metered against the change they belong to, and in his sessions against the role that ran them; a change can have a budget, and the rounds that had to be redone are counted, so he can see which kind of change is worth the full team.'
 // main: where Steven decides (the accent); stop: where a run ends without a change (the stop colour).
 const flowSteps: { title: string; lines: string[]; main?: boolean; stop?: boolean }[] = [
   { title: 'I ask', lines: ['in Claude, the MCP or a refresh'], main: true },
@@ -71,13 +71,15 @@ const flowSteps: { title: string; lines: string[]; main?: boolean; stop?: boolea
   { title: 'My questions', lines: ['asked once, all together'], main: true },
   { title: 'Build', lines: ['developer, with tests'] },
   { title: 'Nothing changed', lines: ['the run fails', 'and I am told'], stop: true },
-  { title: 'Pull request', lines: ['required Review check:', 'main’s gates + team review'] },
+  { title: 'Pull request', lines: ['its own checks: gates, team review,', 'site checks, assistant tested in CI'] },
   { title: 'I merge', lines: ['after the preview'], main: true },
   { title: 'Deploy', lines: ['steven.wilssens.com'] },
 ]
 const reviews = ['code review', 'security', 'tests, 90% a file', 'design + screenshots', 'recruiter: not worse', 'PM: acceptance']
 const passLabel = 'all approve'
 const flowFooter = 'The agents check each other; I answer the questions and decide the merge.'
+// A quiet layer under the whole flow (no accent: a property of every step, not a place where work happens).
+const meterLines = ['Metered: runs count against their change,', 'and a change can have a budget']
 
 function FlowBox({ x, y, w, step }: { x: number; y: number; w: number; step: (typeof flowSteps)[number] }) {
   const stroke = step.stop ? bad : step.main ? accent : edge
@@ -86,7 +88,7 @@ function FlowBox({ x, y, w, step }: { x: number; y: number; w: number; step: (ty
 
 function Reviews({ x, y, w, chipWidth, pad = 16 }: { x: number; y: number; w: number; chipWidth: number; pad?: number }) {
   const gap = w - 2 * pad - 2 * chipWidth
-  return <g data-part=""><rect x={x} y={y} width={w} height="140" rx="8" fill="none" stroke={edge} strokeWidth="1.25" /><text x={x + w / 2} y={y + 22} textAnchor="middle" fontWeight="600" fill={ink}>Six reviews, in parallel</text><text x={x + w / 2} y={y + 38} textAnchor="middle" fontSize="11.5" fill={quiet}>fresh agents that did not write the code</text>
+  return <g data-part=""><rect x={x} y={y} width={w} height="140" rx="8" fill="none" stroke={edge} strokeWidth="1.25" /><text x={x + w / 2} y={y + 22} textAnchor="middle" fontWeight="600" fill={ink}>Reviews, for the parts it touches</text><text x={x + w / 2} y={y + 38} textAnchor="middle" fontSize="11.5" fill={quiet}>fresh agents; approvals carry over</text>
     {reviews.map((label, i) => { const cx = x + pad + (i % 2) * (chipWidth + gap), cy = y + 48 + Math.floor(i / 2) * 30; return <g key={label}><rect x={cx} y={cy} width={chipWidth} height="24" rx="12" fill="none" stroke={edge} strokeWidth="1" /><text x={cx + chipWidth / 2} y={cy + 16} textAnchor="middle" fontSize="11.5" fill={ink}>{label}</text></g> })}</g>
 }
 
@@ -100,10 +102,10 @@ export function TeamFlowDiagram() {
   const tops: number[] = []
   let y = 52
   for (const step of tall) { tops.push(y); y += step ? 88 : 196 }
-  const tallHeight = y + 30
+  const tallHeight = y + 86
   const reviewsBottom = tops[5] + 140
   return <>
-    <svg className="wx-flow-wide" viewBox="0 0 760 508" role="img" aria-label={flowTitle} aria-describedby="team-wide-desc" fontSize="13"><Arrow id="team-wide-arrow" />
+    <svg className="wx-flow-wide" viewBox="0 0 760 548" role="img" aria-label={flowTitle} aria-describedby="team-wide-desc" fontSize="13"><Arrow id="team-wide-arrow" />
       <title>{flowTitle}</title><desc id="team-wide-desc">{flowDescription}</desc>
       <text x="16" y="30" fontSize="15" fontWeight="600" fill={ink}>Every change, through a team of agents</text>
       <g data-part="" fill="none" stroke={edge} strokeWidth="1.25"><path d="M240 90H268" markerEnd="url(#team-wide-arrow)" /><path d="M492 90H520" markerEnd="url(#team-wide-arrow)" /><path d="M632 124V144H112V164" markerEnd="url(#team-wide-arrow)" /><path d="M208 198H240" markerEnd="url(#team-wide-arrow)" /><path d="M100 232V256" markerEnd="url(#team-wide-arrow)" /><path d="M480 304V344H196V232" markerEnd="url(#team-wide-arrow)" /><path d="M640 304V372H152V396" markerEnd="url(#team-wide-arrow)" /><path d="M288 430H320" markerEnd="url(#team-wide-arrow)" /><path d="M512 430H544" markerEnd="url(#team-wide-arrow)" /></g>
@@ -113,7 +115,8 @@ export function TeamFlowDiagram() {
       <Reviews x={240} y={164} w={504} chipWidth={228} />
       <g data-part="" fontSize="11.5" fill={quiet}><text x="206" y="322">Fix and review again,</text><text x="206" y="336">at most three rounds</text><text x="648" y="342">{passLabel}</text></g>
       <FlowBox x={16} y={396} w={272} step={pullRequest} /><FlowBox x={320} y={396} w={192} step={merge} /><FlowBox x={544} y={396} w={200} step={deploy} />
-      <g data-part="" fontSize="11.5" fill={quiet} textAnchor="middle"><text x="380" y="496">{flowFooter}</text></g>
+      <g data-part=""><rect x="16" y="472" width="728" height="32" rx="8" fill="none" stroke={grid} strokeWidth="1.25" /><text x="380" y="492" textAnchor="middle" fontSize="11.5" fill={quiet}>{meterLines.join(' ')}</text></g>
+      <g data-part="" fontSize="11.5" fill={quiet} textAnchor="middle"><text x="380" y="532">{flowFooter}</text></g>
     </svg>
     <svg className="wx-flow-tall" viewBox={`0 0 300 ${tallHeight}`} role="img" aria-label={flowTitle} aria-describedby="team-tall-desc" fontSize="13"><Arrow id="team-tall-arrow" />
       <title>{flowTitle}</title><desc id="team-tall-desc">{flowDescription}</desc>
@@ -127,7 +130,8 @@ export function TeamFlowDiagram() {
       </g>
       {tall.map((step, i) => !step ? <Reviews key="reviews" x={12} y={tops[i]} w={276} chipWidth={124} pad={10} /> : step.stop ? <FlowBox key={step.title} x={160} y={tops[i]} w={128} step={step} /> : <FlowBox key={step.title} x={12} y={tops[i]} w={276} step={step} />)}
       <g data-part="" fontSize="11.5" fill={quiet}><text x="32" y={reviewsBottom + 22}>Fix and review again,</text><text x="32" y={reviewsBottom + 36}>at most three rounds</text><text x="228" y={reviewsBottom + 30}>{passLabel}</text></g>
-      <g data-part="" fontSize="11.5" fill={quiet} textAnchor="middle"><text x="150" y={y + 4}>The agents check each other;</text><text x="150" y={y + 20}>I answer the questions and decide the merge.</text></g>
+      <g data-part=""><rect x="12" y={y - 4} width="276" height="44" rx="8" fill="none" stroke={grid} strokeWidth="1.25" />{meterLines.map((line, i) => <text key={line} x="150" y={y + 14 + i * 15} textAnchor="middle" fontSize="11.5" fill={quiet}>{line}</text>)}</g>
+      <g data-part="" fontSize="11.5" fill={quiet} textAnchor="middle"><text x="150" y={y + 60}>The agents check each other;</text><text x="150" y={y + 76}>I answer the questions and decide the merge.</text></g>
     </svg>
   </>
 }

@@ -1,3 +1,4 @@
+import type { Criterion, Scores } from '../../functions/_lib/ask/rating'
 import type { TeamManifest, TeamReads } from './team-types'
 
 // What the admin APIs return. functions/api/stats.ts, functions/api/mcp.ts,
@@ -68,15 +69,32 @@ export type AskInfo = {
   daily: { day: string; outcome: string; questions: number; costMicro: number; msFirst: number; msTotal: number }[]
   votes: { day: string; helpful: number; unhelpful: number }[]
   // Open questions (not yet answered or dismissed in the MCP), and how many were closed in the last 90 days.
-  questions: { id: number; ts: number; reason: 'gap' | 'unhelpful' | 'fit'; page: string | null; question: string; answer: string | null; country: string | null; asOrg: string | null }[]
+  questions: { id: number; ts: number; reason: 'gap' | 'unhelpful' | 'fit' | 'rated'; page: string | null; question: string; answer: string | null; country: string | null; asOrg: string | null }[]
   resolved: { answered: number; dismissed: number }
   // Every question in the range (kept 90 days), newest first, with the analytics' visitor code of the day.
   log?: AskLogEntry[]
   // The days the log covers (at most 90), and whether it stopped at its row limit.
   logDays?: number
   logCapped?: boolean
+  // Steven's ratings of the answers whose day is in the range (pruned answers' included), and
+  // the rateable answers of the last seven days without one (Needs you).
+  ratings?: AskRating[]
+  unratedWeek?: number[]
 }
-export type AskLogEntry = { id: number; ts: number; visitor: string; kind: 'question' | 'fit'; page: string | null; question: string; answer: string | null; outcome: 'answered' | 'gap' | 'off' | 'limited' | 'failed'; country: string | null; asOrg: string | null }
+// One question as the log has it, with what produced its answer (null before the versions
+// were recorded), the sources it cited from the site's own data (title null: no longer in
+// it), its rating, and whether the answer is cut (the whole one comes from ?entry=).
+export type AskSource = { id: string; title: string | null; href: string | null }
+export type AskLogEntry = {
+  id: number; ts: number; visitor: string; kind: 'question' | 'fit'; page: string | null; question: string; answer: string | null; outcome: 'answered' | 'gap' | 'off' | 'limited' | 'failed'; country: string | null; asOrg: string | null
+  model?: string | null; fallback?: boolean | null; promptVersion?: string | null; knowledgeVersion?: string | null; sources?: AskSource[]; rating?: AskRating | null; cut?: boolean
+}
+// The rubric's shapes, as functions/_lib/ask/rating.ts checks them.
+export type { Criterion }
+export type AskScores = Scores
+export type AskRating = AskScores & { id: number; logId: number | null; day: string; model: string | null; fallback: boolean | null; promptVersion: string | null; knowledgeVersion: string | null; kind: 'question' | 'fit'; outcome: AskLogEntry['outcome']; note: string | null; questionId: number | null; ratedAt: number }
+// What Steven sends to POST /api/ask/rating.
+export type RatingDraft = AskScores & { id: number; note: string | null; addToQuestions: boolean }
 
 // The résumé report the build writes (scripts/resume-check.mjs) and the score history
 // functions/_lib/resume-scores.ts keeps.
@@ -98,4 +116,24 @@ export type ResumeInfo = { report: ResumeReport | null; history: ScoreRow[] }
 export type TeamData = { manifest: TeamManifest; reads: TeamReads | null; readsError: string }
 
 // Everything the dashboard has loaded; null until each API has answered.
-export type AdminData = { days: number; stats: Stats | null; mcp: McpInfo | null; ask: AskInfo | null; resume: ResumeInfo | null; team?: TeamData }
+export type AdminData = { days: number; stats: Stats | null; mcp: McpInfo | null; ask: AskInfo | null; resume: ResumeInfo | null; team?: TeamData; costs?: CostsData }
+
+// GET /api/costs (functions/_lib/costs/views.ts writes this shape): what each change cost to
+// build with Claude, in micro-dollars, kept apart by how sure each figure is.
+export type CostMoney = { billed: number; estimated: number; unknown: number; unpriced: { model: string; tokens: number }[] }
+export type CostPull = { state: 'open' | 'merged' | 'closed' | 'superseded' | 'none' | 'unknown'; number: number | null; mergeCommit: string | null; supersededBy: number | null }
+export type CostLine = { kind: 'spec' | 'build' | 'review' | 'fix' | 'lead' | 'site-update' | 'review-workflow'; round: number; pr: number | null; at: number; money: CostMoney; roles: { role: string; money: CostMoney }[] }
+export type CostFeature = {
+  branch: string | null; pull: CostPull | null; runs: number; lastRunAt: number
+  spec: CostMoney; build: CostMoney; review: CostMoney; fix: CostMoney; lead: CostMoney; total: CostMoney
+  reviewRounds: number; fixRounds: number; budgetMicro: number | null; phases: CostLine[]; tokensIn: number; tokensOut: number
+  waste: { money: CostMoney; fixRounds: number; moreReviews: number; closed: boolean; redoneBy: number | null }
+}
+export type CostRole = { role: string; kind: 'team' | 'lead' | 'workflow' | 'other'; runs: number; total: CostMoney; share: number; perFeatureMicro: number; byPhase: Record<'spec' | 'build' | 'review' | 'fix' | 'lead', CostMoney> }
+export type CostMonth = { month: string; money: CostMoney; features: number; wasteMicro: number }
+export type CostsInfo = {
+  generatedAt: number; empty: boolean; month: string; repo: string | null; pricesRead: string
+  features: CostFeature[]; roles: CostRole[]; months: CostMonth[]; waste: { fix: CostMoney; reviews: CostMoney; closed: CostMoney }
+}
+// The Costs page's data and why it is missing, when it is.
+export type CostsData = { info: CostsInfo | null; error: string }

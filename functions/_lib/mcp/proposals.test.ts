@@ -7,7 +7,7 @@ const resume: ResumeData = {
     { key: 'group-pm', role: 'Group PM', company: 'Microsoft', dates: 'Dec 2024 - Sep 2026', location: 'Redmond', summary: 'Led the data org.', points: ['Led 12 PMs.', 'Owned the budget.'] },
     { key: 'founder', role: 'Founder', company: 'wilssens.com', dates: 'Oct 2026 - Present', location: 'Seattle', summary: 'Building.', points: ['Shipped it.'] },
   ],
-  profile: { resumeHeadline: 'Product leader', headline: 'Product leader who builds', summary: 'Twenty years.', location: 'Seattle', workAuthorization: 'Citizen', availability: 'Now' },
+  profile: { resumeHeadline: 'Product leader', headline: 'Product leader who builds', summary: 'Twenty years.', location: 'Seattle', workAuthorization: 'Citizen', citizenship: 'Belgian', availability: 'Now', workArrangement: 'Remote', travel: 'Some', employers: 'Anywhere', relocation: 'No' },
   skills: ['Experimentation', 'Data platforms'],
   education: { degree: 'BSc', school: 'KdG', dates: '2000 - 2004' },
   impact: [{ value: '250%+', label: 'growth', backing: 'group-pm' }],

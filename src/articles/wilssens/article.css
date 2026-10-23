@@ -210,5 +210,7 @@
 .wx-report-grid div { padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--card) 70%, transparent); }
 .wx-report-grid dt { color: var(--green); font: 600 clamp(26px, 3.2vw, 34px)/1 'DM Mono', monospace; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
 .wx-report-grid dd { margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.4; }
+/* Five tiles fill their rows: the last one spans two columns (two of three at 1440, the whole row at 390). */
+.wx-report-grid div:last-child:nth-child(3n+2) { grid-column: span 2; }
 .wx-report-wait { margin: 0; padding: 16px 18px; border: 1px dashed var(--line); border-radius: 14px; color: var(--muted); font-size: 14px; }
 @media (max-width: 700px) { .wx-report-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

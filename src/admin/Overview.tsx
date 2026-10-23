@@ -39,7 +39,7 @@ export function Overview({ data, needs, summaries }: { data: AdminData; needs: N
           {needs.length === 0 && pending && <div className="skeleton" aria-hidden="true"><Shimmer /><Shimmer /></div>}
           {needs.length === 0 && !pending && <p className="all-clear">Nothing is waiting for you.</p>}
           {needs.map((need) => (
-            <a key={need.key} className="need" href={`#${need.page}`}><span className="need-n">{need.n}</span><span className="need-text">{need.text}</span><span className="need-where">{titleOf(need.page)} →</span></a>
+            <a key={need.key} className="need" href={`#${need.hash ?? need.page}`}><span className="need-n">{need.n}</span><span className="need-text">{need.text}</span><span className="need-where">{titleOf(need.page)} →</span></a>
           ))}
         </div>
       </section>

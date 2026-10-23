@@ -1,14 +1,14 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import Admin from './Admin'
-import { makeAsk, makeMcp, makeResume, makeStats, makeTeamReads, NOW, sha } from '../test/admin-fixtures'
+import { makeAsk, makeCosts, makeLogEntry, makeMcp, makeRating, makeResume, makeStats, makeTeamReads, NOW, sha } from '../test/admin-fixtures'
 
 // The dashboard against a fake admin API: /api/stats, /api/ask/admin, /api/mcp and
 // /api/resume and /api/team answer with the shapes the Pages Functions write.
 type Answer = { status?: number; body?: unknown } | Error | 'pending'
-type Routes = Partial<Record<'stats' | 'ask' | 'mcp' | 'resume' | 'team', Answer>>
-const routeOf = (url: string) => (url.startsWith('/api/stats') ? 'stats' : url.startsWith('/api/ask/admin') ? 'ask' : url.startsWith('/api/mcp') ? 'mcp' : url.startsWith('/api/team') ? 'team' : 'resume')
-const bodies = { stats: makeStats, ask: makeAsk, mcp: makeMcp, resume: makeResume, team: makeTeamReads }
+type Routes = Partial<Record<'stats' | 'ask' | 'mcp' | 'resume' | 'team' | 'costs' | 'budget', Answer>>
+const routeOf = (url: string) => (url.startsWith('/api/stats') ? 'stats' : url.startsWith('/api/ask/admin') ? 'ask' : url.startsWith('/api/mcp') ? 'mcp' : url.startsWith('/api/team') ? 'team' : url.startsWith('/api/costs/budget') ? 'budget' : url.startsWith('/api/costs') ? 'costs' : 'resume')
+const bodies = { stats: makeStats, ask: makeAsk, mcp: makeMcp, resume: makeResume, team: makeTeamReads, costs: () => makeCosts({ features: [] }), budget: () => ({ branch: 'dev-costs', budgetMicro: null }) }
 
 let fetchMock: Mock<(url: string, init?: RequestInit) => Promise<Response>>
 const serve = (routes: Routes = {}) => {
@@ -90,8 +90,10 @@ describe('the dashboard', () => {
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
     const menu = within(screen.getByRole('navigation', { name: 'Admin pages' }))
     expect(menu.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page')
-    expect(menu.getByRole('link', { name: /Page speed/ })).toHaveTextContent('Page speed1')
-    expect(menu.getByRole('link', { name: /Crawlers/ })).toHaveTextContent('Crawlers2')
+    // The name is the visible label and the count; the badge itself is shown, not read twice.
+    expect(menu.getByRole('link', { name: 'Page speed, 1' }).querySelector('.tab-badge')).toHaveTextContent('1')
+    expect(menu.getByRole('link', { name: 'Crawlers, 2' }).querySelector('.tab-badge')).toHaveAttribute('aria-hidden', 'true')
+    for (const link of menu.getAllByRole('link')) expect(link).not.toHaveAttribute('aria-label')
     expect(screen.getByText('Updated 2 min ago')).toBeInTheDocument()
   })
 
@@ -100,6 +102,7 @@ describe('the dashboard', () => {
     render(<Admin />)
     await screen.findByText('40', { selector: 'dd' })
     expect(within(screen.getByRole('navigation', { name: 'Admin pages' })).getByText('99+')).toBeInTheDocument()
+    expect(within(screen.getByRole('navigation', { name: 'Admin pages' })).getByRole('link', { name: 'Crawlers, 150' })).toBeInTheDocument()
   })
 
   it('moves between pages with the URL hash', async () => {
@@ -236,11 +239,11 @@ describe('the Team page', () => {
   const menu = () => within(screen.getByRole('navigation', { name: 'Admin pages' }))
   const teamPosts = () => fetchMock.mock.calls.filter(([url, init]) => url === '/api/team' && (init as RequestInit | undefined)?.method === 'POST')
 
-  it('lists Team after Career MCP and before Links and opens it at #team', async () => {
+  it('lists Team after Career MCP, then Costs, then Links, and opens it at #team', async () => {
     render(<Admin />)
     await screen.findByText('40', { selector: 'dd' })
     const titles = menu().getAllByRole('link').map((link) => link.querySelector('.lbl')!.textContent)
-    expect(titles.slice(titles.indexOf('Career MCP'), titles.indexOf('Links') + 1)).toEqual(['Career MCP', 'Team', 'Links'])
+    expect(titles.slice(titles.indexOf('Career MCP'), titles.indexOf('Links') + 1)).toEqual(['Career MCP', 'Team', 'Costs', 'Links'])
     expect(menu().getByRole('link', { name: /^Team/ })).toHaveAttribute('href', '#team')
     go('team')
     expect(heading()).toHaveTextContent('Team')
@@ -257,8 +260,8 @@ describe('the Team page', () => {
     go('assistant')
     expect(heading()).toHaveTextContent('Ask about Steven')
     const parts = [...document.querySelectorAll<HTMLElement>('.page [data-part]')]
-    expect(parts.map((part) => part.dataset.part)).toEqual(['People', 'Use and cost', 'Waiting for you'])
-    expect(parts.map((part) => part.querySelector('h2')!.textContent)).toEqual(['People who asked', 'Use and cost', 'Questions waiting for you'])
+    expect(parts.map((part) => part.dataset.part)).toEqual(['People', 'Answer quality', 'Rate answers', 'Use and cost', 'Waiting for you'])
+    expect(parts.map((part) => part.querySelector('h2')!.textContent)).toEqual(['People who asked', 'Answer quality', 'Rate answers', 'Use and cost', 'Questions waiting for you'])
   })
 
   it('shows the number not seen on the menu item, named "Team, N not seen"', async () => {
@@ -437,5 +440,229 @@ describe('preferences', () => {
     expect(heading()).toHaveTextContent('Overview')
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+  })
+})
+
+describe('rating answers from the dashboard', () => {
+  const entry = makeLogEntry({ id: 1, ts: NOW.getTime() - 3_600_000, question: 'Where is he based?', answer: 'Cut answer…', cut: true })
+  // The admin API plus the rating and the whole-answer calls.
+  const rateServe = (rating: Answer = { body: { rating: makeRating({ logId: 1, overall: 5 }) } }, whole: Answer = { body: { entry: { ...entry, answer: 'The whole answer.', cut: false } } }) => {
+    serve({ ask: { body: makeAsk({ log: [entry], ratings: [], unratedWeek: [1] }) } })
+    const base = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const answer = url === '/api/ask/rating' ? rating : url.startsWith('/api/ask/admin?entry=') ? whole : null
+      if (!answer) return base(url, init)
+      if (answer instanceof Error) return Promise.reject(answer)
+      if (answer === 'pending') return new Promise<Response>(() => {})
+      return Promise.resolve(new Response(JSON.stringify(answer.body ?? {}), { status: answer.status ?? 200 }))
+    })
+  }
+  const queue = () => screen.getByRole('heading', { name: 'Rate answers' }).closest('section')!
+  const rateIt = () => {
+    for (const group of ['Accurate', 'Supported', 'Answers the question', 'Tone and length']) fireEvent.click(within(within(queue()).getByRole('group', { name: group })).getByRole('radio', { name: 'Yes' }))
+    fireEvent.click(within(within(queue()).getByRole('group', { name: 'Overall' })).getByRole('radio', { name: /^5/ }))
+    fireEvent.click(within(queue()).getByRole('button', { name: 'Save' }))
+  }
+
+  it('opens the queue a Needs you line asks for, loads the whole answer, saves with the token, and shows the rating everywhere without reloading the log', async () => {
+    rateServe()
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    expect(screen.getByRole('link', { name: /answer from the last 7 days waits for your rating/ })).toHaveAttribute('href', '#assistant?rate=unrated')
+    go('assistant?rate=unrated')
+    expect(heading()).toHaveTextContent('Ask about Steven')
+    expect(await within(queue()).findByText('The whole answer.')).toBeInTheDocument()
+    expect(urls()).toContain('/api/ask/admin?entry=1')
+    const loads = urls().filter((url) => url.startsWith('/api/ask/admin?days=')).length
+    rateIt()
+    expect(await within(queue()).findByText('Every answer from the last 30 days is rated.')).toBeInTheDocument()
+    const [, init] = fetchMock.mock.calls.find(([url]) => url === '/api/ask/rating')!
+    expect(init).toMatchObject({ method: 'POST', headers: { Authorization: 'Bearer secret', 'Content-Type': 'application/json' } })
+    expect(JSON.parse(init!.body as string)).toEqual({ id: 1, accurate: 'yes', supported: 'yes', answers: 'yes', tone: 'yes', overall: 5, note: null, addToQuestions: false })
+    expect(urls().filter((url) => url.startsWith('/api/ask/admin?days=')).length).toBe(loads)
+    // The scores and the overview read the saved rating at once.
+    expect(screen.getByText('Rated good', { selector: '.stats span' }).parentElement).toHaveTextContent('100%')
+    go('overview')
+    expect(screen.queryByRole('link', { name: /wait for your rating|waits for your rating/ })).not.toBeInTheDocument()
+    expect(screen.getByText(/· 100% rated good \(1\)/)).toBeInTheDocument()
+  })
+
+  it('the unrated answers of the last 7 days open on a range that holds them: Today widens to 7 days', async () => {
+    rateServe()
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    fireEvent.click(screen.getByRole('button', { name: 'Today' }))
+    await waitFor(() => expect(urls()).toContain('/api/ask/admin?days=1&r=0'))
+    go('assistant?rate=unrated')
+    expect(screen.getByRole('button', { name: '7 days' })).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(() => expect(urls()).toContain('/api/ask/admin?days=7&r=0'))
+    // Another page, or a range Steven picks there, is left as he chose it.
+    fireEvent.click(screen.getByRole('button', { name: 'Today' }))
+    go('overview')
+    expect(screen.getByRole('button', { name: 'Today' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('a Needs you line lands on the question it asked for: the page goes to the top first, then focus moves to the question', async () => {
+    rateServe()
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    const order: string[] = []
+    vi.mocked(Element.prototype.scrollTo).mockImplementation(() => { order.push('top') })
+    const focus = HTMLElement.prototype.focus
+    vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (this: HTMLElement, options?: FocusOptions) {
+      order.push(`focus ${this.tagName}`)
+      focus.call(this, options)
+    })
+    go('assistant?rate=unrated')
+    expect(within(queue()).getByRole('heading', { level: 3, name: 'Where is he based?' })).toHaveFocus()
+    expect(order.indexOf('top')).toBeGreaterThanOrEqual(0)
+    expect(order.lastIndexOf('top')).toBeLessThan(order.indexOf('focus H3'))
+  })
+
+  it('a rating saved while the page refreshes stays shown when the refresh read the log before it, and gives way to a later rating from the server', async () => {
+    rateServe()
+    const base = fetchMock.getMockImplementation()!
+    const held: ((body: unknown) => void)[] = []
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (!/^\/api\/ask\/admin\?days=.*&r=[1-9]/.test(url)) return base(url, init)
+      return new Promise<Response>((resolve) => { held.push((body) => resolve(new Response(JSON.stringify(body), { status: 200 }))) })
+    })
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    go('assistant')
+    const goodShare = () => screen.getByText('Rated good', { selector: '.stats span' }).parentElement!.querySelector('strong')
+    // The refresh starts, reads the database, and the rating is saved before it lands.
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(held).toHaveLength(1))
+    rateIt()
+    await waitFor(() => expect(goodShare()).toHaveTextContent(/^100%$/))
+    await act(async () => { held[0](makeAsk({ log: [entry], ratings: [] })) })
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
+    expect(goodShare()).toHaveTextContent(/^100%$/)
+    // A later rating in the database (from another tab, say) wins over the one saved here.
+    const later = makeRating({ logId: 1, overall: 1, accurate: 'no', ratedAt: makeRating().ratedAt + 60_000 })
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(held).toHaveLength(2))
+    await act(async () => { held[1](makeAsk({ log: [{ ...entry, rating: later }], ratings: [later] })) })
+    expect(goodShare()).toHaveTextContent(/^0%$/)
+  })
+
+  it.each([
+    ['a refusal names the field', { status: 400, body: { error: 'invalid', field: 'note' } } as Answer, 'Could not save the rating (the server refused note)'],
+    ['a server error gives its status', { status: 503, body: {} } as Answer, 'Could not save the rating (HTTP 503)'],
+    ['a lost connection says so', new Error('offline') as Answer, 'Could not save the rating (no connection)'],
+  ])('%s', async (_, answer, text) => {
+    rateServe(answer)
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    go('assistant')
+    rateIt()
+    expect(await within(queue()).findByText((content) => content.startsWith(text))).toBeInTheDocument()
+  })
+
+  it('a refused token on a save or on loading an answer goes back to the sign-in', async () => {
+    rateServe({ status: 401 })
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    go('assistant')
+    rateIt()
+    expect(await screen.findByText('That token was not accepted.')).toBeInTheDocument()
+    cleanup()
+    localStorage.setItem('sw-admin-token', 'secret')
+    history.replaceState(null, '', '/admin')
+    rateServe(undefined, { status: 401 })
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    go('assistant')
+    expect(await screen.findByText('That token was not accepted.')).toBeInTheDocument()
+  })
+
+  it('an answer that cannot be loaded keeps its cut', async () => {
+    rateServe(undefined, { status: 404 })
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    go('assistant')
+    expect(await within(queue()).findByText('Could not load the whole answer; this is its first 1,500 characters.')).toBeInTheDocument()
+  })
+})
+
+describe('the Costs page', () => {
+  const menu = () => within(screen.getByRole('navigation', { name: 'Admin pages' }))
+  const costGets = () => urls().filter((url) => url.startsWith('/api/costs?'))
+  const budgetPosts = () => fetchMock.mock.calls.filter(([url]) => url === '/api/costs/budget')
+
+  it('sits after Team without a time range, and its badge counts the features over budget', async () => {
+    serve({ costs: { body: makeCosts() } })
+    render(<Admin />)
+    await screen.findByText('40', { selector: 'dd' })
+    expect(menu().getByRole('link', { name: 'Costs, 1 over budget' })).toHaveAttribute('href', '#costs')
+    expect(screen.getByRole('link', { name: /feature is over its budget: dev-costs/ })).toHaveAttribute('href', '#costs')
+    go('costs')
+    expect(heading()).toHaveTextContent('Costs')
+    expect(screen.getByText(/^What each change costs to build: per feature and phase/)).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Time range' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'This month' })).toBeInTheDocument()
+    expect(costGets()).toEqual(['/api/costs?r=0'])
+  })
+
+  it('saves a budget and updates the row, the badge, Needs you and the tile without reading the costs again', async () => {
+    serve({ costs: { body: makeCosts() }, budget: { body: { branch: 'dev-costs', budgetMicro: 20_000_000 } } })
+    render(<Admin />)
+    go('costs')
+    fireEvent.click(await screen.findByRole('button', { name: 'Open details for dev-costs' }))
+    const field = screen.getByLabelText('Budget for dev-costs, in US dollars')
+    fireEvent.change(field, { target: { value: '20' } })
+    fireEvent.submit(field.closest('form')!)
+    expect(await screen.findByText('Saved: $20.00 for dev-costs.')).toBeInTheDocument()
+    expect(budgetPosts()).toHaveLength(1)
+    const [, init] = budgetPosts()[0]
+    expect(init).toMatchObject({ method: 'POST', headers: { Authorization: 'Bearer secret', 'Content-Type': 'application/json' } })
+    expect(JSON.parse(init!.body as string)).toEqual({ branch: 'dev-costs', amountUsd: 20 })
+    expect(menu().getByRole('link', { name: /^Costs/ })).not.toHaveAccessibleName('Costs, 1 over budget')
+    expect(screen.getByRole('button', { name: 'Close details for dev-costs' }).closest('tr')).toHaveTextContent('$20.00')
+    go('overview')
+    expect(screen.queryByRole('link', { name: /over its budget/ })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('heading', { name: 'Go to' }).closest('section')!).getByRole('link', { name: /^Costs/ })).toHaveTextContent('≈$41.20 this month ($12.00 billed) · 4 features')
+    expect(costGets()).toEqual(['/api/costs?r=0'])
+  })
+
+  it('says why a budget could not be saved, and signs out when the token is refused', async () => {
+    serve({ costs: { body: makeCosts() }, budget: { status: 400, body: { error: 'too many budgets' } } })
+    render(<Admin />)
+    go('costs')
+    fireEvent.click(await screen.findByRole('button', { name: 'Open details for resume-mail' }))
+    const field = screen.getByLabelText('Budget for resume-mail, in US dollars')
+    fireEvent.change(field, { target: { value: '5' } })
+    fireEvent.submit(field.closest('form')!)
+    expect(await screen.findByText('Could not save (500 budgets is the most). Your amount is still in the field.')).toBeInTheDocument()
+    serve({ costs: { body: makeCosts() }, budget: { status: 500, body: 'oops' } })
+    fireEvent.submit(field.closest('form')!)
+    expect(await screen.findByText('Could not save (HTTP 500). Your amount is still in the field.')).toBeInTheDocument()
+    serve({ costs: { body: makeCosts() }, budget: new TypeError('offline') })
+    fireEvent.submit(field.closest('form')!)
+    expect(await screen.findByText('Could not save (no connection). Your amount is still in the field.')).toBeInTheDocument()
+    serve({ costs: { body: makeCosts() }, budget: { status: 401 } })
+    fireEvent.submit(field.closest('form')!)
+    expect(await screen.findByText('That token was not accepted.')).toBeInTheDocument()
+  })
+
+  it('shows a banner and one card when the costs fail, with no Needs you line, and the rest keeps working', async () => {
+    serve({ costs: { status: 500 } })
+    render(<Admin />)
+    expect(await screen.findByText('Could not load the costs (HTTP 500).')).toHaveAttribute('role', 'alert')
+    await screen.findByText('40', { selector: 'dd' })
+    expect(within(screen.getByRole('heading', { name: 'Go to' }).closest('section')!).getByRole('link', { name: /^Costs/ })).toHaveTextContent('Could not load the costs')
+    expect(screen.queryByRole('link', { name: /over its budget/ })).not.toBeInTheDocument()
+    go('costs')
+    expect(screen.getByRole('heading', { name: 'Costs could not be loaded' })).toBeInTheDocument()
+    go('traffic')
+    expect(heading()).toHaveTextContent('Traffic')
+  })
+
+  it('shows placeholders until the costs answer', async () => {
+    serve({ costs: 'pending' })
+    render(<Admin />)
+    go('costs')
+    expect(screen.getByText('Loading costs…')).toBeInTheDocument()
   })
 })

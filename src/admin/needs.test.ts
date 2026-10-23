@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { badgeCounts, computeNeeds, computeSummaries } from './needs'
-import { makeTeamManifest, makeTeamReads, makeUpdate, sha } from '../test/admin-fixtures'
-import type { AdminData, AskInfo, McpInfo, ResumeInfo, Stats, TeamData } from './types'
+import { badgeCounts, computeNeeds, computeSummaries, rangeForLink } from './needs'
+import { makeCosts, makeFeature, makeRating, makeTeamManifest, makeTeamReads, makeUpdate, money, sha } from '../test/admin-fixtures'
+import type { AdminData, AskInfo, CostFeature, McpInfo, ResumeInfo, Stats, TeamData } from './types'
 
 const stats = {
   totals: { visitors: 12, pageviews: 30, downloads: 3, downloaders: 2, contactClicks: 1, avgDurationMs: null, avgScrollPct: null, bounceRate: null },
@@ -161,5 +161,77 @@ describe('the Team page in Needs you, the badge and the tile', () => {
     const [need] = computeNeeds(long)
     expect(need.text).toBe(`change to your agent team you have not seen: “${'a'.repeat(79)}😀…”`)
     expect(need.text).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/)
+  })
+})
+
+describe('the assistant ratings in Needs you and on the tile', () => {
+  const rating = (accurate: 'yes' | 'no', overall: number, id = 1) => makeRating({ id, logId: id, accurate, overall })
+  const withRatings = (overrides: Partial<AskInfo>): AdminData => ({ days: 30, stats: null, mcp: null, resume: null, ask: { ...ask, questions: [], log: [], ...overrides } })
+  const ratingNeeds = (overrides: Partial<AskInfo>) => computeNeeds(withRatings(overrides), midMonth).filter((need) => need.key === 'ask-wrong' || need.key === 'ask-unrated')
+
+  it('one need for the answers marked wrong in the range, worded for one and for several, linking to Marked wrong', () => {
+    expect(ratingNeeds({ ratings: [rating('no', 4, 1)] })).toEqual([{ key: 'ask-wrong', page: 'assistant', n: 1, text: 'answer you marked wrong: check the facts it used', hash: 'assistant?rate=wrong' }])
+    expect(ratingNeeds({ ratings: [rating('no', 4, 1), rating('no', 1, 2), rating('yes', 2, 3)] })[0]).toMatchObject({ n: 2, text: 'answers you marked wrong: check the facts they used' })
+    // A wrong rating whose answer is past the 90-day log has nothing left to check: it raises nothing.
+    expect(ratingNeeds({ ratings: [{ ...rating('no', 4, 1), logId: null }] })).toEqual([])
+  })
+
+  it('every unrated answer of the last 7 days waits, worded for one and for several, linking to Not rated, and goes once they are rated', () => {
+    expect(ratingNeeds({ unratedWeek: [4] })).toEqual([{ key: 'ask-unrated', page: 'assistant', n: 1, text: 'answer from the last 7 days waits for your rating', hash: 'assistant?rate=unrated' }])
+    expect(ratingNeeds({ unratedWeek: [4, 5, 6] })[0]).toMatchObject({ n: 3, text: 'answers from the last 7 days wait for your rating' })
+    expect(ratingNeeds({ unratedWeek: [] })).toEqual([])
+    // Both together, with no countdown to a verdict.
+    expect(ratingNeeds({ unratedWeek: [4], ratings: [rating('no', 3)] }).map((need) => need.key)).toEqual(['ask-wrong', 'ask-unrated'])
+    expect(badgeCounts(ratingNeeds({ unratedWeek: [4, 5], ratings: [rating('no', 3)] }))).toEqual({ assistant: 3 })
+  })
+
+  it('no rating need when the log could not be read', () => {
+    expect(ratingNeeds({ log: undefined, unratedWeek: [4], ratings: [rating('no', 3)] })).toEqual([])
+  })
+
+  it("the Ask about Steven tile adds '· 72% rated good (25)' once there is a rating, and nothing before", () => {
+    const ratings = Array.from({ length: 25 }, (_, i) => rating('yes', i < 18 ? 5 : 3, i + 1))
+    expect(computeSummaries(withRatings({ ratings })).assistant).toBe('$1.25 of $25.00 this month · 10 questions · 2 gaps · 0 people asked in 30 days · 72% rated good (25)')
+    expect(computeSummaries(withRatings({ ratings: [] })).assistant).toBe('$1.25 of $25.00 this month · 10 questions · 2 gaps · 0 people asked in 30 days')
+  })
+})
+
+describe('the range a Needs you link opens on', () => {
+  it('widens a range shorter than 7 days to 7 for the unrated answers of the last 7 days, and leaves every other range and link alone', () => {
+    expect(rangeForLink('rate=unrated', 1)).toBe(7)
+    expect(rangeForLink('rate=unrated', 7)).toBe(7)
+    expect(rangeForLink('rate=unrated', 30)).toBe(30)
+    expect(rangeForLink('rate=wrong', 1)).toBe(1)
+    expect(rangeForLink('', 1)).toBe(1)
+  })
+})
+
+describe('features over their budget', () => {
+  const costsData = (features: CostFeature[], error = ''): AdminData => ({ days: 30, stats: null, mcp: null, ask: null, resume: null, costs: { info: makeCosts({ features }), error } })
+  const feature = (branch: string, dollars: number, budget: number | null) => makeFeature({ branch, total: money(0, dollars), budgetMicro: budget === null ? null : budget * 1_000_000 })
+
+  it('says nothing for a feature under, at or without its budget', () => {
+    expect(computeNeeds(costsData([feature('under', 5, 10), feature('equal', 10, 10), feature('none', 50, null)]))).toEqual([])
+  })
+
+  it('names the one over its budget with both figures, and counts it on the Costs badge', () => {
+    const needs = computeNeeds(costsData([feature('dev-costs', 12.4, 10)]))
+    expect(needs).toEqual([{ key: 'costs-over', page: 'costs', n: 1, text: 'feature is over its budget: dev-costs, ≈$12.40 of $10.00' }])
+    expect(badgeCounts(needs).costs).toBe(1)
+  })
+
+  it('names the most over of several, and cuts a long branch at 40', () => {
+    const [need] = computeNeeds(costsData([feature('a', 11, 10), feature('b', 30, 10)]))
+    expect(need).toMatchObject({ n: 2, text: 'features are over their budget, the most over b (≈$30.00 of $10.00)' })
+    const [long] = computeNeeds(costsData([feature('x'.repeat(200), 11, 10)]))
+    expect(long.text).toBe(`feature is over its budget: ${'x'.repeat(40)}…, ≈$11.00 of $10.00`)
+  })
+
+  it('says nothing while loading or after an error, and the tile says what happened', () => {
+    expect(computeNeeds(costsData([feature('a', 11, 10)], 'HTTP 500'))).toEqual([])
+    expect(computeNeeds({ ...data, costs: { info: null, error: '' } }).some((need) => need.page === 'costs')).toBe(false)
+    expect(computeSummaries(costsData([], 'HTTP 500')).costs).toBe('Could not load the costs')
+    expect(computeSummaries(costsData([feature('a', 11, 10)])).costs).toBe('≈$41.20 this month ($12.00 billed) · 1 over budget')
+    expect(computeSummaries({ ...data, costs: { info: null, error: '' } }).costs).toBeUndefined()
   })
 })

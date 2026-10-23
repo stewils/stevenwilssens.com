@@ -126,6 +126,7 @@ body.compact .foot .honors { line-height: 1.32; }
   </div>
   <div class="contact">
     <strong>${esc(profile.location)}</strong> · ${esc(profile.workAuthorization)}<br>
+    ${esc(profile.workArrangement)}<br>
     <a href="mailto:${esc(profile.email)}">${esc(profile.email)}</a> · ${esc(profile.phone)}<br>
     <a href="${esc(profile.linkedin)}">${esc(profile.linkedin.replace(/^https:\/\/www\.|\/$/g, ''))}</a> · <a href="${esc(profile.site)}">${esc(profile.site.replace(/^https:\/\//, ''))}</a><br>
     For AI assistants: <a href="${esc(profile.mcp)}">${esc(profile.mcp.replace(/^https:\/\//, ''))}</a> (read-only MCP)

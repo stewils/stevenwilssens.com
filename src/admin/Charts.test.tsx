@@ -58,6 +58,30 @@ describe('TrendChart', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Oct 1120 pts points')
   })
 
+  it('keeps a point without a value on the axis and breaks the line there, with no wash', () => {
+    plotBox()
+    const gappy = [{ key: 'a', label: 'Sep 28', value: 40 }, { key: 'b', label: 'Oct 5', value: null, detail: 'No reader votes' }, { key: 'c', label: 'Oct 12', value: 60 }, { key: 'd', label: 'Oct 19', value: 80 }, { key: 'e', label: 'Oct 26', value: null }]
+    const { container } = render(<TrendChart title="Reader votes" points={gappy} unit="helpful share" per="week" />)
+    // The axis runs over every week, the line starts again after the gap, and the last value is the last week with one.
+    expect(screen.getByText('Sep 28')).toBeInTheDocument()
+    expect(screen.getByText('Oct 26')).toBeInTheDocument()
+    expect(container.querySelector('path.line')!.getAttribute('d')!.match(/M/g)).toHaveLength(2)
+    expect(container.querySelector('path.area')).toBeNull()
+    expect(container.querySelectorAll('circle.dot')).toHaveLength(4)
+    expect(container.querySelector('text.value')).toHaveTextContent('80')
+    expect(screen.getByText('Total 180 · peak 80')).toBeInTheDocument()
+    const hit = container.querySelector('rect')!
+    fireEvent.pointerMove(hit, { clientX: 25 })
+    expect(screen.getByRole('status')).toHaveTextContent('Oct 5No reader votes')
+    fireEvent.pointerMove(hit, { clientX: 100 })
+    expect(screen.getByRole('status')).toHaveTextContent('Oct 26No data')
+  })
+
+  it('says there is no data when no point has a value', () => {
+    render(<TrendChart title="Reader votes" points={[{ key: 'a', label: 'Oct 5', value: null }]} unit="helpful share" />)
+    expect(screen.getByText('No data yet')).toBeInTheDocument()
+  })
+
   it('is drawn at the width it is shown at, and stops watching when it goes', () => {
     const disconnect = vi.fn()
     let measure = () => {}
@@ -94,6 +118,28 @@ describe('BarChart', () => {
     expect(screen.getByText('Peak 3')).toBeInTheDocument()
   })
 
+  it('stacks an estimated part on top of the billed one, from zero, with a legend, a readout and its own axis format', () => {
+    const months = [
+      { key: '2026-09', label: 'September', value: 20_000_000, estimated: 43_100_000, detail: '$20.00 billed, estimated $43.10, 3 features' },
+      { key: '2026-10', label: 'October so far', value: 12_000_000, estimated: 0, detail: '$12.00 billed, estimated $0.00, 5 features' },
+      { key: '2026-11', label: 'November', value: 0, estimated: 5_000_000, detail: 'none' },
+    ]
+    const { container } = render(<BarChart title="Months" bars={months} axisLabels={['Sep', 'Oct', 'Nov']} max={100_000_000} format={(micro) => `$${micro / 1_000_000}`} readout="Last full month ≈$63.10" legend={<span className="chart-legend">billed estimated</span>} />)
+    expect(container.querySelector('figure')).toHaveClass('chart--stacked')
+    expect(screen.getByText('$100')).toBeInTheDocument()
+    expect(screen.getByText('$50')).toBeInTheDocument()
+    expect(screen.getByText('Last full month ≈$63.10')).toBeInTheDocument()
+    expect(screen.getByText('billed estimated')).toBeInTheDocument()
+    const september = screen.getByRole('button', { name: 'September: $20.00 billed, estimated $43.10, 3 features' })
+    expect(september.querySelector<HTMLElement>('.chart-stack')!.style.height).toBe('63.1%')
+    expect([...september.querySelectorAll<HTMLElement>('.chart-part')].map((part) => [part.className, part.style.flexGrow])).toEqual([['chart-part est', '43100000'], ['chart-part billed', '20000000']])
+    // A part with nothing in it is not drawn.
+    expect(screen.getByRole('button', { name: /^October so far/ }).querySelectorAll('.chart-part')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: /^November/ }).querySelector('.chart-part')).toHaveClass('est')
+    fireEvent.focus(september)
+    expect(screen.getByText('September · $20.00 billed, estimated $43.10, 3 features')).toBeInTheDocument()
+  })
+
   it('keeps a fixed maximum when given one', () => {
     render(<BarChart title="Hours" bars={bars} axisLabels={[]} max={10} />)
     expect(screen.getByText('10')).toBeInTheDocument()
@@ -127,5 +173,13 @@ describe('Vs', () => {
   it('shows nothing without a period to compare with', () => {
     const { container } = render(<Vs current={12} previous={null} days={7} />)
     expect(container).toBeEmptyDOMElement()
+  })
+})
+
+describe('RankedList with a pinned scale', () => {
+  it('writes the value with the format given and scales the bars to the maximum', () => {
+    const { container } = render(<RankedList title="By criterion (share Yes)" format={(value) => `${value}%`} max={100} rows={[{ name: 'Accurate', visitors: 50, detail: '10% partly' }]} />)
+    expect(screen.getByText('50%')).toBeInTheDocument()
+    expect(container.querySelector<HTMLElement>('.ranked-bar')!.style.width).toBe('50%')
   })
 })
