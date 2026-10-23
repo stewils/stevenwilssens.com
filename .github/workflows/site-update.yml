@@ -4,15 +4,30 @@
 # about: the project's "Building write-up" workflow sends a repository_dispatch after
 # every push to its main branch, and scripts/building-brief.mjs turns it into the
 # instruction to refresh the article from the project's CLAUDE.md and the commits.
-# The deploy workflow then builds a preview for the branch.
 #
-# Secrets: ANTHROPIC_API_KEY (or CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`)
-# for Claude Code; BUILDING_TOKEN, a fine-grained token that reads the project
-# repositories in src/articles/sources.json, for the write-up refresh. Everything else
-# uses the built-in GITHUB_TOKEN: pushes made with it do not start other workflows, so
-# this one dispatches the Deploy workflow for the branch itself to get the preview. The
-# repository must allow Actions to create pull requests (Settings → Actions → General →
-# Workflow permissions).
+# Three jobs after the brief (specs/mcp-prs-flow.md):
+#   update   Claude Code and the team write the change; lint, tests and the build run; the
+#            commit is handed on as a git bundle. Its token reads only; it never sees the
+#            site bot's key.
+#   publish  a fresh runner with main checked out runs nothing from the branch: it takes
+#            the bundle (scripts/site-update-bundle.mjs refuses one that does not grow from
+#            main or touches .github/), mints the site bot's token, pushes the branch and
+#            opens the pull request. The bot's push and pull request start Deploy (the
+#            preview), Site checks and Review on the pull request like anyone's, so the
+#            checks branch protection requires (`gates`, `team`, `check`) count.
+#   email    tells Steven when the résumé changed, with main's scripts/resume-mail.mjs.
+#
+# The site bot is a GitHub App installed on this repository only (Contents and Pull requests:
+# write). Its key is in the environment `site-update-app`, which only main's workflows may use:
+# the secret SITE_BOT_PRIVATE_KEY and the variable SITE_BOT_CLIENT_ID; the repository variable
+# SITE_BOT_SLUG names it (the Review workflow lets it start the team review). Without them the
+# run stops before Claude starts. Nothing here uses a personal token, and nothing the bot
+# writes counts as Steven's (the Review workflow reads only the repository owner's labels and
+# replies).
+#
+# Secrets: ANTHROPIC_API_KEY (or CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`) for Claude
+# Code; BUILDING_TOKEN, a fine-grained token that reads the project repositories in
+# src/articles/sources.json, for the write-up refresh; MAIL_APP_PASSWORD for the email.
 name: Site update
 
 on:
@@ -46,11 +61,8 @@ concurrency:
   group: site-update
   cancel-in-progress: false
 
-permissions:
-  contents: write
-  pull-requests: write
-  actions: write
-  id-token: write
+# Every job says what its built-in token may do; none may write.
+permissions: {}
 
 jobs:
   # What Claude Code is asked to do: the inputs as given, or, after a check-in on a
@@ -58,6 +70,8 @@ jobs:
   # write-up ends here with a warning.
   brief:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       skip: ${{ steps.brief.outputs.skip }}
       title: ${{ steps.brief.outputs.title }}
@@ -68,6 +82,7 @@ jobs:
       before: ${{ steps.brief.outputs.before }}
       sources: ${{ steps.brief.outputs.sources }}
       origin: ${{ steps.brief.outputs.origin }}
+      supersedes: ${{ steps.brief.outputs.supersedes }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -78,26 +93,65 @@ jobs:
           EVENT: ${{ github.event_name }}
           INPUT_TITLE: ${{ inputs.title }}
           INPUT_INSTRUCTION: ${{ inputs.instruction }}
+          INPUT_SUPERSEDES: ${{ inputs.supersedes }}
           PAYLOAD: ${{ toJSON(github.event.client_payload) }}
         run: node scripts/building-brief.mjs
 
-  update:
+  # The site bot is set up, before any model run is spent: its key is an environment secret,
+  # which only a job in that environment can see. Also its commit identity, so the commits
+  # are the bot's and never read as Steven's.
+  preflight:
     needs: brief
     if: needs.brief.outputs.skip != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    environment: site-update-app
+    permissions: {}
     outputs:
+      name: ${{ steps.bot.outputs.name }}
+      email: ${{ steps.bot.outputs.email }}
+    steps:
+      - name: The site bot is set up
+        id: bot
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLIENT_ID: ${{ vars.SITE_BOT_CLIENT_ID }}
+          KEY_SET: ${{ secrets.SITE_BOT_PRIVATE_KEY != '' }}
+          SLUG: ${{ vars.SITE_BOT_SLUG }}
+        run: |
+          if [ -z "$CLIENT_ID" ] || [ "$KEY_SET" != true ] || ! [[ "$SLUG" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]]; then
+            echo "::error::The site bot is not set up: the environment site-update-app needs the secret SITE_BOT_PRIVATE_KEY and the variable SITE_BOT_CLIENT_ID, and the repository the variable SITE_BOT_SLUG (specs/mcp-prs-flow.md, Setup)."
+            exit 1
+          fi
+          id=$(gh api "users/${SLUG}%5Bbot%5D" --jq .id) || id=''
+          [[ "$id" =~ ^[0-9]+$ ]] || { echo "::error::The site bot ${SLUG}[bot] was not found on GitHub: check SITE_BOT_SLUG."; exit 1; }
+          echo "name=${SLUG}[bot]" >> "$GITHUB_OUTPUT"
+          echo "email=${id}+${SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+
+  update:
+    needs: [brief, preflight]
+    if: needs.brief.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # Reads only: the change leaves this job as a bundle, and the publish job pushes it.
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+      branch: ${{ steps.branch.outputs.branch }}
+      spec: ${{ steps.branch.outputs.spec }}
+      checks: ${{ steps.commit.outputs.checks }}
+      before: ${{ steps.score.outputs.before }}
+      after: ${{ steps.score.outputs.after }}
+      lower: ${{ steps.score.outputs.lower }}
+      base: ${{ steps.handover.outputs.base }}
+      # What the run cost (the "Read what the run cost" step), for the costs job.
       micro: ${{ steps.cost.outputs.micro }}
       turns: ${{ steps.cost.outputs.turns }}
       ms: ${{ steps.cost.outputs.ms }}
-      # Set by the branch step, before the Claude step runs: nothing after it can change it.
-      branch: ${{ steps.branch.outputs.branch }}
-      # From the pr step, after Claude's code ran: advisory (the costs page asks GitHub for the pull request).
-      pr: ${{ steps.pr.outputs.number }}
     steps:
-      # The checkout keeps no credentials. claude-code-action puts github.token back into the origin URL for the
-      # Claude session (its agent mode rewrites origin with the token embedded); the step after it resets origin,
-      # the checks run without GH_TOKEN, and only the push step passes the token, for that one command.
+      # The checkout keeps no credentials. claude-code-action puts github.token (read-only here) back into the
+      # origin URL for the Claude session (its agent mode rewrites origin with the token embedded); the step after
+      # it resets origin, and nothing in this job pushes.
       - uses: actions/checkout@v7
         with:
           ref: main
@@ -117,14 +171,17 @@ jobs:
         id: branch
         env:
           TITLE: ${{ needs.brief.outputs.title }}
+          BOT_NAME: ${{ needs.preflight.outputs.name }}
+          BOT_EMAIL: ${{ needs.preflight.outputs.email }}
         run: |
           # Cloudflare cuts a preview's address to 28 characters (update-<slug>-<run>), so the slug
           # leaves room for the run number: two updates never share a preview.
           slug=$(printf '%s' "$TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]\+/-/g; s/^-//' | cut -c1-$((20 - ${#GITHUB_RUN_NUMBER})) | sed 's/-$//')
           branch="update/${slug:-change}-${GITHUB_RUN_NUMBER}"
           git checkout -b "$branch"
-          git config user.name "Steven Wilssens (via Claude)"
-          git config user.email "steven@wilssens.com"
+          # The commits are the site bot's (preflight), never Steven's name and address.
+          git config user.name "$BOT_NAME"
+          git config user.email "$BOT_EMAIL"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
           # The team's spec for this change (.claude/team.md): specs/<slug>-<run>.md, committed with it.
           echo "spec=specs/${branch#update/}.md" >> "$GITHUB_OUTPUT"
@@ -201,6 +258,7 @@ jobs:
           echo "Resume on main: $score/100"
 
       - name: Let Claude make the change
+        # The team writes the spec, builds the change from it and reviews it, on this run's branch.
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
@@ -228,7 +286,7 @@ jobs:
             - Code changes come with tests (.claude/team.md, .claude/agents/senior-tester.md): `npm run test:coverage` keeps 90% or more overall and on every file you change. The Review workflow then runs the team review (code, security, test, design, recruiter) on the pull request before it can merge.
             - Run `npm run lint`, `npm run test:coverage` and `npm run build` and make them pass.
             - Do not invent numbers or facts. If the instruction needs a fact you do not have, it is an open question in the spec (step 2), not a guess.
-            - Do not edit .github/, .claude/ or CLAUDE.md unless Steven's instruction asks for exactly that.
+            - Do not edit .github/, .claude/ or CLAUDE.md unless Steven's instruction asks for exactly that. A change under .github/ is never pushed from this workflow (the site bot cannot, and the workflow refuses it after your run): if the instruction needs one, make the rest, leave .github/ alone and say in your summary that the workflow change is Steven's to make in a session.
             - Commit nothing yourself; the workflow commits the change and the spec and opens the pull request. End with a short summary of what changed and any open questions, written for Steven.
             - That final summary is published in the public run log: do not quote sources/, .git/ or environment values in it.
             - A run that changes nothing outside specs/ fails and Steven is told the request was not carried out; if the change cannot be made, say why in the final summary.
@@ -301,20 +359,8 @@ jobs:
           echo "changed=true" >> "$GITHUB_OUTPUT"
           echo "checks=$status" >> "$GITHUB_OUTPUT"
 
-      - name: Push the branch
-        if: steps.commit.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BRANCH: ${{ steps.branch.outputs.branch }}
-        run: |
-          set -e
-          # The token goes in for this push only (as actions/checkout does it), masked in the log; no hooks run.
-          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
-          echo "::add-mask::$auth"
-          git -c core.hooksPath=/dev/null -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" push -u origin "$BRANCH"
-
-      # The new resume against the one main had: the score line goes into the pull request,
-      # the step summary and the email, and a drop is a warning on the run.
+      # The new resume against the one main had: the numbers go to the publish job (checked there), the new
+      # findings with the change, and a drop is a warning on the run.
       - name: Compare the resume score with main
         id: score
         if: steps.commit.outputs.changed == 'true'
@@ -325,12 +371,9 @@ jobs:
           cat /tmp/resume-after.txt
           after=$(jq -r '.score // "unknown"' /tmp/resume-after.json 2>/dev/null || echo unknown)
           lower=$(jq -r '.baseline.lower // false' /tmp/resume-after.json 2>/dev/null || echo false)
-          if [ "$after" = unknown ]; then line="unknown (the resume could not be checked; see the run log)"
-          elif [ "$BEFORE" = unknown ]; then line="$after/100 (main's score was not available)"
-          elif [ "$lower" = true ]; then line="$BEFORE → $after, lower than on main"
-          elif [ "$after" -gt "$BEFORE" ]; then line="$BEFORE → $after, higher than on main"
-          else line="$BEFORE → $after, unchanged"; fi
-          echo "line=$line" >> "$GITHUB_OUTPUT"
+          [[ "$after" =~ ^[0-9]+$ ]] || after=unknown
+          [[ "$BEFORE" =~ ^[0-9]+$ ]] || BEFORE=unknown
+          [ "$lower" = true ] || lower=false
           echo "lower=$lower" >> "$GITHUB_OUTPUT"
           echo "before=$BEFORE" >> "$GITHUB_OUTPUT"
           echo "after=$after" >> "$GITHUB_OUTPUT"
@@ -339,28 +382,128 @@ jobs:
             jq -r --slurpfile before /tmp/resume-before.json '[.findings[] | select(.severity != "info")] | map(select(. as $f | ($before[0].findings // []) | map(.id) | index($f.id) | not)) | .[] | "- [\(.severity)] \(.message)"' /tmp/resume-after.json > /tmp/resume-new-findings.txt || true
           fi
           {
-            echo "### Resume score: $line"
+            echo "### Resume score: $BEFORE → $after"
             if [ "$lower" = true ]; then echo; echo "⚠️ This update lowers the resume score. New findings:"; cat /tmp/resume-new-findings.txt 2>/dev/null; fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Open the pull request
-        id: pr
+      # The commit leaves this job as a git bundle (main..branch), with the commit of main it grew from (the
+      # base: main may move on before publish runs) and the score's report and new findings: the publish job
+      # pushes it without running anything from it.
+      - name: Hand the change on
+        id: handover
         if: steps.commit.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ steps.branch.outputs.branch }}
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/change"
+          base=$(git rev-parse origin/main)
+          git bundle create "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "^$base"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          cp /tmp/resume-after.json "$RUNNER_TEMP/change/resume-after.json" 2>/dev/null || true
+          cp /tmp/resume-new-findings.txt "$RUNNER_TEMP/change/resume-new-findings.txt" 2>/dev/null || true
+      - name: Keep the change for the publish job
+        if: steps.commit.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-update-change
+          path: ${{ runner.temp }}/change
+          retention-days: 7
+          if-no-files-found: error
+
+  # Pushes the branch and opens the pull request as the site bot. A fresh runner with main checked out:
+  # nothing from the branch runs here (no npm, no npx, no script but main's), so the bot's token never
+  # shares a job with code Claude or the branch wrote.
+  publish:
+    needs: [brief, preflight, update]
+    if: needs.update.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: site-update-app
+    permissions:
+      contents: read
+    outputs:
+      url: ${{ steps.pr.outputs.url }}
+      number: ${{ steps.pr.outputs.number }}
+      preview: ${{ steps.pr.outputs.preview }}
+      resume_changed: ${{ steps.pr.outputs.resume_changed }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: site-update-change
+          path: ${{ runner.temp }}/change
+
+      # main's script: the branch name is one the workflow makes, it grows from its base (a commit in main's
+      # history; main may have moved on since), holds no merge commit and touches nothing under .github/;
+      # then the branch is a local branch of this checkout.
+      - name: Take the change from the update job
+        env:
+          BRANCH: ${{ needs.update.outputs.branch }}
+          BASE: ${{ needs.update.outputs.base }}
+        run: node scripts/site-update-bundle.mjs "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "$BASE" origin/main "$GITHUB_SHA"
+
+      # The bot's token: this repository only, Contents and Pull requests, revoked when the job ends.
+      - name: The site bot's token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.SITE_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.SITE_BOT_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Push the branch
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          BRANCH: ${{ needs.update.outputs.branch }}
+        run: |
+          set -e
+          [[ "$BRANCH" =~ ^update/[a-z0-9-]+-[0-9]+$ ]] && [[ "$BRANCH" == *-"$GITHUB_RUN_NUMBER" ]] || { echo "::error::Not this run's Site update branch: $BRANCH"; exit 1; }
+          # The token goes in for this push only (as actions/checkout does it), masked in the log; no hooks run.
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          git -c core.hooksPath=/dev/null -c http.https://github.com/.extraheader="AUTHORIZATION: basic $auth" push origin "refs/heads/$BRANCH:refs/heads/$BRANCH"
+
+      - name: Open the pull request
+        # The team's change, checked, becomes a pull request that Steven merges from the MCP or on GitHub.
+        id: pr
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          BRANCH: ${{ needs.update.outputs.branch }}
           TITLE: ${{ needs.brief.outputs.title }}
           INSTRUCTION: ${{ needs.brief.outputs.instruction }}
           ORIGIN: ${{ needs.brief.outputs.origin }}
-          CHECKS: ${{ steps.commit.outputs.checks }}
-          SCORE_LINE: ${{ steps.score.outputs.line }}
-          SCORE_LOWER: ${{ steps.score.outputs.lower }}
-          SCORE_BEFORE: ${{ steps.score.outputs.before }}
-          SCORE_AFTER: ${{ steps.score.outputs.after }}
+          PROJECT: ${{ needs.brief.outputs.project }}
+          SOURCE_SHA: ${{ needs.brief.outputs.ref }}
+          CHECKS: ${{ needs.update.outputs.checks }}
+          SCORE_LOWER: ${{ needs.update.outputs.lower }}
+          SCORE_BEFORE: ${{ needs.update.outputs.before }}
+          SCORE_AFTER: ${{ needs.update.outputs.after }}
           PROPOSALS: ${{ inputs.proposals }}
-          SUPERSEDES: ${{ inputs.supersedes }}
-          SPEC: ${{ steps.branch.outputs.spec }}
+          SUPERSEDES: ${{ needs.brief.outputs.supersedes }}
+          SPEC: ${{ needs.update.outputs.spec }}
+          SLUG: ${{ vars.SITE_BOT_SLUG }}
         run: |
+          [[ "$BRANCH" =~ ^update/[a-z0-9-]+-[0-9]+$ ]] && [[ "$BRANCH" == *-"$GITHUB_RUN_NUMBER" ]] || { echo "::error::Not this run's Site update branch: $BRANCH"; exit 1; }
+          # The numbers from the update job, checked again: anything else reads unknown.
+          [[ "$SCORE_BEFORE" =~ ^[0-9]+$ ]] || SCORE_BEFORE=unknown
+          [[ "$SCORE_AFTER" =~ ^[0-9]+$ ]] || SCORE_AFTER=unknown
+          [ "$SCORE_LOWER" = true ] || SCORE_LOWER=false
+          [ "$CHECKS" = passed ] || CHECKS=failed
+          [[ "$SUPERSEDES" =~ ^[0-9]+$ ]] || SUPERSEDES=''
+          [[ "$PROJECT" =~ ^[a-z0-9-]+$ ]] || PROJECT=''
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{7,40}$ ]] || SOURCE_SHA=''
+          if [ "$SCORE_AFTER" = unknown ]; then score_line="unknown (the resume could not be checked; see the run log)"
+          elif [ "$SCORE_BEFORE" = unknown ]; then score_line="$SCORE_AFTER/100 (main's score was not available)"
+          elif [ "$SCORE_LOWER" = true ]; then score_line="$SCORE_BEFORE → $SCORE_AFTER, lower than on main"
+          elif [ "$SCORE_AFTER" -gt "$SCORE_BEFORE" ]; then score_line="$SCORE_BEFORE → $SCORE_AFTER, higher than on main"
+          else score_line="$SCORE_BEFORE → $SCORE_AFTER, unchanged"; fi
           alias=$(printf '%s' "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | cut -c1-28)
           # Text copied into the body (the instruction, the origin, the proposals, the spec's open questions, the new findings) cannot open or
           # close an HTML comment: a hidden marker planted in it would otherwise read as the workflow's own
@@ -369,72 +512,161 @@ jobs:
           instruction=$(printf '%s' "$INSTRUCTION" | neutralise)
           origin=$(printf '%s' "$ORIGIN" | neutralise)
           proposals=$(printf '%s' "$PROPOSALS" | neutralise)
-          # The team's spec and the questions it left for Steven (its "Open questions" section, when it has any).
+          # The team's spec and the questions it left for Steven (its "Open questions" section, when it has any),
+          # read from the branch as text.
           spec_line="**Spec:** none was written (see the run log)."
           questions=""
-          if [ -f "$SPEC" ]; then
+          if [[ "$SPEC" =~ ^specs/[a-z0-9-]+\.md$ ]] && git show "refs/heads/$BRANCH:$SPEC" > "$RUNNER_TEMP/spec.md" 2>/dev/null; then
             spec_line="**Spec:** [$SPEC]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$BRANCH/$SPEC), written by the team before the build."
-            questions=$(awk '/^## Open questions/{on=1; next} /^## /{on=0} on' "$SPEC" | sed '/^[[:space:]]*$/d' | grep -v '^1\. …$' | neutralise || true)
+            questions=$(awk '/^## Open questions/{on=1; next} /^## /{on=0} on' "$RUNNER_TEMP/spec.md" | sed '/^[[:space:]]*$/d' | grep -v '^1\. …$' | neutralise || true)
             if [ -n "$questions" ]; then spec_line=$(printf '%s\n\n**Open questions for Steven** (answer by replying on this pull request):\n\n%s' "$spec_line" "$questions"); fi
           fi
           warning=""
           if [ "$SCORE_LOWER" = true ]; then
-            warning=$(printf '> ⚠️ **This update lowers the resume score from %s to %s.** An applicant tracking system would read it worse than the one live today. New findings:\n%s\n\nFix the data on this branch (or ask Claude to) before merging, or merge knowing the trade-off.\n\n' "$SCORE_BEFORE" "$SCORE_AFTER" "$(cat /tmp/resume-new-findings.txt 2>/dev/null | neutralise || true)")
+            warning=$(printf '> ⚠️ **This update lowers the resume score from %s to %s.** An applicant tracking system would read it worse than the one live today. New findings:\n%s\n\nFix the data on this branch (or ask Claude to) before merging, or merge knowing the trade-off.\n\n' "$SCORE_BEFORE" "$SCORE_AFTER" "$(cat "$RUNNER_TEMP/change/resume-new-findings.txt" 2>/dev/null | neutralise || true)")
           fi
           # The hidden markers are read by the MCP server (site_update_status, merge_site_update, wait_for_site_update):
           # the score so Claude can warn Steven, and the request itself (title, instruction, proposals, the pull request
-          # this one supersedes; base64 of JSON so nothing in it can break the comment) so the update can be redone on a
-          # fresh branch when it conflicts and the proposals it carries are marked applied when it merges.
+          # this one supersedes, and for a write-up refresh the project and its commit; base64 of JSON so nothing in it
+          # can break the comment) so the update can be redone on a fresh branch when it conflicts and the proposals it
+          # carries are marked applied when it merges. Keep the keys in step with UpdateRequest in functions/_lib/github.ts.
           marker=""
-          if [ "$SCORE_AFTER" != unknown ] && [ -n "$SCORE_AFTER" ]; then marker="<!-- resume-score before=${SCORE_BEFORE:-unknown} after=$SCORE_AFTER -->"; fi
-          request=$(jq -cn --arg title "$TITLE" --arg instruction "$INSTRUCTION" --arg proposals "$PROPOSALS" --arg supersedes "$SUPERSEDES" \
-            '{title: $title, instruction: $instruction, proposals: ($proposals | split(",") | map(select(test("^[0-9]+$")) | tonumber)), supersedes: (if ($supersedes | test("^[0-9]+$")) then ($supersedes | tonumber) else null end)}' | base64 -w0)
+          if [ "$SCORE_AFTER" != unknown ]; then marker="<!-- resume-score before=$SCORE_BEFORE after=$SCORE_AFTER -->"; fi
+          request=$(jq -cn --arg title "$TITLE" --arg instruction "$INSTRUCTION" --arg proposals "$PROPOSALS" --arg supersedes "$SUPERSEDES" --arg project "$PROJECT" --arg sourceSha "$SOURCE_SHA" \
+            '{title: $title, instruction: $instruction, proposals: ($proposals | split(",") | map(select(test("^[0-9]+$")) | tonumber)), supersedes: (if ($supersedes | test("^[0-9]+$")) then ($supersedes | tonumber) else null end), project: (if $project == "" then null else $project end), sourceSha: (if $sourceSha == "" then null else $sourceSha end)}' | base64 -w0)
           proposals_line=""
           if [ -n "$proposals" ]; then proposals_line=$(printf '**Résumé proposals:** %s (marked applied in the MCP server when this merges)\n\n' "$(printf '%s' "$proposals" | sed 's/,/, #/g; s/^/#/')"); fi
-          body=$(printf '%s%s%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s\n%s' \
+          body=$(printf '%s%s%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n%s\n%s' \
             "$warning" "$proposals_line" \
             "**Instruction**" "$instruction" \
-            "**Resume score:** ${SCORE_LINE:-unknown} (the ATS score: 100 means an applicant tracking system parses every part of it; see scripts/resume-check.mjs)" \
+            "**Resume score:** $score_line (the ATS score: 100 means an applicant tracking system parses every part of it; see scripts/resume-check.mjs)" \
             "**Checks in this run:** $CHECKS (lint, tests, build). Preview, once the Deploy workflow for this branch finishes: https://$alias.stevenwilssens.pages.dev" \
+            "**Checks on this pull request:** \`gates\`, \`team\` and \`check\` start by themselves. If one has not started, ask Claude for \`merge_site_update\` with \`recheck: true\` (it closes and reopens this pull request, so they start)." \
             "$spec_line" \
             "Merging deploys to production. Review the resume PDF in the branch before merging." \
             "🤖 Generated with [Claude Code](https://claude.com/claude-code) from $origin." \
             "$marker" \
             "<!-- site-update-request $request -->")
           url=$(gh pr create --base main --head "$BRANCH" --title "$TITLE" --body "$body")
-          # A push made with the built-in token starts no workflow, so start the preview build explicitly.
-          gh workflow run deploy.yml --ref "$BRANCH"
-          # The same for the checks branch protection requires before the pull request can merge.
-          gh workflow run site-check.yml --ref "$BRANCH"
-          gh workflow run review.yml --ref "$BRANCH" -f pr="${url##*/}"
-          # A redo closes the pull request it replaces, with a pointer to the new one.
+          # A redo closes the pull request it replaces, with a pointer to the new one: only an open Site update pull
+          # request of this repository, opened by the site bot (or, before it, by the built-in token's bot). The
+          # number can come from a refresh's payload, which another repository sends: never any other pull request.
           if [ -n "$SUPERSEDES" ]; then
-            gh pr comment "$SUPERSEDES" --body "Superseded by $url: the same update, redone on a fresh branch from main." || true
-            gh pr close "$SUPERSEDES" --delete-branch || gh pr close "$SUPERSEDES" || true
+            old=$(gh pr view "$SUPERSEDES" --json state,isCrossRepository,headRefName,author -q '[.state, (.isCrossRepository|tostring), .headRefName, .author.login] | join(" ")' 2>/dev/null || echo '')
+            read -r old_state old_cross old_branch old_author <<< "$old"
+            if [ "$old_state" = OPEN ] && [ "$old_cross" = false ] && [[ "$old_branch" =~ ^update/[a-z0-9-]+-[0-9]+$ ]] && { [ "$old_author" = "app/$SLUG" ] || [ "$old_author" = app/github-actions ]; }; then
+              gh pr comment "$SUPERSEDES" --body "Superseded by $url: the same update, redone on a fresh branch from main." || true
+              gh pr close "$SUPERSEDES" --delete-branch || gh pr close "$SUPERSEDES" || true
+            else
+              echo "::warning::#$SUPERSEDES is not an open Site update pull request of the site bot ($old): it is left as it is."
+            fi
           fi
           echo "### Pull request: $url" >> "$GITHUB_STEP_SUMMARY"
           echo "Preview (a few minutes after the Deploy workflow for the branch finishes): https://$alias.stevenwilssens.pages.dev" >> "$GITHUB_STEP_SUMMARY"
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "number=${url##*/}" >> "$GITHUB_OUTPUT"
           echo "preview=https://$alias.stevenwilssens.pages.dev" >> "$GITHUB_OUTPUT"
-          if git diff --name-only origin/main...HEAD | grep -qE '^(public/steven-wilssens-resume-2026\.pdf|src/resume\.ts)$'; then echo "resume_changed=true" >> "$GITHUB_OUTPUT"; else echo "resume_changed=false" >> "$GITHUB_OUTPUT"; fi
+          if git diff --name-only "origin/main...refs/heads/$BRANCH" | grep -qE '^(public/steven-wilssens-resume-2026\.pdf|src/resume\.ts)$'; then echo "resume_changed=true" >> "$GITHUB_OUTPUT"; else echo "resume_changed=false" >> "$GITHUB_OUTPUT"; fi
 
-      # Steven asked to be told when the resume has been updated: here, when a pull request with a new resume is ready to review.
-      # scripts/resume-mail.mjs reads src/resume.ts on main and on the branch, has Claude say in plain words what is different
-      # (without the key it lists the changes itself), adds the score against main and the new findings, and sends the HTML email.
+  # The branch's résumé as data, in a job with no secret and nothing else in it: main's scripts/resume-data.mjs
+  # imports the branch's src/resume.ts (a file is executed when imported, so it never runs beside a secret, and
+  # never in the job that writes the base's data) and writes JSON for the email.
+  resume-data:
+    needs: [update, publish]
+    if: needs.publish.outputs.resume_changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          name: site-update-change
+          path: ${{ runner.temp }}/change
+      - name: Take the change from the update job
+        env:
+          BRANCH: ${{ needs.update.outputs.branch }}
+          BASE: ${{ needs.update.outputs.base }}
+        run: node scripts/site-update-bundle.mjs "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "$BASE" origin/main "$GITHUB_SHA"
+      - name: The résumé as data
+        env:
+          BRANCH: ${{ needs.update.outputs.branch }}
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/resume-data"
+          node scripts/resume-data.mjs "refs/heads/$BRANCH" "$RUNNER_TEMP/resume-data/after.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resume-data
+          path: ${{ runner.temp }}/resume-data
+          retention-days: 7
+          if-no-files-found: error
+
+  # Steven asked to be told when the resume has been updated: here, when a pull request with a new resume is ready to review.
+  # main's scripts/resume-mail.mjs takes the résumé before (main's history, made here) and after (from the resume-data
+  # job) as JSON (--no-import: it never imports a file from the branch), has Claude say in plain words what is different (without the key it lists the
+  # changes itself), adds the score against main and the new findings, and sends the HTML email. No bot token here.
+  email:
+    needs: [brief, update, publish, resume-data]
+    if: needs.publish.outputs.resume_changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      # main's lockfile: the email script's model client.
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          name: site-update-change
+          path: ${{ runner.temp }}/change
+      - uses: actions/download-artifact@v4
+        with:
+          name: resume-data
+          path: ${{ runner.temp }}/resume-data
+      # git only: the branch's commits, so the email can say which files changed; nothing from it runs.
+      - name: Take the change from the update job
+        env:
+          BRANCH: ${{ needs.update.outputs.branch }}
+          BASE: ${{ needs.update.outputs.base }}
+        run: node scripts/site-update-bundle.mjs "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "$BASE" origin/main "$GITHUB_SHA"
+      # The résumé at the base: a commit of main's history, so main's own data; no secret in this step.
+      - name: The résumé at the base, as data
+        env:
+          BASE: ${{ needs.update.outputs.base }}
+        run: mkdir -p "$RUNNER_TEMP/resume-base" && node scripts/resume-data.mjs "$BASE" "$RUNNER_TEMP/resume-base/before.json"
       - name: Email Steven that the resume is ready to review
-        if: steps.pr.outputs.resume_changed == 'true'
-        continue-on-error: true
         env:
           MAIL_APP_PASSWORD: ${{ secrets.MAIL_APP_PASSWORD }}
           MAIL_SMTP_HOST: ${{ vars.MAIL_SMTP_HOST }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
-          PR_URL: ${{ steps.pr.outputs.url }}
-          PREVIEW: ${{ steps.pr.outputs.preview }}
+          PR_URL: ${{ needs.publish.outputs.url }}
+          PREVIEW: ${{ needs.publish.outputs.preview }}
           TITLE: ${{ needs.brief.outputs.title }}
           INSTRUCTION: ${{ needs.brief.outputs.instruction }}
-        run: node scripts/resume-mail.mjs review --before origin/main --after HEAD --report /tmp/resume-after.json --new-findings /tmp/resume-new-findings.txt --title "$TITLE" --instruction "$INSTRUCTION" --pr "$PR_URL" --preview "$PREVIEW" --run-url "https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          BRANCH: ${{ needs.update.outputs.branch }}
+          BASE: ${{ needs.update.outputs.base }}
+        run: node scripts/resume-mail.mjs review --before "$BASE" --after "refs/heads/$BRANCH" --resume-json "$BASE=$RUNNER_TEMP/resume-base/before.json" --resume-json "refs/heads/$BRANCH=$RUNNER_TEMP/resume-data/after.json" --no-import --report "$RUNNER_TEMP/change/resume-after.json" --new-findings "$RUNNER_TEMP/change/resume-new-findings.txt" --title "$TITLE" --instruction "$INSTRUCTION" --pr "$PR_URL" --preview "$PREVIEW" --run-url "https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
   # Posts what the Claude run cost to /admin#costs (specs/dev-costs.md). Its own job on a fresh runner, after
   # the job that ran the code under review is gone: no checkout, no npm, no action, nothing but the runner's
@@ -442,7 +674,7 @@ jobs:
   # reaches the script through env and is checked again; the body is built by jq; any problem is one
   # warning and the run still passes.
   costs:
-    needs: update
+    needs: [update, publish]
     if: always() && needs.update.result != 'skipped'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -464,7 +696,8 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
           BRANCH: ${{ needs.update.outputs.branch }}
-          PR: ${{ needs.update.outputs.pr }}
+          # The publish job's pull request, when it opened one: advisory (the costs page asks GitHub for the pull request).
+          PR: ${{ needs.publish.outputs.number }}
         run: |
           warn() { echo "::warning::This run's cost is not recorded: $1"; exit 0; }
           [[ ( "$MICRO" =~ ^(0|[1-9][0-9]{0,8})$ || "$MICRO" = 1000000000 ) && "$TURNS" =~ ^(0|[1-9][0-9]{0,8})$ && "$DURATION" =~ ^(0|[1-9][0-9]{0,8})$ ]] || warn "the Claude step reported no cost (cancelled, timed out or skipped)."

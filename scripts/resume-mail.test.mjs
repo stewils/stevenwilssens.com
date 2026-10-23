@@ -169,6 +169,14 @@ describe('scoreOf', () => {
     expect(scoreOf({ score: 90, pages: 2, findings: [{ severity: 'warn' }, { severity: 'info' }], baseline: null })).toMatchObject({ verdict: 'unknown', before: null, warnings: 1, errors: 0 })
     expect(scoreOf(null)).toBeNull()
   })
+
+  it('lets only whole numbers through: a report a branch wrote cannot put markup into the email', () => {
+    const hostile = '<img src=x onerror=alert(1)>'
+    expect(scoreOf({ score: hostile })).toBeNull()
+    expect(scoreOf({ score: 84.5 })).toBeNull()
+    expect(scoreOf({ score: 84, pages: hostile, warnings: hostile, errors: hostile, ats: { warnings: hostile }, findings: 'x', baseline: { score: hostile } })).toEqual({ score: 84, before: null, verdict: 'unknown', lower: false, pages: null, warnings: null, errors: null })
+    expect(scoreOf({ score: 84, ats: { warnings: 2, errors: 1 } })).toMatchObject({ warnings: 2, errors: 1 })
+  })
 })
 
 describe('renderEmail', () => {

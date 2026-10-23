@@ -15,6 +15,9 @@ import {
 } from './team-manifest.mjs'
 
 const repoRoot = resolve(import.meta.dirname, '..')
+// The rules as this commit has them. The Review workflow puts main's CLAUDE.md and .claude/ on the disk before
+// its team job (the rules it reviews by), so the tests of this change's rules read them through git.
+const committed = (path) => execFileSync('git', ['show', `HEAD:${path}`], { cwd: repoRoot, encoding: 'utf8' })
 const SLOW = 120_000
 const made = []
 afterAll(() => { for (const dir of made) rmSync(dir, { recursive: true, force: true }) })
@@ -91,7 +94,7 @@ jobs:
     steps:
       - name: Panel reviews
 `
-const siteUpdate = ({ team = 'Draft first.', other = 'echo mail', name = 'Let Claude make the change' } = {}) => `name: Site update
+const siteUpdate = ({ team = 'Draft first.', other = 'echo mail', name = 'Let Claude make the change', open = null } = {}) => `name: Site update
 jobs:
   update:
     steps:
@@ -109,7 +112,11 @@ jobs:
       # The next step
       - name: Email Steven
         run: ${other}
-`
+${open === null ? '' : `      - name: Open the pull request
+        # The change becomes
+        # a pull request.
+        run: ${open}
+`}`
 const RULES = (rules = 'Every change goes through the editors.') => `# Site\n\n## Facts\n\nOne source.\n\n## The team\n\n${rules}\n\nA reply never clears a stop.\n\n## The admin\n\nTiles.\n`
 const BASE = {
   'CLAUDE.md': RULES(),
@@ -210,7 +217,7 @@ describe('the manifest of a fixture repository', () => {
       scripts: ['functions/_lib/review/recruiter.ts', 'scripts/recruiter-check.mjs'],
       protection: 'proof and panel pass; branch protection on main requires proof and panel.',
     })
-    expect(m.sections.siteUpdate).toEqual({ file: '.github/workflows/site-update.yml', steps: [{ name: 'Let Claude make the change', lines: ['Draft first.', 'Then build specs/<slug>.md on <branch>.'], tools: ['Read', 'Edit', 'Bash(npm run *)'] }] })
+    expect(m.sections.siteUpdate).toEqual({ file: '.github/workflows/site-update.yml', steps: [{ name: 'Let Claude make the change', description: '', lines: ['Draft first.', 'Then build specs/<slug>.md on <branch>.'], tools: ['Read', 'Edit', 'Bash(npm run *)'] }] })
     expect(m.sections.rules).toEqual({ file: 'CLAUDE.md', heading: 'The team', paragraphs: ['Every change goes through the editors.', 'A reply never clears a stop.'] })
   })
 
@@ -340,7 +347,7 @@ describe('a part that cannot be read never fails the build (AC-5)', () => {
     r.commit({ '.github/workflows/site-update.yml': siteUpdate({ other: 'echo mail, again', name: 'Let the agent work' }) }, 'Renamed the step')
     const m = generate({ root: r.dir })
     expect(m.sections.siteUpdate).toEqual({ unreadable: '.github/workflows/site-update.yml' })
-    expect(m.problems.map((p) => p.message)).toEqual(['no step named "Let Claude make the change": every change to the file now counts as a team change'])
+    expect(m.problems.map((p) => p.message)).toEqual(['no step named "Let Claude make the change", "Open the pull request": every change to the file now counts as a team change'])
     expect(m.history.updates.map((update) => update.summary)).toEqual(['Renamed the step', 'Only the email step', 'Base'])
   }, SLOW)
 
@@ -400,6 +407,16 @@ describe('the history (AC-6, AC-7)', () => {
     r.commit({ '.github/workflows/site-update.yml': siteUpdate({ team: 'Spec first, always.', other: 'echo a third mail' }) }, 'In both')
     const m = generate({ root: r.dir })
     expect(m.history.updates.map((update) => [update.summary, update.sections])).toEqual([['In both', ['siteUpdate']], ['Inside the team step', ['siteUpdate']], ['Base', ['flow', 'roles', 'checks', 'commands', 'siteUpdate', 'rules']]])
+  }, SLOW)
+
+  it('counts a change to how the pull request is opened, and not one to another step (AC-14)', () => {
+    const r = repo()
+    r.commit({ ...BASE, '.github/workflows/site-update.yml': siteUpdate({ open: 'gh pr create' }) }, 'Base')
+    r.commit({ '.github/workflows/site-update.yml': siteUpdate({ open: 'gh pr create --draft' }) }, 'How the pull request opens')
+    r.commit({ '.github/workflows/site-update.yml': siteUpdate({ open: 'gh pr create --draft', other: 'echo another mail' }) }, 'Another step')
+    const m = generate({ root: r.dir })
+    expect(m.history.updates.map((update) => [update.summary, update.sections])).toEqual([['How the pull request opens', ['siteUpdate']], ['Base', ['flow', 'roles', 'checks', 'commands', 'siteUpdate', 'rules']]])
+    expect(m.sections.siteUpdate.steps.map((step) => [step.name, step.description])).toEqual([['Let Claude make the change', ''], ['Open the pull request', 'The change becomes a pull request.']])
   }, SLOW)
 
   it('counts a CLAUDE.md change only when its "The team" section changed', () => {
@@ -852,6 +869,44 @@ describe('this repository', () => {
     expect(manifest.sections.rules.paragraphs.length).toBeGreaterThan(0)
     expect(JSON.stringify(manifest).length).toBeLessThan(256 * 1024)
   }, SLOW)
+
+  it('draws step 8 as the pull request with its three required checks, still 10 nodes, the gates and Steven where they were (specs/mcp-prs-flow.md, AC-11)', () => {
+    const team = committed('.claude/team.md').replace(/\r\n/g, '\n')
+    expect(team).toContain("  subgraph pr [Pull request: its required checks start on it]\n    prGates[gates: main's checkers]\n    prTeam[team: six reviews, with the assistant check in CI]\n    prCheck[check: site checks]\n  end\n")
+    for (const line of ['  class ask,steven1,merge you', '  class spec,reviews,pr gate', '  %% step 8: pr', '  %% step 9: merge', '  pr --> merge([Steven merges]) --> deploy[Deploy to steven.wilssens.com]']) expect(team).toContain(line)
+    const chart = /```mermaid\n([\s\S]*?)```/.exec(team)[1]
+    // No auto-merge or redo edge in the flow (they come with mcp-prs-automation); the costs text may say "redone".
+    expect(chart).not.toMatch(/auto-?merge|merges by itself|redo/i)
+    expect(team).not.toMatch(/auto-?merge|merges by itself/i)
+    const members = chart.slice(chart.indexOf('subgraph pr '), chart.indexOf('  end\n', chart.indexOf('subgraph pr ')))
+    for (const label of members.matchAll(/\[([^\]]*)\]/g)) expect(label[1], 'no bracket or parenthesis inside a label').not.toMatch(/[[\]()]/)
+    const manifest = generate({ root: repoRoot })
+    expect(manifest.flow.diagram.nodes).toHaveLength(10)
+    const pr = manifest.flow.diagram.nodes.find((node) => node.id === 'pr')
+    expect(pr).toMatchObject({ label: 'Pull request: its required checks start on it', shape: 'group', gate: true, steps: [8], members: [{ label: "gates: main's checkers", via: null }, { label: 'team: six reviews, with the assistant check in CI', via: null }, { label: 'check: site checks', via: null }] })
+    expect(manifest.flow.diagram.nodes.find((node) => node.id === 'merge')).toMatchObject({ lane: 'you', steps: [9] })
+    const step8 = JSON.stringify(manifest.flow.steps.find((step) => step.n === 8)).replace(/\s+/g, ' ')
+    for (const words of ['job opens the pull request', "site's App", 'start Review, Site checks and Deploy on the pull request', 'assistant check in CI', 'recheck: true']) expect(step8, words).toContain(words)
+    expect(team).toContain('9. **Merge**: only when every sign-off is `APPROVE`, CI is green and Steven says so.')
+  }, SLOW)
+
+  it('CLAUDE.md says who opens Site update pull requests and what that changes (AC-13)', () => {
+    const claude = committed('CLAUDE.md').replace(/\r\n/g, '\n')
+    const rules = cutSection(claude, 'The team').replace(/\s+/g, ' ')
+    for (const words of ["pushed and opened by the site's GitHub App", 'runs no branch code', 'the required checks start on the pull request', 'read-only token', 'nothing the App or a workflow writes counts as his', 'assistant check', 'recheck: true', 'Merging stays his']) expect(rules, words).toContain(words)
+    const mcp = cutSection(claude, 'The MCP server').replace(/\s+/g, ' ')
+    for (const words of ['recheck', '`project`', '`sourceSha`']) expect(mcp, words).toContain(words)
+  })
+
+  it('lists the assistant check harness as a checker, which the write-up also watches (AC-14)', () => {
+    expect(entryFor('scripts/assistant-check.mjs')).toMatchObject({ section: 'checks' })
+    const notify = readFileSync(join(repoRoot, '.github/workflows/building-notify.yml'), 'utf8')
+    const paths = JSON.parse(/paths: (\[.*\])/.exec(notify)[1].replace(/'/g, '"'))
+    expect(paths.some((glob) => globToRegExp(glob).test('scripts/assistant-check.mjs'))).toBe(true)
+    const sources = JSON.parse(readFileSync(join(repoRoot, 'src/articles/sources.json'), 'utf8'))
+    expect(sources.site.sources).toContain('scripts/assistant-check.mjs')
+    expect(ORCHESTRATION.find((entry) => entry.glob === '.github/workflows/site-update.yml').steps).toEqual(['Let Claude make the change', 'Open the pull request'])
+  })
 
   it('types no role name, job name or bar into src/admin (AC-2)', () => {
     const agents = readdirSync(join(repoRoot, '.claude/agents')).map((file) => frontmatter(readFileSync(join(repoRoot, '.claude/agents', file), 'utf8')).fields.name)

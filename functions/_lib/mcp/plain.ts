@@ -78,6 +78,8 @@ export const say = {
   notCarriedOut: (name: string) => `I couldn't make ${yours(name)}, so nothing on your site changed. Want me to try again?`,
   notFound: (name: string) => `${Yours(name)} is done, but I can't find it to show you yet. Let me look.`,
   failed: (name: string) => `Something went wrong while making ${yours(name)}, and nothing on your site changed. Want me to try again?`,
+  // merge_site_update with recheck: the update's checks start again; nothing goes live.
+  rechecking: (name: string) => `I've started the team's checks on ${yours(name)} again. They take a while; I'll tell you when it can go live.`,
   live: (name: string, applied: number) => `${Yours(name)} is going live on your site; it shows within a few minutes.${applied ? ` ${applied === 1 ? 'The change you approved is' : `The ${applied} changes you approved are`} now marked done.` : ''}`,
   notLiveYet: (name: string) => `${Yours(name)} didn't go live yet; I'll try again in a moment.`,
   changedSince: (name: string, preview: string) => `${Yours(name)} changed after you looked at it, so I didn't put it live. Have a look at the newer version first. Preview: ${preview}`,

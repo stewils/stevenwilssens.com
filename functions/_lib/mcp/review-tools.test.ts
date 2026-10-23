@@ -47,6 +47,10 @@ const fakeGitHub = (options: { mergeError?: string } = {}): Fake => {
     checks: async () => null,
     teamReview: async () => null,
     mergedPulls: async () => 5,
+    status: async () => { throw new Error('not used') },
+    reopen: async () => undefined,
+    repositoryDispatch: async () => undefined,
+    headOf: async () => null,
   }
   return { github, calls, runs, pulls }
 }
