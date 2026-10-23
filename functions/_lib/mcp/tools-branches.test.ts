@@ -31,7 +31,7 @@ const call = async (store: MemoryStore, name: string, args: Record<string, unkno
 // A fixture's title reads like a real one: "Summary line M", never a number.
 const letter = (n: number) => String.fromCharCode(65 + (n % 26))
 const pull = (number: number, extra: Partial<PullRequest> = {}, body = ''): PullRequest => ({
-  number, title: `Summary line ${letter(number)}`, url: `https://github.com/x/pull/${number}`, branch: `update/pr-${number}`, headRepo: 'stewils/stevenwilssens.com', draft: false, state: 'open', merged: false, createdAt: '2026-10-17T00:00:00Z',
+  number, title: `Summary line ${letter(number)}`, url: `https://github.com/x/pull/${number}`, branch: `update/pr-${number}`, headRepo: 'stewils/stevenwilssens.com', draft: false, state: 'open', merged: false, mergeCommit: null, createdAt: '2026-10-17T00:00:00Z',
   previewUrl: previewUrl(`update/pr-${number}`), headSha: `sha-${number}`, mergeable: true, mergeableState: 'clean', resumeScore: resumeScoreFromBody(body), request: updateRequestFromBody(body), ...extra,
 })
 // Like GitHub: a dispatched run's branch is main, and its number ends the branch it pushes (update/<slug>-<number>).
@@ -55,6 +55,7 @@ const fakeGitHub = (options: Options = {}) => {
     checks: async (sha) => { if (options.checks === 'error') throw new Error('GitHub 502 on /commits'); return options.checks?.[sha] ?? null },
     teamReview: async () => options.teamReview ?? null,
     mergedPulls: async () => 0,
+    allPulls: async () => pulls,
   }
   return { github, calls, runs, pulls }
 }

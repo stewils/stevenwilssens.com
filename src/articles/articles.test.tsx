@@ -74,6 +74,11 @@ describe('the Building write-ups', () => {
     }
   })
 
+  it('keeps development costs out of this site’s feed: the same four numbers, no cost figure', () => {
+    expect(Object.keys(siteFeed.numbers).sort()).toEqual(['countries', 'proposalsApproved', 'pullRequestsMerged', 'vitalsGoodPercent'])
+    expect(JSON.stringify(siteFeed)).not.toMatch(/cost|budget|token|usd/i)
+  })
+
   it('lists every project the refresh loop watches', () => {
     expect(Object.keys(sources).filter((key) => !key.startsWith('_'))).toEqual(['wilssens', 'aibreaker', 'site', 'juniortrackcycling', 'leo'])
   })
@@ -198,6 +203,39 @@ describe('the team diagram on /building-this-site', () => {
     expect(images).toHaveLength(2)
     // It fits a phone without swiping, so its caption drops the swipe hint.
     expect(images[0].closest('figure')).toHaveClass('wx-diagram--fits')
+  })
+
+  it('says the loop is metered per change, with a budget, in one sentence without a number, a price or "every"', () => {
+    render(<SiteArticle />)
+    const step = within(document.getElementById('loop')!.closest('section')!).getByText('Put every change past a team.').closest('li')!
+    const sentence = step.textContent!.match(/[^.]*metered[^.]*\./)![0].trim()
+    expect(sentence).toBe('The agents’ runs, on GitHub and in my own Claude Code sessions, are metered against the change they belong to, and in my sessions against the role that ran them; a change can have a budget, and the rounds that had to be redone are counted, so I can see which kind of change is worth the full team.')
+    expect(sentence).not.toMatch(/\d|\$|\bevery\b|\ball\b|monthly/i)
+    // The role is claimed only for Steven's own sessions: GitHub runs are not split by role.
+    expect(sentence).toMatch(/in my sessions against the role/)
+    expect(sentence.match(/role/g)).toHaveLength(1)
+  })
+
+  it('draws the metered layer in both drawings, inside the picture, with the same words in the description', () => {
+    render(<TeamFlowDiagram />)
+    const [wide, tall] = screen.getAllByRole('img', { name: /a team of AI agents, and Steven deciding/ })
+    const label = 'Metered: runs count against their change, and a change can have a budget'
+    expect(within(wide).getByText(label)).toBeInTheDocument()
+    expect([...tall.querySelectorAll('text')].map((text) => text.textContent).join(' ')).toContain(label)
+    for (const image of [wide, tall]) {
+      // The description speaks of Steven in the third person throughout, the metered sentence included.
+      expect(image).toHaveAccessibleDescription(/The agents’ runs, on GitHub and in Steven’s own Claude Code sessions, are metered against the change they belong to, and in his sessions against the role that ran them; a change can have a budget, and the rounds that had to be redone are counted, so he can see which kind of change is worth the full team\.$/)
+      expect(image.querySelector('desc')!.textContent).not.toMatch(/\b(my|I|me)\b/)
+      const height = Number(image.getAttribute('viewBox')!.split(' ')[3])
+      const texts = [...image.querySelectorAll('text')].map((text) => Number(text.getAttribute('y')))
+      const rects = [...image.querySelectorAll('rect')].map((rect) => Number(rect.getAttribute('y')) + Number(rect.getAttribute('height')))
+      expect(Math.max(...texts, ...rects)).toBeLessThanOrEqual(height)
+      expect([...image.querySelectorAll('text')].filter((text) => /Metered|budget/.test(text.textContent!)).every((text) => !/\d/.test(text.textContent!))).toBe(true)
+    }
+    // On a phone the label breaks after the comma, each line within 44 characters.
+    const lines = [...tall.querySelectorAll('text')].map((text) => text.textContent!).filter((text) => /Metered|can have a budget/.test(text))
+    expect(lines).toEqual(['Metered: runs count against their change,', 'and a change can have a budget'])
+    expect(lines.every((line) => line.length <= 44)).toBe(true)
   })
 
   it('says that changes to the team reach Steven in his admin as unread updates, with no number typed in', () => {

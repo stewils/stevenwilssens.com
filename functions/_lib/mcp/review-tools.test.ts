@@ -13,7 +13,7 @@ const pages: Record<string, string> = { '/index.md': '# Steven Wilssens\n\nPrinc
 const now = Date.UTC(2026, 9, 17)
 
 const pull = (number: number, title: string, branch: string, body: string, extra: Partial<PullRequest> = {}): PullRequest => ({
-  number, title, url: `https://github.com/x/pull/${number}`, branch, headRepo: 'stewils/stevenwilssens.com', draft: false, state: 'open', merged: false, createdAt: '2026-10-17T00:00:00Z', previewUrl: previewUrl(branch), headSha: `sha-${number}`,
+  number, title, url: `https://github.com/x/pull/${number}`, branch, headRepo: 'stewils/stevenwilssens.com', draft: false, state: 'open', merged: false, mergeCommit: null, createdAt: '2026-10-17T00:00:00Z', previewUrl: previewUrl(branch), headSha: `sha-${number}`,
   mergeable: true, mergeableState: 'clean', resumeScore: resumeScoreFromBody(body), request: updateRequestFromBody(body), ...extra,
 })
 const pullSeven = pull(7, 'Team size', 'update/team-size-1', '**Instruction**\n\nSay the team was 10 to 20 PMs.\n\n**Resume score:** 90 → 90, unchanged\n<!-- resume-score before=90 after=90 -->')
@@ -41,6 +41,7 @@ const fakeGitHub = (options: { mergeError?: string } = {}): Fake => {
     runFailure: async () => null,
     pulls: async (state = 'open', limit = 20) => pulls.filter((item) => state === 'all' || item.state === state).slice(0, limit),
     pull: async (number) => pulls.find((item) => item.number === number) ?? null,
+    allPulls: async () => pulls,
     merge: async (number) => { if (options.mergeError) throw new Error(options.mergeError); calls.merged.push(number); return { merged: true, message: 'Pull Request successfully merged', sha: 'abc' } },
     close: async (number, comment) => { calls.closed.push({ number, comment }); const item = pulls.find((p) => p.number === number)!; item.state = 'closed'; return { closed: true, branchDeleted: true } },
     checks: async () => null,
