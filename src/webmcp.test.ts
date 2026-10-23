@@ -59,8 +59,11 @@ describe('WebMCP', () => {
     expect(about.headline).toBe(profile.headline)
     expect(about.lookingFor).toBe(profile.lookingFor)
     expect(about.workAuthorization).toBe(profile.workAuthorization)
-    expect(about.location).toBe('Seattle, Washington')
-    expect(about.workArrangement).toBe('Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.')
+    expect(about).toMatchObject({ citizenship: profile.citizenship, availability: profile.availability, workArrangement: profile.workArrangement, travel: profile.travel, employers: profile.employers, relocation: profile.relocation })
+    // The logistics in one order everywhere: where, allowed to work, when, how, how far he goes, for whom, would he move.
+    const keys = Object.keys(about)
+    expect(keys.slice(keys.indexOf('location'), keys.indexOf('relocation') + 1)).toEqual(['location', 'workAuthorization', 'citizenship', 'availability', 'workArrangement', 'travel', 'employers', 'relocation'])
+    expect(tool('about_steven').description).toMatch(/work authorization, citizenship, availability, work arrangement, travel, employers and relocation/)
     expect(about.contact).toEqual({ email: profile.email, linkedin: profile.linkedin, site: profile.site, resumePdf: `https://steven.wilssens.com${profile.resumePdf}` })
     expect(about.roles.map((role: { key: string }) => role.key)).toEqual(experiences.map((item) => item.key))
     expect(about.keyNumbers[0]).toEqual({ value: '250%+', label: 'growth in monthly active spatial-audio devices', backedByRole: 'spatial-audio-lead' })

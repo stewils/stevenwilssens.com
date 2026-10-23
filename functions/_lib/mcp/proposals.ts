@@ -27,7 +27,7 @@ export const achievementOf = (item: Impact): Achievement => ({ value: item.value
 const sameAchievement = (a: Achievement, b: Achievement) => a.value === b.value && a.label === b.label
 
 // The résumé data a proposal is checked against; the deployed src/resume.ts by default, anything in tests.
-export type ResumeData = { experiences: typeof experiences; profile: { resumeHeadline: string; headline: string; summary: string; location: string; workAuthorization: string; availability: string }; skills: readonly string[]; education: typeof education; impact: Impact[]; about: About; selectedWork: readonly Work[]; honors: readonly string[][] }
+export type ResumeData = { experiences: typeof experiences; profile: { resumeHeadline: string; headline: string; summary: string; location: string; workAuthorization: string; citizenship: string; availability: string; workArrangement: string; travel: string; employers: string; relocation: string }; skills: readonly string[]; education: typeof education; impact: Impact[]; about: About; selectedWork: readonly Work[]; honors: readonly string[][] }
 export const liveResume = (): ResumeData => ({ experiences, profile, skills, education, impact, about, selectedWork, honors })
 
 // Whitespace, curly quotes and long dashes do not make a different wording.

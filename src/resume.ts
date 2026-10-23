@@ -116,9 +116,16 @@ export const profile = {
   summary: 'Product leader with nearly 20 years at Microsoft, inventing products in areas I was new to: spatial audio for Windows and Xbox, the low-latency approach behind xCloud game streaming, casting, and the data and experimentation systems that decide what ships on more than 1.6 billion Windows devices. Co-inventor on 19 granted US patents spanning spatial audio, game streaming, casting and device telemetry. I lead teams of 10 to 20 product managers, use data, experimentation and AI to find what works, and keep building products myself.',
   lookingFor: 'Product leadership roles building new products, where data, experimentation and AI are tools rather than the job',
   location: 'Seattle, Washington',
-  workArrangement: 'Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.',
   workAuthorization: 'US permanent resident (green card)',
+  citizenship: 'Belgian citizen (EU)',
   availability: 'Available now',
+  // How he works, for whom and whether he would move, each its own field next to when (availability): Steven's words, 2026-10-22;
+  // employers as he reworded it later that day (remote for an employer abroad, in its working hours; still not relocating).
+  workArrangement: 'Hybrid or remote, across time zones',
+  employers: 'Open to remote roles with employers outside the US, in their working hours',
+  relocation: 'Not relocating',
+  // Travel in Steven's words from PR #80, kept on 2026-10-22 as its own field: no frequency, no percentage.
+  travel: 'Open to coordinated travel',
   teamSize: '10 to 20 product managers',
   email: 'steven@wilssens.com',
   phone: '425.533.7722',

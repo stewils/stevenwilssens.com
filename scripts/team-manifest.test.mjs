@@ -872,7 +872,7 @@ describe('this repository', () => {
 
   it('draws step 8 as the pull request with its three required checks, still 10 nodes, the gates and Steven where they were (specs/mcp-prs-flow.md, AC-11)', () => {
     const team = committed('.claude/team.md').replace(/\r\n/g, '\n')
-    expect(team).toContain("  subgraph pr [Pull request: its required checks start on it]\n    prGates[gates: main's checkers]\n    prTeam[team: six reviews, with the assistant check in CI]\n    prCheck[check: site checks]\n  end\n")
+    expect(team).toContain("  subgraph pr [Pull request: a draft until ready, then its required checks start on it]\n    prGates[gates: main's checkers]\n    prTeam[team: the panel the roster picks, approvals carried over, the assistant check in CI]\n    prCheck[check: site checks]\n  end\n")
     for (const line of ['  class ask,steven1,merge you', '  class spec,reviews,pr gate', '  %% step 8: pr', '  %% step 9: merge', '  pr --> merge([Steven merges]) --> deploy[Deploy to steven.wilssens.com]']) expect(team).toContain(line)
     const chart = /```mermaid\n([\s\S]*?)```/.exec(team)[1]
     // No auto-merge or redo edge in the flow (they come with mcp-prs-automation); the costs text may say "redone".
@@ -883,7 +883,7 @@ describe('this repository', () => {
     const manifest = generate({ root: repoRoot })
     expect(manifest.flow.diagram.nodes).toHaveLength(10)
     const pr = manifest.flow.diagram.nodes.find((node) => node.id === 'pr')
-    expect(pr).toMatchObject({ label: 'Pull request: its required checks start on it', shape: 'group', gate: true, steps: [8], members: [{ label: "gates: main's checkers", via: null }, { label: 'team: six reviews, with the assistant check in CI', via: null }, { label: 'check: site checks', via: null }] })
+    expect(pr).toMatchObject({ label: 'Pull request: a draft until ready, then its required checks start on it', shape: 'group', gate: true, steps: [8], members: [{ label: "gates: main's checkers", via: null }, { label: 'team: the panel the roster picks, approvals carried over, the assistant check in CI', via: null }, { label: 'check: site checks', via: null }] })
     expect(manifest.flow.diagram.nodes.find((node) => node.id === 'merge')).toMatchObject({ lane: 'you', steps: [9] })
     const step8 = JSON.stringify(manifest.flow.steps.find((step) => step.n === 8)).replace(/\s+/g, ' ')
     for (const words of ['job opens the pull request', "site's App", 'start Review, Site checks and Deploy on the pull request', 'assistant check in CI', 'recheck: true']) expect(step8, words).toContain(words)
@@ -923,8 +923,9 @@ describe('this repository', () => {
     expect(entryFor('functions/_lib/site-update/app.test.ts')).toBeNull()
     expect(AUDITED).toContain('functions/_lib/site-update/**')
     const notify = readFileSync(join(repoRoot, '.github/workflows/building-notify.yml'), 'utf8')
-    const paths = JSON.parse(/paths: (\[.*\])/.exec(notify)[1].replace(/'/g, '"'))
-    expect(paths.some((glob) => globToRegExp(glob).test('functions/_lib/site-update/app.ts'))).toBe(true)
+    // The daily refresh's sources: a bash array of paths (a folder covers what is in it) and ':(glob)' pathspecs.
+    const paths = /^ *paths=\((.*)\)$/m.exec(notify)[1].split(/\s+/)
+    expect(paths).toContain('functions/_lib/site-update')
     const sources = JSON.parse(readFileSync(join(repoRoot, 'src/articles/sources.json'), 'utf8'))
     expect(sources.site.sources).toContain('functions/_lib/site-update')
   })
@@ -932,7 +933,8 @@ describe('this repository', () => {
   it('lists the assistant check harness as a checker, which the write-up also watches (AC-14)', () => {
     expect(entryFor('scripts/assistant-check.mjs')).toMatchObject({ section: 'checks' })
     const notify = readFileSync(join(repoRoot, '.github/workflows/building-notify.yml'), 'utf8')
-    const paths = JSON.parse(/paths: (\[.*\])/.exec(notify)[1].replace(/'/g, '"'))
+    // The daily refresh's sources: a bash array of paths and ':(glob)' pathspecs.
+    const paths = /^ *paths=\((.*)\)$/m.exec(notify)[1].split(/\s+/).map((path) => path.replace(/^'|'$/g, '').replace(/^:\(glob\)/, ''))
     expect(paths.some((glob) => globToRegExp(glob).test('scripts/assistant-check.mjs'))).toBe(true)
     const sources = JSON.parse(readFileSync(join(repoRoot, 'src/articles/sources.json'), 'utf8'))
     expect(sources.site.sources).toContain('scripts/assistant-check.mjs')

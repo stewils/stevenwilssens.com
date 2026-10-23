@@ -1166,6 +1166,9 @@ describe('the About page', () => {
     await store.decideProposal(waiting.id, 'approved', null, 2)
     const publicResume = await call(store, 'get_resume', {}, { mode: 'public' })
     expect(Object.keys(publicResume.json!)).toEqual(['headline', 'summary', 'profile', 'keyAchievements', 'skills', 'roles', 'selectedWork', 'education', 'languages', 'honors', 'pdf', 'pages', 'note'])
+    const { lookingFor, location, workAuthorization, citizenship, availability, workArrangement, travel, employers, relocation, teamSize } = profile
+    expect(publicResume.json!.profile).toEqual({ lookingFor, location, workAuthorization, citizenship, availability, workArrangement, travel, employers, relocation, teamSize })
+    expect(Object.keys(publicResume.json!.profile as object)).toEqual(['lookingFor', 'location', 'workAuthorization', 'citizenship', 'availability', 'workArrangement', 'travel', 'employers', 'relocation', 'teamSize'])
     expect(publicResume.text).not.toContain('A secret new intro.')
     const ownerResume = await call(store, 'get_resume')
     expect(ownerResume.json!.about).toEqual({ intro: about.intro, paragraphs: about.paragraphs })
@@ -1334,7 +1337,7 @@ describe('the interview no longer asks what the résumé answers (AC-16)', () =>
     const angles = recruiterLens('general').angles.join(' ')
     expect(angles).not.toMatch(/remote|hybrid|relocat/i)
     expect(angles).toMatch(/Start date and compensation expectations/)
-    expect(profile.workArrangement).toMatch(/remote or hybrid/)
+    expect(profile.workArrangement).toMatch(/remote/i)
   })
 })
 

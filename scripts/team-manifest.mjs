@@ -34,6 +34,8 @@ export const ORCHESTRATION = [
   { glob: 'scripts/assistant-check.mjs', section: 'checks' },
   { glob: 'scripts/recruiter-compare.mjs', section: 'checks' },
   { glob: 'scripts/resume-gate.mjs', section: 'checks' },
+  // Who reviews a pull request, and whose approval carries over (the Review workflow's roster job).
+  { glob: 'scripts/review-roster.mjs', section: 'checks' },
   { glob: 'functions/_lib/review/**', exclude: '**/*.test.*', section: 'checks' },
   // What the site's App made, and only that: the rule the automations of specs/mcp-prs-automation.md trust.
   { glob: 'functions/_lib/site-update/**', exclude: '**/*.test.*', section: 'checks' },

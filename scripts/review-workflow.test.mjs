@@ -216,7 +216,7 @@ describe('the assistant check (AC-9)', () => {
   })
 
   it('team still runs when the assistant check failed or was skipped, and then reads "did not run"', () => {
-    expect(team).toMatch(/^ {4}needs: \[gates, assistant-input, assistant\]\n(?: {4}#.*\n)* {4}if: \$\{\{ !cancelled\(\) && needs\.gates\.result == 'success' \}\}$/m)
+    expect(team).toMatch(/^ {4}needs: \[gates, assistant-input, assistant, roster\]\n(?: {4}#.*\n)* {4}if: \$\{\{ !cancelled\(\) && needs\.gates\.result == 'success' && github\.event\.pull_request\.draft != true \}\}$/m)
     const notRun = stepOf(team, 'Say when the assistant check did not run')
     expect(notRun).toContain('Result: did not run (its input job ended with')
     expect(notRun).toContain('Result: did not run (the check job ended with')
@@ -284,3 +284,99 @@ describe("the team-verdicts marker as the workflow's jq writes it (m-8)", () => 
     }
   })
 })
+
+describe('the panel: only the reviewers whose part changed, never on a draft', () => {
+  const roster = jobOf('roster')
+
+  it('decides in a job of its own that runs nothing from the pull request, with main\'s copy of the script', () => {
+    expect(roster).toMatch(/^ {4}if: github\.event\.pull_request\.draft != true$/m)
+    expect(roster).not.toMatch(/npm (ci|run|test)|npx /)
+    expect(roster).toContain('git show origin/main:scripts/review-roster.mjs > "$roster"')
+    expect(roster).toContain('persist-credentials: false')
+    expect(roster).toMatch(/permissions:\n {6}contents: read\n {6}pull-requests: read\n/)
+  })
+
+  it('reads the previous verdicts only from this workflow\'s own comment, and only files of the pull request since', () => {
+    expect(roster).toContain('select(.user.login == "github-actions[bot]")')
+    expect(roster).toContain('git merge-base --is-ancestor "$prev" HEAD')
+    expect(roster).toContain('grep -Fx -f "$RUNNER_TEMP/changed.txt"')
+  })
+
+  it('hands the team job its answer as job outputs, which nothing in the team job can change', () => {
+    expect(team).toContain('PANEL: ${{ needs.roster.outputs.run }}')
+    expect(team).toContain('ROSTER: ${{ needs.roster.outputs.json }}')
+    const post = stepOf(team, 'Post the sign-offs and pass or fail')
+    expect(post).toContain(`jq --argjson r "$ROSTER" '.roles = ([(.roles // [])[] | select(.role as $role | $r.run | index($role))] + $r.carried + $r.skipped)'`)
+    expect(post.indexOf('$r.carried + $r.skipped')).toBeLessThan(post.indexOf('(.roles | length) == 6'))
+  })
+
+  it('runs no reviewer when every approval holds, and then posts the carried verdicts', () => {
+    expect(stepOf(team, 'The team reviews the pull request')).toMatch(/if: steps\.who\.outputs\.dependabot != 'true' && needs\.roster\.outputs\.run != ''/)
+    expect(stepOf(team, 'Post the sign-offs and pass or fail')).toContain('if [ -z "$PANEL" ]; then')
+  })
+
+  it('builds main and starts a browser only for the designer, and runs coverage once, before main\'s rules', () => {
+    expect(stepOf(team, "Browser and local database for the designer's screenshots")).toContain("contains(needs.roster.outputs.run, 'ux-designer')")
+    expect(stepOf(team, "Main's build for the before screenshots (best effort)")).toContain("contains(needs.roster.outputs.run, 'ux-designer')")
+    const once = stepOf(team, 'Lint and coverage once, for the whole panel')
+    expect(once).toContain('cov=0; npm run test:coverage')
+    expect(once).toContain('echo "npm run test:coverage exited with $cov"')
+    expect(once).not.toContain('|| true\n')
+    expect(team.indexOf('- name: Lint and coverage once, for the whole panel')).toBeLessThan(team.indexOf("- name: Review by main's rules"))
+    expect(stepOf(team, "The panel's reports")).toContain('cp "$RUNNER_TEMP/panel/lint.txt" "$RUNNER_TEMP/panel/coverage.txt" .review/')
+  })
+
+  it('runs nothing from the pull request after main\'s rules are restored, up to the review', () => {
+    const from = team.indexOf("- name: Review by main's rules")
+    const to = team.indexOf('- name: The team reviews the pull request')
+    const between = team.slice(team.indexOf('\n', from), to)
+    expect(between).not.toMatch(/\b(npm|npx|node|yarn|pnpm) /)
+    expect(between).not.toMatch(/\.\/node_modules|(bash|sh|tsx) +\.?\/?scripts\/|\.\/scripts\//)
+  })
+
+  it('coordinates on Sonnet', () => {
+    expect(stepOf(team, 'The team reviews the pull request')).toContain("claude_args: '--model claude-sonnet-5-5 ")
+  })
+
+  it('fails, never skips, when the roster job did not decide (a skipped required check passes)', () => {
+    expect(team).not.toContain("needs.roster.result == 'success' &&")
+    const guard = stepOf(team, 'The roster job decided who reviews')
+    expect(guard).toContain('[ "$ROSTER_RESULT" = success ] && [ -n "$ROSTER" ] || {')
+    expect(guard).toContain('ROSTER_RESULT: ${{ needs.roster.result }}')
+    expect(team.indexOf('- name: The roster job decided who reviews')).toBeLessThan(team.indexOf("- name: Dependabot's own dependency update?"))
+  })
+
+  it('merges the carried verdicts before it writes the marker the next round reads', () => {
+    const post = stepOf(team, 'Post the sign-offs and pass or fail')
+    expect(post.indexOf('$r.carried + $r.skipped')).toBeLessThan(post.indexOf('<!-- team-verdicts'))
+    expect(post.indexOf('$r.carried + $r.skipped')).toBeGreaterThan(post.indexOf('The team review wrote no result.'))
+  })
+
+  it('reads the changed paths unquoted', () => {
+    const roster = jobOf('roster')
+    expect(roster).toContain('git -c core.quotePath=false diff --no-renames --name-only origin/main...HEAD')
+    expect(roster).toContain('git -c core.quotePath=false diff --no-renames --name-only "$prev" HEAD')
+    expect(roster).not.toMatch(/git (-c \S+ )?diff --name-only/)
+  })
+
+  it('runs the developer and the security engineer on Opus, the other four on Sonnet', () => {
+    const model = (agent) => /^model: (\S+)$/m.exec(readFileSync(join(root, `.claude/agents/${agent}.md`), 'utf8').split(/^---$/m)[1] ?? '')?.[1]
+    for (const agent of ['senior-developer', 'security-engineer']) expect(model(agent), agent).toBe('opus')
+    for (const agent of ['product-manager', 'senior-recruiter', 'senior-tester', 'ux-designer']) expect(model(agent), agent).toBe('sonnet')
+  })
+})
+
+describe('every shell step parses', () => {
+  // A `run: |` block, as bash reads it: the lines indented deeper than its key, the indent taken off.
+  const blocks = (text) => [...text.replace(/\r\n/g, '\n').matchAll(/^( *)(?:- )?run: \|\n((?:\1 {2,}.*\n|\n)+)/gm)].map((match) => {
+    const lines = match[2].split('\n')
+    const indent = Math.min(...lines.filter((line) => line.trim()).map((line) => line.match(/^ */)[0].length))
+    return lines.map((line) => line.slice(indent)).join('\n')
+  })
+  it.each(['.github/workflows/review.yml', '.github/workflows/site-update.yml', '.github/workflows/building-notify.yml'])('%s', (path) => {
+    const found = blocks(readFileSync(join(root, path), 'utf8'))
+    expect(found.length).toBeGreaterThan(0)
+    for (const script of found) expect(() => execFileSync('bash', ['-n'], { input: script, stdio: ['pipe', 'pipe', 'pipe'] }), script.slice(0, 120)).not.toThrow()
+  }, 60_000)
+})
+

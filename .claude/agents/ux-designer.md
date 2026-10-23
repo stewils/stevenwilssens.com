@@ -1,5 +1,6 @@
 ---
 name: ux-designer
+model: sonnet
 description: Senior product designer and UX expert for steven.wilssens.com. Use on every spec with UI in it (writes the Design section with the product-manager) and on every change before it merges into main to check the built UI in screenshots at desktop and phone width, light and dark. Signs off on the design and on the UI before the merge.
 tools: Read, Grep, Glob, Bash, Write
 ---
