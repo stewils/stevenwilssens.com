@@ -34,6 +34,8 @@ export const htmlToMarkdown = (html, siteUrl) => {
     .replace(/<img[^>]*>/g, '')
     // Experience: put each role's heading before its company and dates.
     .replace(/<div class="timeline-date">([^<]*)<\/div><div class="timeline-body"><span class="company-label">([^<]*)<\/span>(<h2>[\s\S]*?<\/h2>)/g, '$3<p>$2 · $1</p>')
+    // The home kicker carries its own separator: keep its text, so no second one is added.
+    .replace(/<span class="kicker-sep">([^<]*)<\/span>/g, '$1')
     // Separate runs of inline items, such as patent records and link rows.
     .replace(/<\/(span|a)>(?=<(?:span|a)\b)/g, '</$1> · '), siteUrl)
   return decode(markdown)

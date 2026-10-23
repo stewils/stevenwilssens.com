@@ -44,7 +44,31 @@ describe('the recruiter review on thin data', () => {
     expect(areas).not.toContain('outcomes:middle')
     expect(areas).toContain('logistics:location')
     expect(areas).not.toContain('logistics:workAuthorization')
+    expect(review.findings.find((finding) => finding.area === 'logistics:workArrangement')?.severity).toBe('high')
     expect(review.questions.some((question) => question.question.startsWith('Remote, hybrid or on-site'))).toBe(true)
+  })
+
+  it('asks about logistics only when they are not stated (D-17, D-21)', () => {
+    const logistics = (about = '') => reviewForRecruiters({ pages: { ...pages, about }, resumeReport: null, linkedin: null, now }).questions.filter((question) => /relocat|remote|hybrid|on-site/i.test(question.question))
+    expect(logistics().map((question) => question.question)).toEqual(['Remote, hybrid or on-site, and would you relocate? The site says Seattle but not how flexible that is.'])
+    // How he works is stated, whether he would move is not: one question, about relocation only.
+    data.profile.workArrangement = 'Hybrid or remote, across time zones'
+    const only = logistics()
+    expect(only).toHaveLength(1)
+    expect(only[0].question).toBe('Would you relocate? The site says where you are based and how you work, but not whether you would move.')
+    expect(only[0].question).toMatch(/relocat/i)
+    for (const word of [/remote/i, /hybrid/i, /on-site/i]) expect(only[0].question).not.toMatch(word)
+    expect(logistics('I am not relocating.')).toEqual([])
+    data.profile.relocation = 'Not relocating'
+    expect(logistics()).toEqual([])
+    expect(reviewForRecruiters({ pages, resumeReport: null, linkedin: null, now }).findings.map((finding) => finding.area)).not.toContain('logistics:workArrangement')
+    // An on-site arrangement answers the same half of the question.
+    data.profile.workArrangement = 'On-site in Seattle'
+    data.profile.relocation = ''
+    expect(logistics().map((question) => question.question)).toEqual([only[0].question])
+    // So does any stated arrangement, even one without the words remote, hybrid or on-site (D-21).
+    data.profile.workArrangement = 'In the office in Seattle'
+    expect(logistics().map((question) => question.question)).toEqual([only[0].question])
   })
 
   it('a second leadership role without scope is a medium finding', () => {
@@ -103,7 +127,7 @@ describe('the recruiter review on thin data', () => {
     data.experiences.splice(0, Infinity, role({ key: 'only', role: 'Principal Engineer', dates: 'Jan 2026 - Oct 2026', summary: 'Built 3 things.' }))
     data.impact.splice(0, Infinity)
     data.selectedWork.splice(0, Infinity, ...['2021', '2022', '2023'].map((period) => work({ period, outcome: 'Saved 5 hours.' })))
-    Object.assign(data.profile, { location: 'Seattle', lookingFor: 'Remote product leadership' })
+    Object.assign(data.profile, { location: 'Seattle', lookingFor: 'Remote product leadership', workArrangement: 'Hybrid or remote, across time zones', relocation: 'Not relocating' })
     const review = reviewForRecruiters({ pages, resumeReport: { score: 100, matchesSite: true, findings: [], questions: [{ about: 'x', question: 'One?' }] }, linkedin: { fixes: [], summary: '' }, now })
     expect(review).toMatchObject({ score: 100, findings: [], headline: 'Nothing a recruiter would trip over; the open questions below are the next improvements.' })
     expect(review.questions).toHaveLength(1)

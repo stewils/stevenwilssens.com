@@ -27,7 +27,6 @@ describe('the assistant input', () => {
     expect(input.system).toContain('A product leadership role in Seattle.')
     expect(input).toMatchObject({ schema: SCHEMA, model: MODEL, jdPrefix, notes: 1, articles: articlePages.length, contexts: { question: contextFor('home', false), fit: contextFor('home', true) } })
     expect(input.contexts.fit).toMatch(/fit-check format/)
-    expect(input.profile.workArrangement).toBe('Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.')
     expect(input.profile).toEqual({ location: profile.location, workArrangement: profile.workArrangement, workAuthorization: profile.workAuthorization, availability: profile.availability, teamSize: profile.teamSize })
     expect(calls).toEqual([{ url: NOTES_URL, method: 'GET' }])
     // The live request and how the site shows an answer, from the same code the assistant runs.

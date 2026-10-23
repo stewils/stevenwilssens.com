@@ -49,12 +49,13 @@ describe('diffResume', () => {
     expect(diffResume(after, resume()).find((change) => change.kind === 'removed')).toMatchObject({ section: 'Independent AI Product Builder at Independent', what: 'The role was removed' })
   })
 
-  it('lists the work arrangement like any other profile field when it is added or changed', () => {
-    const arrangement = 'Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.'
-    const after = resume({ profile: { ...resume().profile, workArrangement: arrangement } })
-    expect(diffResume(resume(), after)).toEqual([{ section: 'Profile', kind: 'added', what: 'The work arrangement was added', to: arrangement }])
-    const moved = resume({ profile: { ...resume().profile, workArrangement: 'Open to relocating.' } })
-    expect(diffResume(after, moved)).toEqual([{ section: 'Profile', kind: 'changed', what: 'The work arrangement changed', from: arrangement, to: 'Open to relocating.' }])
+  it('names each logistics fact in plain words when it is added', () => {
+    for (const [field, label] of [['citizenship', 'citizenship'], ['workArrangement', 'work arrangement'], ['travel', 'travel'], ['employers', 'employers'], ['relocation', 'relocation']]) {
+      const changes = diffResume(resume(), resume({ profile: { ...resume().profile, [field]: 'Stated' } }))
+      expect(changes, field).toHaveLength(1)
+      expect(changes[0].section).toBe('Profile')
+      expect(changes[0].what, field).toContain(label)
+    }
   })
 
   it('covers skills, key numbers, honors, education, languages and recommendations', () => {

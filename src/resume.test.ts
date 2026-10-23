@@ -16,7 +16,7 @@ describe('the resume PDF', () => {
     const report = await analyzeResume()
     const errors = report.findings.filter((finding: { severity: string }) => finding.severity === 'error').map((finding: { message: string }) => finding.message)
     expect(errors, 'run npm run resume:build after changing src/resume.ts').toEqual([])
-    expect(report.pages).toBeLessThanOrEqual(2)
+    expect(report.pages).toBe(2)
     expect(report.score).toBeGreaterThanOrEqual(70)
     expect(report.findings.every((finding: { lens: string }) => finding.lens in lenses)).toBe(true)
     expect(report.ats.errors).toBe(0)
@@ -38,6 +38,21 @@ describe('the resume PDF', () => {
     expect(heading).toBeGreaterThan(-1)
     expect(perfectDay).toBeGreaterThan(heading)
     expect(perfectDay).toBeLessThan(next)
+  }, 30_000)
+
+  // Header line 2, under the location an ATS parses; the facts for a close read stay off the PDF.
+  it('prints the work arrangement in the PDF, "hybrid" and "remote" as words', async () => {
+    const { text: raw } = await extractPdf(resumePath)
+    const text = normalize(raw)
+    expect(text).toContain(normalize(profile.workArrangement))
+    for (const value of [profile.citizenship, profile.travel, profile.employers, profile.relocation]) expect(text).not.toContain(normalize(value))
+    expect(raw).toMatch(/\bhybrid\b/i)
+    expect(raw).toMatch(/\bremote\b/i)
+    const lines = raw.split('\n').map(normalize)
+    const at = lines.findIndex((line) => line.includes('seattle, washington'))
+    expect(lines[at]).not.toMatch(/hybrid|remote/)
+    expect(lines[at + 1]).toBe(normalize(profile.workArrangement))
+    expect((await analyzeResume()).findings.filter((finding: { id: string }) => finding.id.startsWith('contact-'))).toEqual([])
   }, 30_000)
 
   // The score is what an applicant tracking system makes of the PDF: what a recruiter
@@ -108,34 +123,34 @@ describe('the Windows Data roles', () => {
   }, 30_000)
 })
 
-// Steven's approved wording of 2026-10-23, typed here as literals: comparing a surface with
-// profile proves the wiring, only these prove the words.
-const arrangement = 'Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.'
+// Steven's approved wording, typed here as literals: comparing a surface with profile
+// proves the wiring, only these prove the words.
 const cosmosSummary = 'Built and supported software components across C# client and Java server systems using CORBA middleware. Joined as a consultant from Info Support, then hired full-time.'
 const experimentationBullet = 'Scaled experimentation across Windows to hundreds of concurrent experiments, significantly reducing the number of features pulled back after release.'
 
-describe('the work arrangement', () => {
-  it('profile.workArrangement is Steven’s approved sentence, and location stays Seattle, Washington', () => {
-    expect(profile.workArrangement).toBe(arrangement)
+// Travel is its own fact since PR #80 merged beside this branch (D-23): Steven's words, no frequency.
+describe('the travel fact', () => {
+  it('profile.travel is Steven’s wording, with no frequency or percentage, and the #80 sentence is gone', () => {
+    expect(profile.travel).toBe('Open to coordinated travel')
+    expect(profile.travel).not.toMatch(/\d|%|weekly|monthly|quarterly|\bdays?\b/i)
+    expect(profile.workArrangement).toBe('Hybrid or remote, across time zones')
     expect(profile.location).toBe('Seattle, Washington')
+    expect(JSON.stringify(profile)).not.toContain('Seattle-based')
   })
 
-  it('prints the work arrangement as its own facts row, the Cosmos story and the new experimentation bullet', async () => {
+  it('keeps travel off the PDF, and prints the Cosmos story and the new experimentation bullet', async () => {
     const report = await analyzeResume()
     expect(report.pages).toBe(2)
     const text = await pdfText()
-    expect(text).toContain(normalize(`Work arrangement ${arrangement}`))
-    expect(text).not.toContain('relocating..')
-    // The header's contact block is unchanged: Seattle alone and first, then the authorization.
-    const contact = text.indexOf('seattle, washington · us permanent resident (green card)')
-    expect(contact).toBeGreaterThan(-1)
-    expect(contact).toBeLessThan(text.indexOf('work arrangement'))
+    expect(text).not.toContain(normalize(profile.travel))
+    expect(text).not.toContain('coordinated travel')
     expect(text).toContain(normalize(cosmosSummary))
     expect(text).toContain(normalize(experimentationBullet))
   }, 30_000)
 
-  it('keeps the work arrangement out of the component', () => {
-    expect(appSource).not.toContain('open to remote or hybrid')
+  it('keeps the travel value out of the component', () => {
+    expect(appSource).not.toContain('coordinated travel')
+    expect(appSource).toContain('{profile.travel}')
   })
 })
 
@@ -186,6 +201,25 @@ describe('the selected work', () => {
     const questions = dataQuestions(new Date('2026-10-23'))
     expect(questions.some((q: { question: string }) => /30%|six months/.test(q.question))).toBe(false)
   })
+})
+
+// Steven's words of 2026-10-22, each its own field: how he works next to when, citizenship
+// next to authorization. Every surface reads them from here, so no other source types them.
+describe('the hiring logistics', () => {
+  it('states the logistics in Steven\'s words, each in its own field', () => {
+    expect(profile.location).toBe('Seattle, Washington')
+    expect(experiences.find((item) => item.key === 'independent-ai-builder')!.location).toBe(profile.location)
+    expect(profile.workAuthorization).toBe('US permanent resident (green card)')
+    expect(profile.citizenship).toBe('Belgian citizen (EU)')
+    expect(profile.availability).toBe('Available now')
+    expect(profile.workArrangement).toBe('Hybrid or remote, across time zones')
+    expect(profile.workArrangement).toHaveLength(35)
+    expect(profile.employers).toBe('Open to remote roles with employers outside the US, in their working hours')
+    expect(profile.relocation).toBe('Not relocating')
+    const keys = Object.keys(profile)
+    expect(keys.slice(keys.indexOf('workAuthorization'), keys.indexOf('relocation') + 1)).toEqual(['workAuthorization', 'citizenship', 'availability', 'workArrangement', 'employers', 'relocation'])
+  })
+  // That the four values are typed only here is checked in scripts/resume-facts.test.mjs, which reads the tree at run time.
 })
 
 // The guards and the designer's limits run on this copy in functions/_lib/mcp/about.test.ts.
