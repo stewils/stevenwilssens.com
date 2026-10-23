@@ -128,7 +128,7 @@ describe('the hiring logistics', () => {
     expect(profile.availability).toBe('Available now')
     expect(profile.workArrangement).toBe('Hybrid or remote, across time zones')
     expect(profile.workArrangement).toHaveLength(35)
-    expect(profile.employers).toBe('Open to employers outside the US')
+    expect(profile.employers).toBe('Open to remote roles with employers outside the US, in their working hours')
     expect(profile.relocation).toBe('Not relocating')
     const keys = Object.keys(profile)
     expect(keys.slice(keys.indexOf('workAuthorization'), keys.indexOf('relocation') + 1)).toEqual(['workAuthorization', 'citizenship', 'availability', 'workArrangement', 'employers', 'relocation'])

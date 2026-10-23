@@ -17,7 +17,7 @@ const resume: ResumeData = {
     { key: 'windows-devices-data', role: 'Principal Group Product Manager - Windows & Devices Data', company: 'Microsoft', dates: 'Dec 2024 - Sep 2026', location: 'Redmond, Washington', summary: 'Led the org.', points: ['Led a PM organization of 10 to 20.', 'Telemetry from more than 1.6 billion Windows devices.'] },
     { key: 'spatial', role: 'Senior Product Manager - Silicon, Graphics, Media', company: 'Microsoft', dates: 'Oct 2008 - Aug 2017', location: 'Redmond', summary: 'Audio.', points: ['Grew it 250% over 1.5 years.'] },
   ],
-  profile: { resumeHeadline: 'Product leader', headline: 'Product leader', summary: 'Product leader with nearly 20 years at Microsoft.', location: 'Seattle, Washington', workAuthorization: 'US permanent resident (green card)', citizenship: 'Belgian citizen (EU)', availability: 'Available now', workArrangement: 'Hybrid or remote, across time zones', employers: 'Open to employers outside the US', relocation: 'Not relocating' },
+  profile: { resumeHeadline: 'Product leader', headline: 'Product leader', summary: 'Product leader with nearly 20 years at Microsoft.', location: 'Seattle, Washington', workAuthorization: 'US permanent resident (green card)', citizenship: 'Belgian citizen (EU)', availability: 'Available now', workArrangement: 'Hybrid or remote, across time zones', employers: 'Open to remote roles with employers outside the US, in their working hours', relocation: 'Not relocating' },
   skills: [],
   education: { degree: 'BSc', school: 'KdG', dates: '2000 - 2004' },
   impact: [{ value: '+5%', label: 'Perfect Day', backing: 'windows-devices-data' }],
@@ -171,7 +171,7 @@ describe('the side-note facts (recruiter guard 1)', () => {
   })
 
   it('refuses a work arrangement, citizenship or relocation the profile does not state (T-S4\'\')', () => {
-    const phrases = ['I am open to remote work.', 'I work hybrid.', 'I work on-site.', 'I work onsite.', 'I am in-office three days.', 'Happy to work in person.', 'I work from home.', 'Any timezone works.', 'I work across time zones.', 'I can commute to Bellevue.', 'I am an EU citizen.', 'I am a US citizen.', 'I hold an EU passport.', 'I am a Belgian citizen.', 'As a Belgian I can work anywhere in Europe.', 'I hold Belgian nationality.', 'EU nationals welcome.', 'I have the right to work in the UK.', 'No work permit needed.', 'I am open to relocating.', 'I will not relocate.']
+    const phrases = ['I am open to remote work.', 'I work hybrid.', 'I work on-site.', 'I work onsite.', 'I am in-office three days.', 'Happy to work in person.', 'I work from home.', 'Any timezone works.', 'I work across time zones.', 'I can commute to Bellevue.', 'I am an EU citizen.', 'I am a US citizen.', 'I hold an EU passport.', 'I am a Belgian citizen.', 'As a Belgian I can work anywhere in Europe.', 'I hold Belgian nationality.', 'EU nationals welcome.', 'I have the right to work in the UK.', 'No work permit needed.', 'I am open to relocating.', 'I will not relocate.', 'I am open to remote roles with employers outside the US.', 'I work remote in CET hours.']
     for (const text of phrases) expect(refusalsFor(text), text).toEqual(factRefusal(text))
     const refusal = factRefusal('x')[0]
     for (const word of ['citizenship', 'work arrangement', 'relocation']) expect(refusal).toContain(word)
@@ -179,8 +179,9 @@ describe('the side-note facts (recruiter guard 1)', () => {
 
   it('takes what profile and the roles say, and sentences that only mention a place or a team', () => {
     for (const text of ['I am based in Seattle, Washington.', 'I am a US permanent resident (green card).', 'I am available now.', 'I was a Senior Product Manager at Microsoft.', 'I was a developer and team lead in Belgium.', 'The Operating System Group shipped it.', 'I led a team of engineers.', 'I worked with the Chief Data Officer of Fabrikam.', 'Lead with the customer, I tell my teams.']) expect(refusalsFor(text), text).toEqual([])
-    // The four facts of 2026-10-22, in profile's words, in any case and with curly quotes.
-    for (const text of ['I work hybrid or remote, across time zones.', 'I am a Belgian citizen (EU).', 'I am open to employers outside the US.', 'I am not relocating.', 'I work HYBRID OR REMOTE, ACROSS TIME ZONES.', 'I am “not relocating”.', 'I am a ‘Belgian citizen (EU)’.']) expect(refusalsFor(text), text).toEqual([])
+    // The four facts of 2026-10-22 (employers as worded on 2026-10-23), in profile's words, in any
+    // case and with curly quotes; the employers fact says "remote" and backs the sentence by itself.
+    for (const text of ['I work hybrid or remote, across time zones.', 'I am a Belgian citizen (EU).', 'I am open to remote roles with employers outside the US, in their working hours.', 'I am “Open to remote roles with employers outside the US, in their working hours”.', 'I am not relocating.', 'I work HYBRID OR REMOTE, ACROSS TIME ZONES.', 'I am “not relocating”.', 'I am a ‘Belgian citizen (EU)’.']) expect(refusalsFor(text), text).toEqual([])
   })
 
   // One per rule: the sentence matches only that rule and carries its value, so it passes with the
@@ -191,6 +192,7 @@ describe('the side-note facts (recruiter guard 1)', () => {
     ['citizenship', 'I am a Belgian citizen (EU).'],
     ['availability', 'I am available now.'],
     ['workArrangement', 'I work hybrid or remote, across time zones.'],
+    ['employers', 'I am open to remote roles with employers outside the US, in their working hours.'],
     ['relocation', 'I am not relocating.'],
   ] as const) {
     it(`refuses a ${field} sentence when the profile leaves ${field} empty`, () => {

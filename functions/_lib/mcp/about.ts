@@ -84,13 +84,14 @@ export const checkAboutText = (about: About): string[] => {
 // The side-note facts (recruiter guard 1): a sentence about location, work authorization,
 // citizenship, availability, work arrangement or relocation must say what profile says; a
 // job title must be one of the roles. "Belgian" is a citizenship word but "Belgium" is not,
-// so the About copy can say where he worked.
-const sideNote: { pattern: RegExp; value: (resume: ResumeData) => string }[] = [
+// so the About copy can say where he worked. A remote sentence can also be the employers
+// fact, which is about remote roles too.
+const sideNote: { pattern: RegExp; value: (resume: ResumeData) => string | string[] }[] = [
   { pattern: /\b(?:based in|live in|living in|located in|moving to)\b/i, value: (resume) => resume.profile.location },
   { pattern: /\b(?:green card|visas?|H-1B|sponsor\w*|permanent resident|authori[sz]ed to work|right to work|work permits?)\b/i, value: (resume) => resume.profile.workAuthorization },
   { pattern: /\b(?:citizen\w*|nationality|nationals?|passports?|Belgian|European Union|EU)\b/i, value: (resume) => resume.profile.citizenship },
   { pattern: /\b(?:available (?:from|in|now|immediately|starting)|start date|notice period)\b/i, value: (resume) => resume.profile.availability },
-  { pattern: /\b(?:remote|hybrid|on-?site|in[- ]office|in[- ]person|work(?:ing)? from home|time ?zones?|commut\w*)\b/i, value: (resume) => resume.profile.workArrangement },
+  { pattern: /\b(?:remote|hybrid|on-?site|in[- ]office|in[- ]person|work(?:ing)? from home|time ?zones?|commut\w*)\b/i, value: (resume) => [resume.profile.workArrangement, resume.profile.employers] },
   { pattern: /\brelocat\w*\b/i, value: (resume) => resume.profile.relocation },
 ]
 const titleStart = /\b(?:Head of|Vice President|Principal|Senior|Group|Lead|Chief|Director|VP)\b(?: (?:[A-Z][\w&-]*|of|and|&))*/g
@@ -136,7 +137,7 @@ export const checkAboutProposal = (p: AboutChange, resume: ResumeData): AboutChe
   for (const sentence of sentencesOf(result)) {
     const lower = sentence.toLowerCase()
     // An empty profile value states nothing, so it backs no sentence ('' is in every string).
-    const fact = sideNote.find(({ pattern, value }) => { const stated = norm(value(resume)).toLowerCase(); return pattern.test(sentence) && (!stated || !lower.includes(stated)) })
+    const fact = sideNote.find(({ pattern, value }) => pattern.test(sentence) && ![value(resume)].flat().some((text) => { const stated = norm(text).toLowerCase(); return stated && lower.includes(stated) }))
     const title = titlesIn(sentence).find((name) => !roles.some((role) => role.includes(name.toLowerCase())))
     if (fact || title) refusals.push(`"${sentence}" states ${title ? `the title "${title}"` : 'a location, work authorization, citizenship, availability, work arrangement or relocation'} that the résumé does not: ${sideNoteRefusal}`)
   }

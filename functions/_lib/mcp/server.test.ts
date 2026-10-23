@@ -381,6 +381,9 @@ describe('the public server', () => {
     // The recruiter's own assistant gets the same boundary on logistics as the site's (C-2').
     for (const words of neverInfer) expect(result.instructions).toContain(words)
     expect(result.instructions).toContain('A requirement to relocate is a mismatch with the relocation fact about_steven states.')
+    // Steven, 2026-10-23: remote for an employer abroad, in its hours, is not ruled out by the relocation fact.
+    expect(result.instructions).toContain("The relocation fact answers only whether he would move: remote work for a company outside the US, in that employer's own working hours, is what the employers fact about_steven states, never a mismatch.")
+    for (const value of [profile.employers, profile.relocation]) expect(result.instructions.toLowerCase()).not.toContain(value.toLowerCase())
   })
 
   it('serves public entries only, knows no owner tools, hands a fit check its material, and logs every call', async () => {
@@ -407,6 +410,8 @@ describe('the public server', () => {
     expect(fit.howTo).toContain('Not shown')
     for (const words of neverInfer) expect(fit.howTo).toContain(words)
     expect(fit.howTo).toContain('A requirement to relocate is a mismatch with the relocation fact about_steven states: put it under Partly covered as does not match, not as a question.')
+    expect(fit.howTo).toContain("The relocation fact answers only whether he would move: a requirement to work remotely for a company outside the US, or in the working hours of that employer, is Covered by the work arrangement and the employers fact about_steven states, never a mismatch; a requirement to live or be based outside the Seattle area is a mismatch with the location and the relocation fact.")
+    for (const value of [profile.employers, profile.relocation]) expect(String(fit.howTo).toLowerCase()).not.toContain(value.toLowerCase())
     expect(fit.record).toContain('Nine PMs')
     expect(fit.record).not.toContain('Internal numbers')
     expect((await publicCall(store, 'check_fit', {})).text).toContain('job_description is required')
