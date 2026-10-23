@@ -127,6 +127,7 @@ describe('the Costs page’s styles', () => {
     expect(css.match(/--series-soft:/g)).toHaveLength(3)
     let main = null
     try { main = execFileSync('git', ['show', 'origin/main:src/admin/admin.css'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }) } catch { /* no origin/main here */ }
-    if (main) expect([...tokens(css)].filter((token) => !tokens(main).has(token))).toEqual(['--series-soft'])
+    // Once the Costs page is on main, main has --series-soft too: no other new token either way.
+    if (main) expect([...tokens(css)].filter((token) => !tokens(main).has(token) && token !== '--series-soft')).toEqual([])
   })
 })
