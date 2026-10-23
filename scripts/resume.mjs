@@ -69,6 +69,9 @@ header .contact { text-align: right; font-size: 8.6pt; line-height: 1.55; color:
 header .contact strong { color: var(--ink); font-weight: 600; }
 .facts { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 16px; padding: 9px 0 4px; font-size: 9.2pt; line-height: 1.35; }
 .facts .mono { display: block; margin-bottom: 2px; }
+/* The work arrangement is one full-width line under the three facts, pulled up against the grid gap so the résumé keeps two pages. */
+.facts .arrangement { grid-column: 1 / -1; margin-top: -10px; }
+.facts .arrangement .mono { display: inline; margin: 0 8px 0 0; }
 section { margin-top: 8px; break-inside: auto; }
 h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; font-family: 'DM Mono', monospace; font-size: 7.6pt; font-weight: 500; text-transform: uppercase; color: var(--green); }
 h2::after { content: ''; flex: 1; height: 1px; background: var(--line); }
@@ -128,6 +131,7 @@ body.compact .foot { font-size: 8.7pt; }
   <div><span class="mono">Looking for</span>${esc(profile.lookingFor)} · ${esc(profile.availability.toLowerCase())}</div>
   <div><span class="mono">Scope</span>Led teams of ${esc(profile.teamSize)}; telemetry from 1.6B+ Windows devices</div>
   <div><span class="mono">Background</span>Product leader since 2008, software engineer and team lead before that</div>
+  <div class="arrangement"><span class="mono">Work arrangement</span>${esc(profile.workArrangement)}</div>
 </div>
 
 <section>

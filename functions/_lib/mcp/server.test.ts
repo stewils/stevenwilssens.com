@@ -99,6 +99,8 @@ describe('what is already there', () => {
     const about = parse((await call(store, 'about_steven')).text)
     expect((about.roles as { key: string }[]).map((role) => role.key)).toContain('windows-devices-data')
     expect((about.contact as { email: string }).email).toBe('steven@wilssens.com')
+    expect(about.location).toBe('Seattle, Washington · US permanent resident (green card)')
+    expect(about.workArrangement).toBe('Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.')
     expect(about.sitePages).toEqual(sitePages)
     const role = parse((await call(store, 'get_role', { role: 'spatial-audio-lead' })).text)
     expect(role.role).toContain('Principal Product Manager Lead')
@@ -204,6 +206,11 @@ describe('the résumé', () => {
     const current = roles.find((role) => role.key === 'spatial-audio-lead')!.points[1]
     expect(current).toContain('250%')
     expect((resume.pages as Record<string, string>)['building-wilssens']).toBeTruthy()
+    expect(resume.profile).toMatchObject({ location: 'Seattle, Washington', workArrangement: 'Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.', workAuthorization: 'US permanent resident (green card)' })
+    const sources = Object.fromEntries((resume.selectedWork as { key: string; source: string | null }[]).map((item) => [item.key, item.source]))
+    expect(sources['windows-quality']).toBeNull()
+    expect(sources['okr-tool']).toBe('Amit Gupte')
+    expect(sources['ai-feature-forecast']).toBe('Amit Gupte')
 
     const missing = await call(store, 'propose_resume_change', { role: 'spatial-audio-lead', kind: 'replace', proposed_text: 'x', rationale: 'y' })
     expect(missing.text).toContain('current_text is required')
@@ -402,6 +409,7 @@ describe('the public server', () => {
     expect(about.dossier).toEqual({ publicNotes: 1 })
     expect(about.waitingFromTheSite).toBeUndefined()
     expect(about.howToUse).toContain('check_fit')
+    expect(about.workArrangement).toBe('Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.')
     const write = await publicCall(store, 'save_entry', { role: 'csx-data', topic: 'scope', title: 't', body: 'b' })
     expect(write.body.error?.code).toBe(-32602)
     expect((await publicCall(store, 'site_questions')).body.error?.code).toBe(-32602)

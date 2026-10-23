@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WilssensArticle from './wilssens/WilssensArticle'
 import AIBreakerArticle from './aibreaker/AIBreakerArticle'
 import SiteArticle, { ReportCard } from './site/SiteArticle'
-import { TeamFlowDiagram } from './site/Diagrams'
+import { LoopDiagram, TeamFlowDiagram } from './site/Diagrams'
 import JuniorTrackCyclingArticle from './juniortrackcycling/JuniorTrackCyclingArticle'
 import LeoArticle from './leo/LeoArticle'
 import { Stats } from './wilssens/Stats'
@@ -176,13 +176,38 @@ describe('the assistant\'s report card on /building-this-site', () => {
 })
 
 describe('the team diagram on /building-this-site', () => {
+  it('still says the merge is mine: "I read the preview and merge", the loop diagram and the assistant\'s line about it (specs/mcp-prs-flow.md, AC-12)', async () => {
+    render(<SiteArticle />)
+    expect(document.getElementById('loop')!.closest('section')!.textContent).toContain('I read the preview and merge, from the same conversation if I like.')
+    expect(screen.getByText(/the required checks on the pull request; I answer the questions and decide the merge\./)).toBeInTheDocument()
+    cleanup()
+    render(<LoopDiagram />)
+    const loop = screen.getByRole('img', { name: /after Steven merges it, a change on the site/ })
+    for (const label of ['I merge the pull request', 'after the preview', 'Claude Code edits', 'on a branch, under checks']) expect(within(loop).getByText(label)).toBeInTheDocument()
+    const prompt = Object.values(import.meta.glob<string>('../../functions/_lib/ask/prompt.ts', { query: '?raw', import: 'default', eager: true }))[0]
+    expect(prompt).toContain('through the same scored gate and tests he works under, and he reads the preview and merges.')
+  })
+
   it('draws the flow across and stacked, each an image with its name and a description of every step', () => {
     render(<TeamFlowDiagram />)
     const images = screen.getAllByRole('img', { name: 'How a change reaches the site: a team of AI agents, and Steven deciding' })
     expect(images.map((image) => image.getAttribute('class'))).toEqual(['wx-flow-wide', 'wx-flow-tall'])
     for (const image of images) {
-      expect(image).toHaveAccessibleDescription(/Six reviews run in parallel.*at most three rounds.*main’s gates and the team review\. Steven merges/)
+      expect(image).toHaveAccessibleDescription(/Six reviews run in parallel.*at most three rounds\. When all approve, the pull request runs its own required checks on GitHub: main’s gates, the team review, which also tries the assistant when a change touches it, and the site checks\. Steven merges, and the site deploys\. The agents’ runs, on GitHub and in Steven’s own Claude Code sessions, are metered/)
       for (const label of ['Spec', 'My questions', 'Build', 'Six reviews, in parallel', 'tests, 90% a file', 'recruiter: not worse', 'PM: acceptance', 'all approve', 'Pull request', 'I merge', 'Deploy']) expect(within(image).getByText(label)).toBeInTheDocument()
+    }
+  })
+
+  it('the Pull request box reads its own checks and the assistant tested in CI, across and stacked, each line within its box (specs/mcp-prs-flow.md, AC-12)', () => {
+    render(<TeamFlowDiagram />)
+    for (const image of screen.getAllByRole('img', { name: /a team of AI agents, and Steven deciding/ })) {
+      const box = within(image).getByText('Pull request').parentElement!
+      const lines = [...box.querySelectorAll('text')].map((text) => text.textContent)
+      expect(lines).toEqual(['Pull request', 'its own checks: gates, team review,', 'site checks, assistant tested in CI'])
+      // 11.5px text averages about 6.5px a character: the 272px box (276px stacked) holds about 40.
+      for (const line of lines.slice(1)) expect(line!.length).toBeLessThanOrEqual(38)
+      expect(within(image).getByText('I merge')).toBeInTheDocument()
+      expect(image.textContent).not.toMatch(/GitHub App|workflow_dispatch|check run|token/i)
     }
   })
 
@@ -260,5 +285,31 @@ describe('the team diagram on /building-this-site', () => {
     const sentence = step.textContent!.match(/[^.]*unread updates[^.]*\./)![0].trim()
     expect(sentence).toBe('Changes to the agent team itself reach me in my admin as unread updates until I have seen them.')
     expect(sentence).not.toMatch(/\d/)
+  })
+})
+
+describe('the assistant section on /building-this-site', () => {
+  it('the assistant section says the dashboard counts the people who asked, kept 90 days, nothing kept when the browser asks not to be tracked', () => {
+    render(<SiteArticle />)
+    const section = document.getElementById('assistant')!.closest('section')!
+    const list = section.querySelector('ul')!
+    // Exactly one paragraph between the list and the report card (shown here while it loads).
+    const after = [...section.children].slice([...section.children].indexOf(list) + 1)
+    const card = after.findIndex((element) => element.matches('.wx-report-wait, .wx-report'))
+    expect(card).toBe(1)
+    expect(after.slice(0, card).map((element) => element.tagName)).toEqual(['P'])
+    const paragraph = after[0] as HTMLElement
+    const text = paragraph.textContent!
+    expect(text).toMatch(/\bI\b|\bmy\b/)
+    for (const said of [/different people/, /once a day/, /what each/, /90[ -]days?/, /Questions, cost and the unanswered questions/, /straight from the database/]) expect(text).toMatch(said)
+    expect(text).not.toMatch(/vote/i)
+    expect(text).toMatch(/I measured what I shipped at Microsoft; the assistant gets the same treatment, including the numbers that do not flatter it\.$/)
+    const link = within(paragraph).getByRole('link', { name: /asks not to be tracked/ })
+    expect(link).toHaveAttribute('href', '/privacy')
+    expect(text).not.toMatch(/ask_log|ask_questions|ask_hits|HASH_SALT|ASK_BUDGET|visitor\.ts|migration|USD|\$/)
+    expect(text).not.toMatch(/anonymous|unique people|deleted/i)
+    expect(text.match(/\d+/g)).toEqual(['90'])
+    // Main's paragraph was 44 words; the refresh may add about 40, and the ratings sentence about 20.
+    expect(text.trim().split(/\s+/).length).toBeLessThanOrEqual(44 + 45 + 20)
   })
 })

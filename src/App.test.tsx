@@ -32,19 +32,41 @@ describe('resume site', () => {
 
     expect(screen.getByText(/led 10 to 20 product managers/)).toBeInTheDocument()
     expect(screen.getByText('Seattle, Washington · US permanent resident (green card)')).toBeInTheDocument()
+    // The work arrangement is the fourth hero fact, right after the location, with no label.
+    const facts = [...document.querySelectorAll('.hero-facts > span')].map((span) => span.textContent)
+    expect(facts).toHaveLength(4)
+    expect(facts.slice(2)).toEqual(['Seattle, Washington · US permanent resident (green card)', 'Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating.'])
+    // The contact band does not repeat it.
+    expect(document.querySelector('.contact-band')).not.toHaveTextContent('coordinated travel')
     expect(screen.getByRole('heading', { name: 'Hiring a product leader for data, experimentation or AI?' })).toBeInTheDocument()
     expect(screen.getByText(/Available now, based in Seattle, Washington, a US permanent resident/)).toBeInTheDocument()
     expect(screen.getAllByText(/choosing my next/).length).toBeLessThanOrEqual(1)
   })
 
-  it('shows the selected work from the data and AI years, each case with its source', () => {
+  it('shows the selected work from the data and AI years, and a source only where the case has one', () => {
     setPath('/work')
     render(<App />)
+    const card = (title: string) => screen.getByRole('heading', { name: title }).closest('article') as HTMLElement
 
     expect(screen.getByRole('heading', { name: 'Selected work' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Windows quality, measured from preview channels to retail' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'An OKR tool, rebuilt with AI when the old one retired' })).toBeInTheDocument()
-    expect(screen.getAllByRole('link', { name: 'Amit Gupte' }).length).toBeGreaterThan(0)
+    // Windows quality is in Steven's own words: the measured outcome, no attribution and no empty meta row.
+    const quality = card('Windows quality, measured from preview channels to retail')
+    expect(within(quality).getByText('Adopted by every Windows team, and behind the roughly 30% drop in issue days across Perfect Day scenarios.')).toBeInTheDocument()
+    expect(within(quality).queryByText(/As described by/)).toBeNull()
+    expect(within(quality).queryByRole('link', { name: 'Amit Gupte' })).toBeNull()
+    expect(quality.querySelector('.work-meta')).toBeNull()
+    // The forecast and the OKR tool keep Amit Gupte's attribution.
+    for (const title of ['Forecasting how a Windows AI feature would land', 'An OKR tool, rebuilt with AI when the old one retired']) {
+      const other = card(title)
+      expect(within(other).getByText(/As described by/)).toBeInTheDocument()
+      expect(within(other).getByRole('link', { name: 'Amit Gupte' })).toBeInTheDocument()
+    }
+    expect(within(card('An OKR tool, rebuilt with AI when the old one retired')).getByText(/Built in six months to replace Viva Goals, Microsoft’s acquired OKR product, after it was retired\.$/)).toBeInTheDocument()
+    // A card with a link and no source keeps its meta row, with the link only.
+    const audio = card('Spatial audio, from a Windows feature to a platform')
+    expect(within(audio).getByText('Monthly active devices playing spatial audio grew more than 250% in 18 months, and the work produced 19 granted US patents.')).toBeInTheDocument()
+    expect(audio.querySelector('.work-meta')).toHaveTextContent('See the patents →')
+    expect(within(audio).queryByText(/As described by/)).toBeNull()
     expect(screen.getByRole('link', { name: /Read the write-up/ })).toHaveAttribute('href', '/building-wilssens')
   })
 
@@ -55,6 +77,13 @@ describe('resume site', () => {
     expect(screen.getByText('US permanent resident (green card)')).toBeInTheDocument()
     expect(screen.getByText('Seattle, Washington')).toBeInTheDocument()
     expect(within(screen.getByRole('list', { name: 'Honors and awards' })).getAllByRole('listitem')).toHaveLength(4)
+    // The work arrangement is its own fact, right after where Steven is based.
+    const note = document.querySelector('.side-note') as HTMLElement
+    const labels = [...note.querySelectorAll(':scope > span')].map((span) => span.textContent)
+    expect(labels.slice(labels.indexOf('Based in'), labels.indexOf('Based in') + 3)).toEqual(['Based in', 'Work arrangement', 'Work authorization'])
+    const label = [...note.querySelectorAll(':scope > span')].find((span) => span.textContent === 'Work arrangement')!
+    expect(label.nextElementSibling?.tagName).toBe('STRONG')
+    expect(label.nextElementSibling).toHaveTextContent(/^Seattle-based, open to remote or hybrid, and to coordinated travel; not relocating\.$/)
   })
 
   it('renders the About copy from src/resume.ts, the first paragraph as the green opening', () => {
