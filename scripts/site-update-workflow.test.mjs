@@ -320,10 +320,9 @@ describe('the bot token never shares a job with code Claude or the branch wrote 
     const secretSteps = steps.filter((block) => /secrets\.(?!SITE_BOT_PRIVATE_KEY|ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|BUILDING_TOKEN)/.test(block) || /MAIL_APP_PASSWORD/.test(block))
     expect(secretSteps.length).toBeGreaterThan(0)
     for (const block of secretSteps) expect(importsBranch(runOf(block)), block.split('\n')[0]).toBe(false)
-    // The model key reaches only Claude's own step and the email (which reads data only); the costs step reads
-    // only whether it is set (`!= ''`), never its value.
-    const keySteps = steps.filter((block) => /secrets\.ANTHROPIC_API_KEY(?! != '')/.test(block))
-    expect(keySteps.map((block) => block.split('\n')[0].trim())).toEqual(['- name: Let Claude make the change', '- name: Email Steven that the resume is ready to review'])
+    // The model key reaches only the email (which reads data only): Claude's own step runs on Steven's Max plan.
+    const keySteps = steps.filter((block) => /secrets\.ANTHROPIC_API_KEY/.test(block))
+    expect(keySteps.map((block) => block.split('\n')[0].trim())).toEqual(['- name: Email Steven that the resume is ready to review'])
   })
 })
 
