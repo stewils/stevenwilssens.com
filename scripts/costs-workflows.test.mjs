@@ -117,14 +117,14 @@ describe.each(Object.entries(workflows))('the %s workflow', (workflow, meta) => 
   it('names COSTS_INGEST_TOKEN once, in the post step’s env, and passes neither Claude credential into it', () => {
     expect(text.match(/COSTS_INGEST_TOKEN: \$\{\{/g)).toHaveLength(1)
     expect(costs).toContain('          COSTS_INGEST_TOKEN: ${{ secrets.COSTS_INGEST_TOKEN }}')
-    expect(costs).toContain("          HAS_API_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}")
+    expect(costs).not.toMatch(/secrets\.ANTHROPIC_API_KEY/)
     expect(costs).toContain("          HAS_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}")
     expect(costs).not.toMatch(/secrets\.(ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN) \}\}/)
     // The billing rule cites the Claude Code authentication docs.
     expect(costs).toContain('https://code.claude.com/docs/en/authentication')
-    // The Claude step keeps both credentials, as today.
+    // The Claude step runs on Steven's Max plan: the OAuth token only, never the API key, which Claude Code would use first.
     const claude = stepBlock(job, meta.claudeStep)
-    expect(claude).toContain('anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}')
+    expect(claude).not.toMatch(/anthropic_api_key|ANTHROPIC_API_KEY/)
     expect(claude).toContain('claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}')
   })
 
@@ -238,7 +238,7 @@ describe('the scripts, run', () => {
   const post = (env, script = runScript(stepBlock(jobBlock(review, 'costs'), 'Record what the run cost'))) => {
     for (const file of ['stdin', 'args', 'header']) rmSync(`${temp}/${file}`, { force: true })
     const result = bash(script.replaceAll('/usr/bin/jq', 'jq').replaceAll('/usr/bin/curl', stub), {
-      COSTS_INGEST_TOKEN: 's'.repeat(40), HAS_API_KEY: 'true', HAS_OAUTH: 'true', MICRO: '5645206', TURNS: '16', DURATION: '418786',
+      COSTS_INGEST_TOKEN: 's'.repeat(40), HAS_OAUTH: 'true', MICRO: '5645206', TURNS: '16', DURATION: '418786',
       WORKFLOW: 'review', JOB: 'team', RUN_ID: '39349674556', RUN_ATTEMPT: '1', BRANCH: 'dev-costs', PR: '61', ...env,
     })
     const called = existsSync(`${temp}/stdin`)
@@ -249,7 +249,7 @@ describe('the scripts, run', () => {
     const result = post({})
     expect(result.status).toBe(0)
     expect(Object.keys(result.body)).toEqual(['v', 'source', 'workflow', 'job', 'runId', 'runAttempt', 'branch', 'billing', 'costMicro', 'numTurns', 'durationMs', 'endedAt', 'pr'])
-    expect(result.body).toMatchObject({ v: 1, source: 'github', workflow: 'review', job: 'team', runId: 39349674556, runAttempt: 1, branch: 'dev-costs', billing: 'billed', costMicro: 5_645_206, numTurns: 16, durationMs: 418786, pr: 61 })
+    expect(result.body).toMatchObject({ v: 1, source: 'github', workflow: 'review', job: 'team', runId: 39349674556, runAttempt: 1, branch: 'dev-costs', billing: 'estimated', costMicro: 5_645_206, numTurns: 16, durationMs: 418786, pr: 61 })
     expect(Math.abs(result.body.endedAt - Date.now())).toBeLessThan(60_000)
     // The contract with /api/costs: the server’s parser takes the body as the workflow builds it.
     expect(parseIngest(JSON.stringify(result.body))).toMatchObject({ source: 'github', workflow: 'review', job: 'team', costMicro: 5_645_206, pr: 61 })
@@ -263,10 +263,10 @@ describe('the scripts, run', () => {
     expect(result.out).not.toContain('s'.repeat(40))
   })
 
-  runs('mark the run billed with the API key, estimated with only the OAuth token, unknown with neither', () => {
-    expect(post({ HAS_API_KEY: 'true', HAS_OAUTH: 'false' }).body.billing).toBe('billed')
-    expect(post({ HAS_API_KEY: 'false', HAS_OAUTH: 'true' }).body.billing).toBe('estimated')
-    expect(post({ HAS_API_KEY: 'false', HAS_OAUTH: 'false' }).body.billing).toBe('unknown')
+  runs('mark the run estimated with the OAuth token and unknown without it, never billed, whatever else is set', () => {
+    expect(post({ HAS_OAUTH: 'true' }).body.billing).toBe('estimated')
+    expect(post({ HAS_OAUTH: 'false' }).body.billing).toBe('unknown')
+    expect(post({ HAS_API_KEY: 'true', HAS_OAUTH: 'true' }).body.billing).toBe('estimated')
   })
 
   runs('leave out the pull request when there is none, and refuse one that is not a number', () => {

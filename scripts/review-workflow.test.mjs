@@ -175,13 +175,13 @@ describe('the assistant check (AC-9)', () => {
     expect(stepOf(check, 'Ask the assistant on the branch and on main')).toContain('node scripts/assistant-check.mjs --branch "$branch" --main "$main" --branch-digest "$BRANCH_DIGEST" --main-digest "$MAIN_DIGEST" --out "$out"')
   })
 
-  it('the key is in job B and in the existing team step only', () => {
-    // The costs job reads only whether the key is set (`!= ''`), never its value (specs/dev-costs.md).
-    const uses = [...workflow.matchAll(/secrets\.ANTHROPIC_API_KEY(?! != '')/g)].map((match) => match.index)
-    expect(uses).toHaveLength(2)
+  it('the key is in job B only: the team step runs on Steven’s Max plan', () => {
+    const uses = [...workflow.matchAll(/secrets\.ANTHROPIC_API_KEY/g)].map((match) => match.index)
+    expect(uses).toHaveLength(1)
     const inCheck = workflow.indexOf(check)
-    const inPrompt = workflow.indexOf(prompt)
-    expect(uses.every((at) => (at > inCheck && at < inCheck + check.length) || (at > inPrompt && at < inPrompt + prompt.length))).toBe(true)
+    expect(uses[0] > inCheck && uses[0] < inCheck + check.length).toBe(true)
+    expect(prompt).not.toMatch(/anthropic_api_key|ANTHROPIC_API_KEY/)
+    expect(prompt).toContain('claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}')
   })
 
   it('says "scope not decided", not "did not run", when the input job stopped before it read the diff', () => {

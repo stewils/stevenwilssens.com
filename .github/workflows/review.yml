@@ -50,7 +50,8 @@ name: Review
 # fix, a separate gate job that runs only main's code over the pull request's built
 # artifacts, is a named follow-up (specs/review-team.md, Out of scope).
 #
-# Secrets: ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN, as for Site update.
+# Secrets: CLAUDE_CODE_OAUTH_TOKEN for Claude Code, as for Site update; ANTHROPIC_API_KEY for
+# the assistant check only.
 on:
   pull_request:
     branches: [main]
@@ -611,7 +612,6 @@ jobs:
         if: steps.who.outputs.dependabot != 'true' && needs.roster.outputs.run != ''
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
           # The site bot opens Site update pull requests; allow only that bot, by its slug, never '*' (public repository).
@@ -774,10 +774,10 @@ jobs:
       - name: Record what the run cost
         env:
           COSTS_INGEST_TOKEN: ${{ secrets.COSTS_INGEST_TOKEN }}
-          # Billed or estimated, from the credentials the Claude step is given: Claude Code uses ANTHROPIC_API_KEY
-          # before CLAUDE_CODE_OAUTH_TOKEN, and always when it is set in non-interactive mode, as the action runs it
-          # (https://code.claude.com/docs/en/authentication). Only whether each is set crosses, never its value.
-          HAS_API_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          # Estimated, from the credential the Claude step is given: only CLAUDE_CODE_OAUTH_TOKEN, Steven's Max plan, so
+          # the cost Claude Code reports is what the run would have cost on the API, not a bill. Claude Code would use
+          # ANTHROPIC_API_KEY before it (https://code.claude.com/docs/en/authentication), so the step is never given
+          # the key. Only whether the token is set crosses, never its value.
           HAS_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
           MICRO: ${{ needs.team.outputs.micro }}
           TURNS: ${{ needs.team.outputs.turns }}
@@ -796,7 +796,7 @@ jobs:
           [[ "$BRANCH" =~ ^[A-Za-z0-9._/-]{1,200}$ && "$BRANCH" != *..* && "$BRANCH" != *//* && "$BRANCH" != [-/]* && "$BRANCH" != */ && "$BRANCH" != *.lock ]] || warn "the branch name is not one the costs page takes."
           if [ "$WORKFLOW" = site-update ] && [[ "$BRANCH" != update/* ]]; then warn "a Site update branch starts with update/."; fi
           if [ -n "$PR" ] && ! [[ "$PR" =~ ^[1-9][0-9]{0,5}$ ]]; then warn "the pull request is not a number."; fi
-          if [ "$HAS_API_KEY" = true ]; then billing=billed; elif [ "$HAS_OAUTH" = true ]; then billing=estimated; else billing=unknown; fi
+          if [ "$HAS_OAUTH" = true ]; then billing=estimated; else billing=unknown; fi
           [ -n "$COSTS_INGEST_TOKEN" ] || warn "the COSTS_INGEST_TOKEN secret is not set."
           body=$(/usr/bin/jq -cn --arg workflow "$WORKFLOW" --arg job "$JOB" --arg branch "$BRANCH" --arg billing "$billing" --arg pr "$PR" \
             --argjson costMicro "$MICRO" --argjson runId "$RUN_ID" --argjson runAttempt "$RUN_ATTEMPT" --argjson numTurns "$TURNS" --argjson durationMs "$DURATION" --argjson endedAt "$(date +%s)000" \
