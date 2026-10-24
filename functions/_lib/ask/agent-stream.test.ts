@@ -9,6 +9,7 @@ import { answerIsOurs, ask, feedback, missingRequirements, MODEL, mockStream, pa
 import { assistantReport } from './report'
 import { instructionVersion, jdPrefix } from './prompt'
 import { MemoryAskStore } from './store'
+import { experiences, profile } from '../../../src/resume'
 
 const sdk = vi.hoisted(() => ({ options: [] as unknown[], requests: [] as Record<string, unknown>[] }))
 vi.mock('@anthropic-ai/sdk', () => ({
@@ -304,5 +305,40 @@ describe('the report card with nothing answered yet', () => {
   it('leaves the averages out instead of dividing by zero', async () => {
     const report = await assistantReport(new MemoryAskStore(), new MemoryStore(), now)
     expect(report).toMatchObject({ since: null, questions: 0, costPerAnswerMicro: null, msFirstAvg: null, publicNotes: 0 })
+  })
+})
+
+// specs/mcp-prs-automation.md, AC-16: the canned answer (ASK_MOCK) states nothing about Steven that src/resume.ts does not.
+describe('the ASK_MOCK answer', () => {
+  // The mock streams a piece every 25 ms: fake timers, so reading a whole answer takes no real time.
+  const answer = async (question: string) => {
+    vi.useFakeTimers()
+    try {
+      const stream = mockStream('', '', [{ role: 'user', content: question }], { maxTokens: 10 })
+      let finished = false
+      const read = (async () => {
+        let text = ''
+        for await (const event of stream as unknown as AsyncIterable<{ delta?: { text?: string } }>) text += event.delta?.text ?? ''
+        finished = true
+        return text
+      })()
+      while (!finished) await vi.advanceTimersByTimeAsync(1000)
+      return await read
+    } finally { vi.useRealTimers() }
+  }
+  it('states no location, work arrangement, availability or team size other than profile\'s', async () => {
+    for (const text of [await answer('What did Steven do last?'), await answer(`${jdPrefix}\nA VP of product.`)]) {
+      expect(text.length).toBeGreaterThan(50)
+      for (const match of text.matchAll(/(\d+) to (\d+) product managers/g)) expect(`${match[1]} to ${match[2]} product managers`).toBe(profile.teamSize)
+      expect(text).not.toMatch(/\b(remote|hybrid|relocat\w*|on-site|onsite|available (now|from|in)|notice period|visa|green card|citizen)\b/i)
+      for (const place of text.match(/\b(Seattle|Redmond|Bellevue|Belgium|Antwerp|Washington)\b/g) ?? []) expect(`${profile.location} ${profile.workArrangement}`).toContain(place)
+    }
+  })
+  it('names the latest role with its dates as src/resume.ts has them', async () => {
+    const text = await answer('What did Steven do last?')
+    const role = experiences.find((item) => item.key === 'windows-devices-data')!
+    expect(text).toContain(`(${role.dates.replace(' - ', ' to ')})`)
+    expect(role.points.join(' ')).toMatch(/more than 1\.6 billion Windows devices/)
+    expect(text).toMatch(/more than 1\.6 billion devices/)
   })
 })

@@ -100,19 +100,27 @@ export const say = {
   remade: (name: string, preview: string) => `There's already a new version of ${yours(name)}, made on top of what is live. Want it live? Preview: ${preview}`,
   closed: (name: string, waiting: number) => `I've set aside ${yours(name)}; nothing on your site changed.${waiting ? ` ${waiting === 1 ? 'The change you approved waits' : 'The changes you approved wait'} for the next update.` : ''}`,
   alreadyClosed: (name: string) => `${Yours(name)} was already set aside.`,
-  // site_update_status: what is ready, being made, held back by checks, waiting on the branch
-  // rules with no check failed, clashing, scoring lower.
-  status: (parts: { ready: string[]; checking: string[]; making: string[]; held: string[]; waiting?: string[]; clashing: string[]; lowering: string[] }) => {
+  // A run or a check that is queued and has not started (specs/mcp-prs-automation.md, AC-13).
+  waitingToStart: (name: string) => `${Yours(name)} is waiting to start; another update is being made first. I'll tell you when it's ready.`,
+  // Made before the site's own bot made the updates (AC-11): it never goes live by itself.
+  oldWay: (name: string) => `${Yours(name)} was made the old way, so it can't go live by itself. Want me to make it again so it can?`,
+  // Its description was changed by someone other than the bot (AC-22), so what it was asked is not taken from it.
+  cannotRedo: (name: string) => `${Yours(name)} clashes with an update that went live, and I can't make it again by itself: its description was changed by hand. Want me to start it fresh from what you asked for?`,
+  // site_update_status: what is ready, being made, waiting to start, held back by checks, waiting on the
+  // branch rules with no check failed, clashing, scoring lower, made the old way.
+  status: (parts: { ready: string[]; checking: string[]; making: string[]; queued?: string[]; held: string[]; waiting?: string[]; clashing: string[]; lowering: string[]; oldWay?: string[] }) => {
     const some = (names: string[], one: string, many: string) => (names.length === 1 ? `${Yours(names[0])} ${one}` : `${names.length} updates ${many}`)
-    const { ready, checking, making, held, waiting = [], clashing, lowering } = parts
+    const { ready, checking, making, queued = [], held, waiting = [], clashing, lowering, oldWay = [] } = parts
     const lines: string[] = []
     if (ready.length) lines.push(`${some(ready, 'is', 'are')} ready to check${ready.length > 1 ? `: ${list(ready)}` : ''}.`)
     if (checking.length) lines.push(`${some(checking, 'is', 'are')} ready to look at while the team finishes checking${checking.length > 1 ? `: ${list(checking)}` : ' it'}.`)
     if (making.length) lines.push(`${some(making, 'is', 'are')} still being made.`)
+    if (queued.length) lines.push(`${some(queued, 'is', 'are')} waiting to start${queued.length > 1 ? ` (${list(queued)})` : ''}; another update is being made first.`)
     if (held.length) lines.push(`${some(held, 'is', 'are')} held back: the team's checks haven't passed${held.length > 1 ? ` (${list(held)})` : ''}.`)
     if (waiting.length) lines.push(`${some(waiting, "isn't", "aren't")} ready to go live yet: ${waiting.length === 1 ? 'it waits' : 'they wait'} for the team's checks to pass${waiting.length > 1 ? ` (${list(waiting)})` : ''}.`)
     if (clashing.length) lines.push(`${some(clashing, 'needs', 'need')} to be made again before ${clashing.length === 1 ? 'it' : 'they'} can go live${clashing.length > 1 ? `: ${list(clashing)}` : ''}.`)
     if (lowering.length) lines.push(`${list(lowering.map((name, index) => (index ? yours(name) : Yours(name))))} would make your résumé score lower with job-application software.`)
+    if (oldWay.length) lines.push(`${some(oldWay, 'was', 'were')} made the old way${oldWay.length > 1 ? ` (${list(oldWay)})` : ''}, so ${oldWay.length === 1 ? 'it' : 'they'} can't go live by ${oldWay.length === 1 ? 'itself' : 'themselves'}; I can make ${oldWay.length === 1 ? 'it' : 'them'} again so ${oldWay.length === 1 ? 'it' : 'they'} can.`)
     return lines.length ? lines.join(' ') : 'Nothing is waiting: every update is live or set aside.'
   },
 }

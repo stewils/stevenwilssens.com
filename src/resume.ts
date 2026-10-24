@@ -162,8 +162,9 @@ export const skills = [
   'Software engineering background (C#, .NET)',
 ]
 
-// Selected work: the data and AI chapter (2020 to 2026) first, then the two earlier
-// stories recruiters ask about. Outcomes stay within what is public or what colleagues
+// Selected work, six cases: four from the data and AI chapter at Microsoft (2020 to 2026)
+// first, then wilssens.com, built after Microsoft, and the spatial audio story from before
+// that chapter, which recruiters ask about. Outcomes stay within what is public or what colleagues
 // wrote in their recommendations; `source` names who said it.
 export type Work = { key: string; title: string; period: string; role: string; context: string; work: string; outcome: string; source?: string; link?: { href: string; label: string } }
 export const selectedWork: Work[] = [

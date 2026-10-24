@@ -5,7 +5,7 @@
 // anything is pushed, and the feed merge keeps the numbers a live feed does not send.
 // The YAML is not measured by coverage; these turn red when it drifts.
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { cutStep, TEAM_STEP } from './team-manifest.mjs'
@@ -87,7 +87,7 @@ describe('the steps around the team step (AC-3, AC-4, T-3, C-2, C-5)', () => {
     expect(indexOf("Take the workflow's own scripts")).toBeLessThan(indexOf('What changed in the project'))
     expect(indexOf('What changed in the project')).toBeLessThan(indexOf(TEAM_STEP))
     expect(take).toContain('git show "$GITHUB_SHA:scripts/$script.mjs" > "$dir/$script.mjs"')
-    expect(take).toContain('for script in claude-run-summary site-update-outcome building-feed; do')
+    expect(take).toContain('for script in claude-run-summary site-update-outcome building-feed site-update-bundle; do')
   })
 
   it('Remove the token from the origin URL, then Summarise Claude\'s run, both with if: always(), then the no-change step, then Check and commit', () => {
@@ -193,7 +193,7 @@ describe('the checks start on the pull request (AC-1, AC-3)', () => {
       expect(block, name).not.toMatch(/github\.token|secrets\.GITHUB_TOKEN/)
     }
     expect(runOf(publishStep('Open the pull request'))).toContain('gh pr create --base main --head "$BRANCH"')
-    expect(runOf(publishStep('Push the branch'))).toContain('push origin "refs/heads/$BRANCH:refs/heads/$BRANCH"')
+    expect(runOf(publishStep('Push the branch'))).toContain('push origin "$COMMIT:refs/heads/$BRANCH"')
   })
 
   it('no workflow merges a pull request or turns on auto-merge (AC-4)', () => {
@@ -255,7 +255,7 @@ describe('the bot token never shares a job with code Claude or the branch wrote 
   it("re-validates the branch name before the fetch and before the push and the pull request, and checks the bundle against the update job's base (main may have moved on)", () => {
     for (const job of [publish, jobOf('resume-data'), email]) {
       const take = cutStep(job, 'Take the change from the update job')
-      expect(runOf(take)).toBe('node scripts/site-update-bundle.mjs "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "$BASE" origin/main "$GITHUB_SHA"')
+      expect(runOf(take)).toBe(`node scripts/site-update-bundle.mjs "$RUNNER_TEMP/change/change.bundle" "$BRANCH" "$BASE" origin/main "$GITHUB_SHA"${job === publish ? ' --identity "$BOT_NAME <$BOT_EMAIL>" --commit --title "$TITLE" --run "$GITHUB_RUN_ID"' : ''}`)
       expect(envOf(take)).toContain('BASE: ${{ needs.update.outputs.base }}')
     }
     for (const name of ['Push the branch', 'Open the pull request']) expect(runOf(publishStep(name)), name).toContain('[[ "$BRANCH" =~ ^update/[a-z0-9-]+-[0-9]+$ ]] && [[ "$BRANCH" == *-"$GITHUB_RUN_NUMBER" ]] ||')
@@ -379,6 +379,60 @@ describe('the branch name', () => {
   })
 })
 
+// specs/mcp-prs-automation.md, AC-11 (C17): every commit that reaches GitHub is the site bot's, written by publish.
+describe('the commits are the site bot\'s (AC-11)', () => {
+  it("preflight outputs the App's user id with its name and address", () => {
+    expect(preflight).toContain('id: ${{ steps.bot.outputs.id }}')
+    expect(runOf(cutStep(preflight, 'The site bot is set up'))).toContain('echo "id=$id" >> "$GITHUB_OUTPUT"')
+  })
+
+  it('the Claude step passes bot_name and bot_id from preflight', () => {
+    expect(team).toContain('bot_name: ${{ needs.preflight.outputs.name }}')
+    expect(team).toContain('bot_id: ${{ needs.preflight.outputs.id }}')
+  })
+
+  it('Check and commit sets GIT_AUTHOR_* and GIT_COMMITTER_* from preflight', () => {
+    const env = envOf(step('Check and commit'))
+    for (const who of ['AUTHOR', 'COMMITTER']) {
+      expect(env).toContain(`GIT_${who}_NAME: \${{ needs.preflight.outputs.name }}`)
+      expect(env).toContain(`GIT_${who}_EMAIL: \${{ needs.preflight.outputs.email }}`)
+    }
+  })
+
+  it('the identity check runs in update before Hand the change on, from the copy taken before Claude ran', () => {
+    const check = step("The commits are the site bot's")
+    expect(indexOf('Check and commit')).toBeLessThan(indexOf("The commits are the site bot's"))
+    expect(indexOf("The commits are the site bot's")).toBeLessThan(indexOf('Hand the change on'))
+    expect(runOf(check)).toBe('node "$RUNNER_TEMP/site-update/site-update-bundle.mjs" - "$BRANCH" "$(git rev-parse origin/main)" origin/main --identity "$BOT_NAME <$BOT_EMAIL>"')
+    expect(runOf(step('Take the workflow\'s own scripts'))).toMatch(/for script in [^;]*\bsite-update-bundle\b[^;]*; do/)
+    expect(check).not.toMatch(/secrets\.|token/i)
+  })
+
+  it('publish checks the identity and writes the commit before the token is minted, and pushes that commit, not the bundle\'s ref', () => {
+    const take = publishStep('Take the change from the update job')
+    expect(runOf(take)).toContain('--identity "$BOT_NAME <$BOT_EMAIL>" --commit --title "$TITLE" --run "$GITHUB_RUN_ID"')
+    expect(take).toContain('id: take')
+    expect(envOf(take)).toContain('TITLE: ${{ needs.brief.outputs.title }}')
+    expect(publish.indexOf('- name: Take the change from the update job')).toBeLessThan(publish.indexOf("- name: The site bot's token"))
+    const push = publishStep('Push the branch')
+    expect(envOf(push)).toContain('COMMIT: ${{ steps.take.outputs.sha }}')
+    expect(runOf(push)).toContain('[[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] && [ "$(git rev-parse "refs/heads/$BRANCH")" = "$COMMIT" ]')
+    expect(runOf(push)).not.toContain('refs/heads/$BRANCH:refs/heads/$BRANCH')
+  })
+})
+
+// specs/mcp-prs-automation.md, AC-22 (C16): holding is always safe; lifting it is Steven's alone.
+describe('no workflow removes hold (AC-22)', () => {
+  const dir = join(root, '.github/workflows')
+  const files = readdirSync(dir).filter((name) => /\.ya?ml$/.test(name))
+  it.each(files)('%s', (name) => {
+    const text = readFileSync(join(dir, name), 'utf8')
+    expect(text).not.toMatch(/--remove-label[^\n]*\bhold\b/)
+    expect(text).not.toMatch(/labels\/hold\b/)
+    expect(text).not.toMatch(/-X\s*PUT[^\n]*\/labels|--method\s+PUT[^\n]*\/labels|\/labels[^\n]*(-X\s*PUT|--method\s+PUT)/)
+    expect(text).not.toMatch(/removeLabelsFromLabelable|clearLabelsFromLabelable/)
+  })
+})
 describe('the work an update needs, and no more', () => {
   it('takes the short path for approved proposals and write-up refreshes, without spec agents', () => {
     expect(team).toContain('0. Small changes take the short path. When the instruction only applies approved résumé proposals, or only refreshes a Building write-up, start no spec agents')
