@@ -69,7 +69,8 @@ const review = async (source) => {
   const pages = Object.fromEntries(await Promise.all(reviewedPages.map(async (page) => [page, await read(source, markdownPath(page))])))
   let resumeReport = null
   try { resumeReport = JSON.parse(await read(source, '/resume-report.json') ?? 'null') } catch { /* no report */ }
-  return { ...reviewForRecruiters({ pages, resumeReport, linkedin: null, now: Date.now() }), missing: missingSources(pages, resumeReport) }
+  // LinkedIn is left out: it lives in the MCP server, so this check cannot see it either way.
+  return { ...reviewForRecruiters({ pages, resumeReport, linkedin: null, now: Date.now(), withLinkedIn: false }), missing: missingSources(pages, resumeReport) }
 }
 
 const unavailable = (why) => {

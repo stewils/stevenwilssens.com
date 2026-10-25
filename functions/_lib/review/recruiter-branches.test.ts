@@ -32,6 +32,34 @@ beforeEach(() => {
   Object.assign(data.profile, { location: '', workAuthorization: 'US citizen', availability: 'Now', lookingFor: 'A product leadership role' })
 })
 
+describe('team sizes', () => {
+  it('reads a team size in digits or words, with the people it counts', async () => {
+    const { scopeWords } = await import('./recruiter')
+    for (const text of ['Led six PMs, working with about 20 developers.', 'Grew the team from one to five PMs.', 'Led a team of 12 engineers.', 'Led a PM organization of about 20.', 'Partnered with more than 100 developers and data scientists.', 'Led 8 product managers.', 'Worked with a dozen engineers.', 'Led two to four PMs.']) expect(scopeWords.test(text), text).toBe(true)
+    for (const text of ['Led the data team.', 'Shipped one feature to five markets.', 'One place for developers to share extensions.', 'Owned 3 products.', 'Grew usage 3x.', 'Someone led nine teams.']) expect(scopeWords.test(text), text).toBe(false)
+  })
+
+  it('takes a role with its team size in words as scoped', () => {
+    data.experiences[0] = role({ key: 'latest', role: 'Group Product Manager Lead', dates: 'Jan 2020 - Mar 2024', summary: 'Led the data team.', points: ['Led six PMs, working with about 20 developers.'] })
+    const areas = reviewForRecruiters({ pages, resumeReport: null, linkedin: null, now }).findings.map((finding) => finding.area)
+    expect(areas).not.toContain('scope:latest')
+  })
+})
+
+describe('LinkedIn', () => {
+  it('flags a missing import, unless the caller cannot see LinkedIn at all', () => {
+    const seen = reviewForRecruiters({ pages, resumeReport: null, linkedin: null, now })
+    const unseen = reviewForRecruiters({ pages, resumeReport: null, linkedin: null, now, withLinkedIn: false })
+    expect(seen.findings.map((finding) => finding.area)).toContain('linkedin')
+    expect(unseen.findings.map((finding) => finding.area)).not.toContain('linkedin')
+    expect(unseen.score).toBe(seen.score + 5)
+    // An imported profile's differences are left out too when the caller says it cannot see LinkedIn.
+    const fixes = { fixes: [{ area: 'headline', linkedinSays: 'A', siteSays: 'B', why: 'Searches match on it.', paste: 'B' }], summary: '1' }
+    expect(reviewForRecruiters({ pages, resumeReport: null, linkedin: fixes, now, withLinkedIn: false }).findings.some((finding) => finding.area.startsWith('linkedin'))).toBe(false)
+    expect(reviewForRecruiters({ pages, resumeReport: null, linkedin: fixes, now }).findings.some((finding) => finding.area === 'linkedin:headline')).toBe(true)
+  })
+})
+
 describe('the recruiter review on thin data', () => {
   it('flags missing scope, unbacked numbers, outcomes without numbers and missing logistics', () => {
     const review = reviewForRecruiters({ pages, resumeReport: null, linkedin: null, now })
