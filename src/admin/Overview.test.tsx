@@ -37,7 +37,11 @@ describe('Overview', () => {
     const tiles = screen.getByRole('heading', { name: 'Go to' }).closest('section')!
     const tile = within(tiles).getByRole('link', { name: /^Costs/ })
     expect(tile).toHaveAttribute('href', '#costs')
-    expect(tile).toHaveTextContent('≈$41.20 this month ($12.00 billed) · 1 over budget')
+    expect(tile).toHaveTextContent('$12.00 API key · ≈$29.20 Max plan this month · 1 over budget')
+    // The headline numbers say what building with Claude cost this month, by how it was paid.
+    expect(kpi('API key this month')).toHaveTextContent('$12.00building with Claude')
+    expect(within(kpi('API key this month')).getByRole('link', { name: 'building with Claude' })).toHaveAttribute('href', '#costs')
+    expect(kpi('Max plan this month')).toHaveTextContent('≈$29.20at API rates')
     expect(screen.getByRole('link', { name: /feature is over its budget: dev-costs, ≈\$12\.40 of \$10\.00/ })).toHaveTextContent('Costs →')
   })
 
@@ -63,7 +67,7 @@ describe('Overview', () => {
     const { container } = render(<Overview data={{ days: 1, stats: null, mcp: null, ask: null, resume: null }} needs={[]} summaries={{}} />)
     expect(screen.queryByText('Nothing is waiting for you.')).not.toBeInTheDocument()
     expect(container.querySelector('.needs .skeleton')).not.toBeNull()
-    expect(container.querySelectorAll('.kpi-shimmer')).toHaveLength(6)
+    expect(container.querySelectorAll('.kpi-shimmer')).toHaveLength(8)
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
 

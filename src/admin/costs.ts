@@ -69,5 +69,5 @@ export const costsTile = (info: CostsInfo) => {
   const month = info.months.find((item) => item.month === info.month)?.money ?? zero()
   const over = overBudget(info).length
   const named = info.features.filter((feature) => feature.branch !== null).length
-  return `${costOf(month).text} this month (${formatUsd(month.billed)} billed) · ${over > 0 ? `${over} over budget` : `${named} ${named === 1 ? 'feature' : 'features'}`}`
+  return `${formatUsd(month.billed)} API key · ${formatCost(month.estimated + month.unknown, month.unknown > 0 ? 'unknown' : 'estimated').text} Max plan this month · ${over > 0 ? `${over} over budget` : `${named} ${named === 1 ? 'feature' : 'features'}`}`
 }

@@ -69,11 +69,11 @@ describe('words and links', () => {
 })
 
 describe('the overview tile', () => {
-  it('reads this month, its billed part, and the features over budget or the count', () => {
-    expect(costsTile(makeCosts())).toBe('≈$41.20 this month ($12.00 billed) · 1 over budget')
-    expect(costsTile(makeCosts({ features: [makeFeature({ budgetMicro: null })] }))).toBe('≈$41.20 this month ($12.00 billed) · 1 feature')
-    expect(costsTile(makeCosts({ features: [makeFeature({ budgetMicro: null }), makeFeature({ branch: 'b', budgetMicro: null }), makeFeature({ branch: null })] }))).toBe('≈$41.20 this month ($12.00 billed) · 2 features')
+  it('reads this month by how it was paid, and the features over budget or the count', () => {
+    expect(costsTile(makeCosts())).toBe('$12.00 API key · ≈$29.20 Max plan this month · 1 over budget')
+    expect(costsTile(makeCosts({ features: [makeFeature({ budgetMicro: null })] }))).toBe('$12.00 API key · ≈$29.20 Max plan this month · 1 feature')
+    expect(costsTile(makeCosts({ features: [makeFeature({ budgetMicro: null }), makeFeature({ branch: 'b', budgetMicro: null }), makeFeature({ branch: null })] }))).toBe('$12.00 API key · ≈$29.20 Max plan this month · 2 features')
     expect(costsTile(makeCosts({ empty: true, features: [] }))).toBe('No costs recorded yet')
-    expect(costsTile(makeCosts({ month: '2027-01' }))).toBe('— this month ($0.00 billed) · 1 over budget')
+    expect(costsTile(makeCosts({ month: '2027-01' }))).toBe('$0.00 API key · — Max plan this month · 1 over budget')
   })
 })

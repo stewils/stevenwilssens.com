@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { TrendChart, Vs } from './Charts'
-import { dayLabel, fillDays, formatNumber, formatUsd } from './format'
+import { dayLabel, fillDays, formatCost, formatNumber, formatUsd } from './format'
 import type { Need } from './needs'
 import { pages, type PageId } from './pages'
 import { Shimmer } from './Skeleton'
@@ -15,6 +15,10 @@ function Kpi({ label, value, note, tone = '' }: { label: string; value: ReactNod
 // page it is on), a tile per page with a line of what is there, and the visitors per day.
 export function Overview({ data, needs, summaries }: { data: AdminData; needs: Need[]; summaries: Partial<Record<PageId, string>> }) {
   const { stats, ask, resume, days } = data
+  // Building with Claude this month, by how it was paid: null (a shimmer) until /api/costs answers, a dash if it failed.
+  const costs = data.costs
+  const building = costs?.info ? costs.info.months.find((month) => month.month === costs.info!.month)?.money ?? { billed: 0, estimated: 0, unknown: 0, unpriced: [] } : null
+  const costsFailed = Boolean(costs?.error) && !costs?.info
   const report = resume?.report
   const daily = stats ? fillDays(stats.daily, stats.days) : []
   const titleOf = (id: PageId) => pages.find((page) => page.id === id)?.title ?? ''
@@ -30,6 +34,8 @@ export function Overview({ data, needs, summaries }: { data: AdminData; needs: N
         <Kpi label="Résumé downloads" value={stats && formatNumber(stats.totals.downloads)} note={stats && <Vs current={stats.totals.downloads} previous={previous?.downloads} days={days} />} />
         <Kpi label="Contact clicks" value={stats && formatNumber(stats.totals.contactClicks)} note={stats && <Vs current={stats.totals.contactClicks} previous={previous?.contactClicks} days={days} />} />
         <Kpi label="Résumé ATS score" value={resume && (report ? `${report.score}` : '—')} tone={report ? (report.score >= 90 ? 'good' : report.score < 70 ? 'bad' : '') : ''} note={report ? `of 100 · ${report.ats?.warnings ?? report.warnings ?? 0} ${(report.ats?.warnings ?? report.warnings) === 1 ? 'warning' : 'warnings'}${report.baseline && report.baseline.change !== 0 ? ` · ${report.baseline.change > 0 ? '+' : ''}${report.baseline.change} vs before` : ''}` : resume ? 'no report in this deployment' : ''} />
+        <Kpi label="API key this month" value={building ? formatUsd(building.billed) : costsFailed ? '—' : null} note={<a href="#costs">building with Claude</a>} />
+        <Kpi label="Max plan this month" value={building ? formatCost(building.estimated + building.unknown, building.unknown > 0 ? 'unknown' : 'estimated').text : costsFailed ? '—' : null} note="at API rates" />
         <Kpi label="Assistant this month" value={ask && formatUsd(ask.month.costMicro)} note={ask ? `${formatNumber(ask.month.questions)} questions · ${formatUsd(ask.budgetUsd * 1_000_000)} budget` : ''} />
       </dl>
 

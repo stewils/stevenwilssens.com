@@ -21,7 +21,7 @@ import { TeamPage, type TeamAction } from './TeamPage'
 import { roles } from './team-state'
 import type { TeamReads } from './team-types'
 import { TrafficPage } from './TrafficPage'
-import type { AdminData, AskInfo, AskLogEntry, AskRating, CostsInfo, McpInfo, RatingDraft, ResumeInfo, Stats } from './types'
+import type { AdminData, AskInfo, AskLogEntry, AskRating, CostsInfo, Draft, DraftSummary, McpInfo, RatingDraft, ResumeInfo, Stats } from './types'
 import { newerRatings, withRatings } from './askQuality'
 import type { SaveResult } from './RatingForm'
 
@@ -213,6 +213,11 @@ export default function Admin() {
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [generatedAt])
 
+  // Drafts (Links → Drafts) are asked for only on the Links page, and a draft's text only once it is opened.
+  const reading = page.id === 'links' ? new URLSearchParams(hashQuery).get('read') : null
+  const draftList = useApi<{ drafts: DraftSummary[] }>(`/api/drafts?r=${refreshCount}`, page.id === 'links' ? token : '', rejected)
+  const draft = useApi<Draft>(`/api/drafts?slug=${encodeURIComponent(reading ?? '')}&r=${refreshCount}`, reading ? token : '', rejected)
+
   if (!token) return <Login onSubmit={(value) => { storage.set(tokenKey, value); storage.set(ignoreKey, '1'); setIgnored(true); setLoginError(''); setToken(value) }} error={loginError} />
 
   const data: AdminData = { days, stats: stats.data, mcp: mcp.data, ask: askData, resume: resume.data, team: { manifest: teamManifest, reads: teamReads, readsError: team.error }, costs: { info: costsInfo, error: costs.error } }
@@ -237,7 +242,7 @@ export default function Admin() {
       case 'mcp': return mcp.data ? <McpPage info={mcp.data} /> : waiting('the MCP details', false)
       case 'team': return <TeamPage manifest={teamManifest} reads={teamReads} readsError={team.error} onPost={postTeam} />
       case 'costs': return costs.error ? <CostsError /> : costsInfo ? <CostsPage info={costsInfo} onBudget={saveBudget} roleNames={roleNamesFrom(roles(teamManifest))} /> : waiting('costs')
-      case 'links': return <LinksPage />
+      case 'links': return <LinksPage drafts={draftList.error ? { error: draftList.error } : draftList.data ? { list: draftList.data.drafts } : null} reading={reading} draft={reading ? (draft.error ? { error: draft.error } : draft.data?.slug === reading && !draft.loading ? { draft: draft.data } : null) : null} />
       default: return <Overview data={data} needs={needs} summaries={summaries} />
     }
   }
