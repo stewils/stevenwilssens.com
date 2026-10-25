@@ -43,28 +43,28 @@ export function ConcernChart() {
 }
 
 export function LevelsDiagram() {
-  const levels: [string, string, string, string][] = [
-    ['0', 'Nothing blocked', 'Your PC exactly as it is', 'Nothing'],
-    ['1', 'AI features off', 'Recall, Click to Do, Copilot in Office and Edge, Paint and Notepad AI, Widgets, browser AI, AI training data', 'Those features, and the whole Widgets board'],
-    ['2', 'No AI apps or sites', '+ chatbot sites and apps, the Copilot apps, chatbots inside Messenger, AI in Google Search', 'Chatbot sites and apps, the image strips on Google’s results page'],
-    ['3', 'Full lockdown', '+ AI engines inside apps, local model runners; option: Windows’ own built-in AI', 'Background blur, generative tools, local AI apps'],
+  const groups: [string, string, string, string][] = [
+    ['1', 'AI built into Windows, browsers and Office', 'Recall, Click to Do, Copilot in Office and Edge, Paint and Notepad AI, Widgets, browser AI, AI training data', 'Those features, and the whole Widgets board'],
+    ['2', 'AI chatbots, sites and apps', 'Chatbot sites and apps, the Copilot apps, chatbots inside Messenger, AI in Google Search', 'Chatbot sites and apps, the image strips on Google’s results page'],
+    ['3', 'AI hidden inside other apps', 'AI engines inside apps, local model runners; option: Windows’ own AI engines', 'Background blur, generative tools, local AI apps'],
   ]
-  return <svg viewBox="0 0 760 392" role="img" aria-label="Four levels, each including the ones below it: nothing blocked, AI features off, no AI apps or sites, full lockdown" fontSize="13"><Arrow id="lvl-arrow" />
-    <text x="24" y="30" fontSize="15" fontWeight="600" fill={ink}>Four positions, each including the ones below it</text>
-    <g data-part="" fill="none" stroke={edge} strokeWidth="1.25"><path d="M60 338V62" markerEnd="url(#lvl-arrow)" /></g>
-    <g data-part="" fontSize="11" fill={quiet}><text x="20" y="46">more AI blocked ↑</text></g>
-    {levels.map(([n, name, what, breaks], index) => {
-      const y = 304 - index * 74
-      const main = index > 0
+  return <svg viewBox="0 0 760 392" role="img" aria-label="Three choices over three independent groups: nothing turned off, choose what to turn off, everything AI Breaker can turn off; the groups are AI built into Windows, AI chatbots, sites and apps, and AI hidden inside other apps" fontSize="13">
+    <text x="24" y="30" fontSize="15" fontWeight="600" fill={ink}>Three choices over three groups that combine freely</text>
+    {['Nothing turned off', 'Choose what to turn off', 'Everything AI Breaker can turn off'].map((choice, i) => <g key={choice} data-part="">
+      <rect x={24 + i * 240} y="46" width="232" height="40" rx="8" fill={i === 1 ? accent : 'none'} fillOpacity={0.1} stroke={i === 1 ? accent : edge} strokeWidth="1.25" />
+      <text x={140 + i * 240} y="71" textAnchor="middle" fontWeight="600" fill={ink}>{choice}</text>
+    </g>)}
+    {groups.map(([n, name, what, breaks], index) => {
+      const y = 140 + index * 74
       return <g key={n} data-part="">
-        <rect x="88" y={y - 30} width="648" height="66" rx="8" fill={main ? accent : 'none'} fillOpacity={main ? 0.06 + index * 0.05 : 1} stroke={main ? accent : edge} strokeWidth={main ? 1.5 : 1.25} />
-        <text x="104" y={y + 10} fontSize="22" fontWeight="700" fill={main ? accent : quiet}>{n}</text>
-        <text x="140" y={y - 10} fontWeight="600" fill={ink}>{name}</text>
-        <text x="140" y={y + 8} fontSize="11.5" fill={quiet}>{what}</text>
-        <text x="140" y={y + 26} fontSize="11" fill={index > 0 ? warn : quiet}>Breaks: {breaks}</text>
+        <rect x="24" y={y - 30} width="712" height="66" rx="8" fill={accent} fillOpacity={0.08} stroke={accent} strokeWidth="1.5" />
+        <text x="40" y={y + 10} fontSize="22" fontWeight="700" fill={accent}>{n}</text>
+        <text x="76" y={y - 10} fontWeight="600" fill={ink}>{name}</text>
+        <text x="76" y={y + 8} fontSize="11.5" fill={quiet}>{what}</text>
+        <text x="76" y={y + 26} fontSize="11" fill={warn}>Breaks: {breaks}</text>
       </g>
     })}
-    <g data-part="" fontSize="11.5" fill={quiet}><text x="88" y="364">Any single switch can be flipped on top of a level, which makes the setting “Custom (based on Level N)”.</text><text x="88" y="382">Defender’s malware protection is never touched, at any level.</text></g>
+    <g data-part="" fontSize="11.5" fill={quiet}><text x="24" y="364">Each group has “Choose items” for single items. The choice is worked out from the groups, never stored.</text><text x="24" y="382">Defender’s malware protection is never touched.</text></g>
   </svg>
 }
 
@@ -98,16 +98,16 @@ export function JournalFlowDiagram() {
 
 export function LayersDiagram() {
   const rows: [string, string, string][] = [
-    ['AI built into Windows, Office and browsers', 'Documented policy settings (Microsoft’s, Google’s and Mozilla’s own)', 'Level 1'],
-    ['Chatbot websites', 'Each browser’s own URL block list, then DNS rules as a catch-all', 'Level 2'],
-    ['AI desktop apps', 'Per-app outbound firewall rules', 'Level 2'],
-    ['The Copilot apps', 'AppLocker: the app does not start (Microsoft’s recommended method)', 'Level 2'],
-    ['AI in Google Search, Messenger', 'The browser extension that comes with AI Breaker', 'Level 2'],
-    ['AI engines inside apps, local models', 'App Control: Windows refuses to run those files', 'Level 3'],
+    ['AI built into Windows, Office and browsers', 'Documented policy settings (Microsoft’s, Google’s and Mozilla’s own)', 'Group 1'],
+    ['Chatbot websites', 'Each browser’s own URL block list, then DNS rules as a catch-all', 'Group 2'],
+    ['AI desktop apps', 'Per-app outbound firewall rules', 'Group 2'],
+    ['The Copilot apps', 'AppLocker: the app does not start (Microsoft’s recommended method)', 'Group 2'],
+    ['AI in Google Search, Messenger', 'The browser extension that comes with AI Breaker', 'Group 2'],
+    ['AI engines inside apps, local models', 'App Control: Windows refuses to run those files', 'Group 3'],
   ]
   return <svg viewBox="0 0 760 318" role="img" aria-label="Where each kind of AI is stopped: policy settings, browser block lists and DNS, firewall rules, AppLocker, a browser extension, and App Control" fontSize="13">
     <text x="24" y="30" fontSize="15" fontWeight="600" fill={ink}>Each kind of AI is stopped by the control Microsoft documents for it</text>
-    <g data-part="" fontSize="11" fill={quiet}><text x="24" y="56">WHAT</text><text x="300" y="56">HOW</text><text x="700" y="56">LEVEL</text></g>
+    <g data-part="" fontSize="11" fill={quiet}><text x="24" y="56">WHAT</text><text x="300" y="56">HOW</text><text x="700" y="56">GROUP</text></g>
     {rows.map(([what, how, level], i) => <g key={what} data-part=""><rect x="24" y={68 + i * 38} width="712" height="32" rx="6" fill={tint} /><text x="36" y={89 + i * 38} fontWeight="600" fontSize="12.5" fill={ink}>{what}</text><text x="300" y={89 + i * 38} fontSize="12" fill={quiet}>{how}</text><text x="700" y={89 + i * 38} fontSize="11.5" fontWeight="600" fill={accent}>{level}</text></g>)}
     <g data-part="" fontSize="11.5" fill={quiet}><text x="24" y="312">Layers back each other up. Never used: the hosts file, patched system files, kernel drivers, or any block on Microsoft’s own servers.</text></g>
   </svg>
@@ -123,6 +123,6 @@ export function FeedDiagram() {
     <g data-part="">{box(328, true)}<text x="392" y="96" textAnchor="middle" fontWeight="600" fill={ink}>Steven reviews</text><text x="392" y="113" textAnchor="middle" fontSize="11" fill={quiet}>a pull request a week,</text><text x="392" y="127" textAnchor="middle" fontSize="11" fill={quiet}>signs with a hardware key</text></g>
     <g data-part="">{box(480)}<text x="544" y="96" textAnchor="middle" fontWeight="600" fill={ink}>Signed feed</text><text x="544" y="113" textAnchor="middle" fontSize="11" fill={quiet}>feed.aibreaker.org,</text><text x="544" y="127" textAnchor="middle" fontSize="11" fill={quiet}>versions only go up</text></g>
     <g data-part="">{box(632)}<text x="696" y="96" textAnchor="middle" fontWeight="600" fill={ink}>Each PC</text><text x="696" y="113" textAnchor="middle" fontSize="11" fill={quiet}>checks the signature,</text><text x="696" y="127" textAnchor="middle" fontSize="11" fill={quiet}>applies tightening only</text></g>
-    <g data-part="" fontSize="11.5" fill={quiet}><text x="24" y="172">The station’s research agent has no rights to the virtual machines and no GitHub token; a deterministic runner checks its requests.</text><text x="24" y="190">Nobody on the station can sign a release or push to main.</text><text x="24" y="212">The feed can add domains, app identities and prebuilt App Control policies, never a registry target or a signing key.</text><text x="24" y="230">A PC whose list is more than 21 days old says so. Anything a release would block less waits for the person’s next level change.</text></g>
+    <g data-part="" fontSize="11.5" fill={quiet}><text x="24" y="172">The station’s research agent has no rights to the virtual machines and no GitHub token; a deterministic runner checks its requests.</text><text x="24" y="190">Nobody on the station can sign a release or push to main.</text><text x="24" y="212">The feed can add domains, app identities and prebuilt App Control policies, never a registry target or a signing key.</text><text x="24" y="230">A PC whose list is more than 21 days old says so. Anything a release would block less waits for the person’s next change.</text></g>
   </svg>
 }

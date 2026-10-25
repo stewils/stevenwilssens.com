@@ -11,13 +11,13 @@ import feed from './feed.json'
 import '../wilssens/article.css'
 
 // The write-up of why and how AI Breaker (aibreaker.org) was built, linked from /projects.
-// Facts come from the project's own decision log and specs as of 19 October 2026;
+// Facts come from the project's own decision log and specs as of 25 October 2026;
 // survey figures are cited inline. Screenshots: public sections of aibreaker.org.
 
 const sections = [
   ['fear', 'Half the country is wary'],
   ['control', 'Why a switch calms'],
-  ['levels', 'Four positions'],
+  ['levels', 'Three choices'],
   ['architecture', 'The helper writes first'],
   ['mechanisms', 'Documented controls only'],
   ['proof', 'Proof from Windows'],
@@ -35,7 +35,7 @@ const linkedInShare = `https://www.linkedin.com/sharing/share-offsite/?url=${enc
 
 // What is built and proven, not effort: feed.json, from the project's specs as of the last refresh
 // (aibreaker.org/api/building adds what its database knows). [key in the feed, prefix, decimals, label]
-const stats: Stat[] = [['levels', '', 0, 'levels, from nothing blocked to full lockdown'], ['settingsCovered', '', 0, `of ${feed.numbers.settingsDocumented} documented AI settings in Windows, Office and browsers covered`], ['chatbotDomainsBlocked', '', 0, 'chatbot domains blocked in three browsers, proven on Windows Home and Pro'], ['clicksToUndo', '', 0, 'click to undo everything, even when the app won’t open']]
+const stats: Stat[] = [['settingsCovered', '', 0, `of ${feed.numbers.settingsDocumented} documented AI settings in Windows, Office and browsers covered`], ['chatbotDomainsBlocked', '', 0, 'chatbot domains blocked in three browsers, proven on Windows Home and Pro'], ['clicksToUndo', '', 0, 'click to undo everything, even when the app won’t open']]
 
 const Figure = ({ children, caption }: { children: ReactNode; caption: string }) => <figure className="wx-figure wx-diagram"><div className="wx-diagram-scroll" role="group" aria-label={caption} tabIndex={0}>{children}</div><figcaption>{caption}</figcaption></figure>
 
@@ -93,7 +93,7 @@ export default function AIBreakerArticle() {
           <p><strong>Why a product leader still builds:</strong> to stay sharp on what my teams ship, and because the judgment calls in this one, scope, honesty about limits, what to charge for, are product calls. I built it with Claude Code, Anthropic’s AI coding tool, starting on 10 October 2026.</p>
         </aside>
 
-        <p className="wx-lede"><a href="https://aibreaker.org" target="_blank" rel="noreferrer">AI Breaker</a> turns off the AI on a Windows 11 PC from one window, in four levels, shows what each level will stop before it is applied, proves afterwards that it worked, and puts everything back in one click. It costs $19 once. It exists because of a simple observation about fear.</p>
+        <p className="wx-lede"><a href="https://aibreaker.org" target="_blank" rel="noreferrer">AI Breaker</a> turns off the AI on a Windows 11 PC from one window, with three plain choices over three groups, shows what each choice will stop before it is applied, proves afterwards that it worked, and puts everything back in one click. It costs $19 once. It exists because of a simple observation about fear.</p>
 
         <section aria-labelledby="fear">
           <H2 id="fear" kicker="01">Half the country would rather not</H2>
@@ -112,23 +112,23 @@ export default function AIBreakerArticle() {
           <H2 id="control" kicker="02">Why a switch calms</H2>
           <p className="wx-callout">Fear shrinks when you hold the switch. People do not need AI gone. They need to know they can stop it, in one place, and check that it stopped.</p>
           <p>That is the belief behind the product, and it is older than AI. In the stress experiments David Glass and Jerome Singer published in <em>Urban Stress</em> (1972), people worked through tasks while loud, unpredictable noise played. One group was given a button that would stop the noise and asked not to use it. Almost nobody pressed it. Yet the group with the button made fewer errors and persisted longer afterwards than the group without one. The button changed nothing about the noise. It changed how much the noise cost them.</p>
-          <p>The same pattern runs through the surveys above: the majority who want “more control” are not the same people who want AI gone. They want a say. So AI Breaker is not a ban. It is a switch with four positions, a preview of what each one will stop, and a record anyone can check. The off switch only earns trust if it is:</p>
+          <p>The same pattern runs through the surveys above: the majority who want “more control” are not the same people who want AI gone. They want a say. So AI Breaker is not a ban. It is a switch with three choices, a preview of what each one will stop, and a record anyone can check. The off switch only earns trust if it is:</p>
           <ul className="wx-points">
             <li><strong>Legible.</strong> One place, plain language, no hunting through settings. The standard I wrote down: a 70-year-old who is afraid of AI should be comfortable using it.</li>
             <li><strong>Verifiable.</strong> Proof it is actually off: a log of what was blocked and when, drawn from Windows’ own records rather than from us.</li>
             <li><strong>Durable.</strong> Updates cannot silently turn AI back on. Drift is detected and reported; a tamper lock is on the roadmap.</li>
-            <li><strong>Honest about scope.</strong> It says exactly what each level covers and what it does not. A row only says “blocked” after the feature has been seen to stop.</li>
+            <li><strong>Honest about scope.</strong> It says exactly what each group covers and what it does not. A row only says “blocked” after the feature has been seen to stop.</li>
           </ul>
           <p>Every decision below was measured against those four words. When a cheaper option failed one of them, the project took the more expensive one. That is also what makes it worth paying for: the free tweaks already offer the cheap version.</p>
         </section>
 
         <section aria-labelledby="levels">
-          <H2 id="levels" kicker="03">Four positions, one switch</H2>
-          <p>Levels, not a hundred toggles. Each level includes the ones below it, every level says up front what will stop working, and every level is reversible with one click. Windows itself keeps working at every level; only AI features stop.</p>
-          <Figure caption="The four levels as shipped in the app and on aibreaker.org. Level 3 is shown as “coming in a later update” until its proofs are complete."><LevelsDiagram /></Figure>
+          <H2 id="levels" kicker="03">Three choices, three groups</H2>
+          <p>Three choices, not a hundred toggles: nothing turned off, choose what to turn off, or everything AI Breaker can turn off. Underneath are three groups that can be combined freely, so someone can block AI chatbots and keep Office’s dictation, with no numbers to learn. Every group says up front what will stop working, and every group and choice is reversible with one click. Windows itself keeps working whatever is turned off; only AI features stop. The first design had four stacking levels. On 24 October 2026, after I heard that people felt locked in, I replaced them.</p>
+          <Figure caption="The three groups as shipped in the app and on aibreaker.org. The third is shown as “coming in a later update” until its proofs are complete."><LevelsDiagram /></Figure>
           <Shot src={home} width={1920} height={1200} host="aibreaker.org" alt="The aibreaker.org home page: the headline “The off switch for AI on Windows.” beside a demo of the switch set to Level 2, with the AI features it blocks crossed out" caption="The home page lets visitors move the switch and watch the list change before they join the waitlist. The demo uses the same wording as the app: Enabled or Blocked, and “Always on” for Defender." />
-          <p>Three rules shaped the levels. Microsoft Defender’s own AI-based malware protection is never touched, at any level, and the app has no toggle for it at all. Nothing that uninstalls a component is used, because a one-click undo cannot cleanly reverse it. And the option that turns off Windows’ own built-in AI is never on by default and carries an accessibility warning, because it removes face sign-in, voice typing, live captions and the natural Narrator voices some people depend on.</p>
-          <p>Anyone can also flip a single item on top of a level. That makes the setting “Custom (based on Level 2)”, the same idea as a browser’s Standard, Strict and Custom. One decision I made against the first design: when a setting on the PC is already stricter than what AI Breaker would write, it is left alone, and when it is looser, AI Breaker writes the stricter value and records the old one. If a person decides to turn something off, there is no reason to turn it back on.</p>
+          <p>Three rules shaped the groups. Microsoft Defender’s own AI-based malware protection is never touched, and the app has no toggle for it at all. Nothing that uninstalls a component is used, because a one-click undo cannot cleanly reverse it. And the option that turns off Windows’ own built-in AI is never on by default, never part of “Everything AI Breaker can turn off”, and carries an accessibility warning, because it removes face sign-in, voice typing, live captions and the natural Narrator voices some people depend on.</p>
+          <p>Each group also has “Choose items”, a switch per single item. The choice on the first screen is worked out from the groups, never stored, so it cannot disagree with what the PC is doing. One decision I made against the first design: when a setting on the PC is already stricter than what AI Breaker would write, it is left alone, and when it is looser, AI Breaker writes the stricter value and records the old one. If a person decides to turn something off, there is no reason to turn it back on.</p>
         </section>
 
         <section aria-labelledby="architecture">
@@ -174,7 +174,7 @@ export default function AIBreakerArticle() {
           <Figure caption="Every change is recorded as pending before it is made, and undone in reverse order from the recorded state."><JournalFlowDiagram /></Figure>
           <Shot src={undo} width={1920} height={1151} host="aibreaker.org" alt="The Undo section of aibreaker.org: six promises in a grid: one-click undo, panic button, works even if the app won’t open, tamper lock (coming), no surprise restarts, cleans up after itself" caption="The promises on the website are the acceptance criteria of the foundation spec, in plain words." />
           <ul className="wx-points">
-            <li><strong>One-click undo and a panic button.</strong> Go back a level, or remove everything in one step, no questions asked. The journal is written to disk atomically, with a backup, and archived after a clean rollback.</li>
+            <li><strong>One-click undo and a panic button.</strong> Go back a group, or remove everything in one step, no questions asked. The journal is written to disk atomically, with a backup, and archived after a clean rollback.</li>
             <li><strong>A rescue that needs nothing.</strong> The command line’s recovery mode stops the service and undoes every change locally. A sweep also finds AI Breaker’s own firewall, DNS and App Control rules by name, so recovery works even if the journal is lost. A plain-text recovery file in the data folder lists the manual steps for anyone who prefers them.</li>
             <li><strong>A change that fails part-way undoes its own completed steps</strong> automatically, and the uninstaller undoes everything before it removes a file.</li>
             <li><strong>No surprise restarts.</strong> Before anything is applied, each change says whether it works now, after closing an app, or after a restart, and a banner tracks what is still pending until Windows confirms it happened.</li>
@@ -190,7 +190,7 @@ export default function AIBreakerArticle() {
             <li><strong>Unit tests on fakes are not enough.</strong> About 500 of them run on the dev PC, and then a smoke test launches every published binary read-only, because a build that passes its tests and crashes on start is not ready.</li>
             <li><strong>“Blocked” only once seen.</strong> Virtual machines prove that settings are set, journaled and undone. Features that only exist on Copilot+ PCs, such as Recall and Click to Do, are claimed only after they are seen to stop on a real Copilot+ PC. Until that session runs, those rows cannot say blocked.</li>
           </ul>
-          <p>As of this writing, Level 2 blocks 26 chatbot domains in Edge, Chrome and Firefox on both editions with exact undo; App Control blocks AI engines on Home without a restart, 42 of 42 test steps; and the installer installs, upgrades and uninstalls cleanly. Level 1’s 36 settings are built, and most of their per-feature proofs are still to run. The website says exactly that.</p>
+          <p>As of this writing, the chatbots group blocks 26 chatbot domains in Edge, Chrome and Firefox on both editions with exact undo; App Control blocks AI engines on Home without a restart, 42 of 42 test steps; and the installer installs, upgrades and uninstalls cleanly. The built-in group’s 36 settings are built, and most of their per-feature proofs are still to run. The website says exactly that.</p>
         </section>
 
         <section aria-labelledby="feed">
@@ -199,7 +199,7 @@ export default function AIBreakerArticle() {
           <Figure caption="From a new AI app version to a signed update on every PC, with evidence at each step and a person in the middle."><FeedDiagram /></Figure>
           <ul className="wx-points">
             <li><strong>A signed feed.</strong> The list that tells a SYSTEM service what to block has to be provably ours. Releases are signed with hardware-backed keys, the app pins the public keys, a feed can never add a key, and versions only move forward, so an attacker cannot roll a PC back to an older, weaker list. Anyone can verify a feed file from the command line.</li>
-            <li><strong>Tightening applies itself; loosening waits.</strong> A release that blocks more is applied and shown in Activity. Anything that would block less waits for the person’s next level change.</li>
+            <li><strong>Tightening applies itself; loosening waits.</strong> A release that blocks more is applied and shown in Activity. Anything that would block less waits for the person’s next change.</li>
             <li><strong>Honest expiry, and a clear line for what is paid.</strong> The first year of new AI coverage is included. Blocking anything new needs a current licence, in the beta too; without one the app shows what it would block, and that is the trial. After the year, everything already blocked stays blocked, undo and the panic button always work, security and compatibility fixes keep coming, and the window says when the list froze and that blocking more needs a licence.</li>
             <li><strong>A rule station.</strong> A second desktop runs the routine part on a schedule: it finds new versions of catalog apps, packages and tests them in the virtual machines, and opens a pull request with the evidence. I review and sign; the station cannot. Its research agent has no rights to the virtual machines and no GitHub token, and every job it runs is listed in a weekly digest.</li>
           </ul>
@@ -211,7 +211,7 @@ export default function AIBreakerArticle() {
           <ul className="wx-points">
             <li><strong>It loads nothing from other servers.</strong> No CDNs, no Google Fonts, no third-party analytics, no cookies. A content security policy enforces it, and the footer says so, so the promise and the code have to stay in step.</li>
             <li><strong>Visits are counted the way this site counts them:</strong> a visitor is a hash of address, browser, a secret and the date, so nobody can be followed across days; no IP address is stored; Do Not Track and Global Privacy Control mean nothing is sent; everything is deleted after 13 months.</li>
-            <li><strong>The copy is governed by the product rules.</strong> Only what the app does or is proven to do; planned things say Planned; “Level 2”, never “L2”; no Microsoft logos and no implied endorsement; the FAQ is repeated word for word in the page’s structured data; and a plain-text summary is published for AI assistants.</li>
+            <li><strong>The copy is governed by the product rules.</strong> Only what the app does or is proven to do; planned things say Planned; the same words in the app and on the site; no Microsoft logos and no implied endorsement; the FAQ is repeated word for word in the page’s structured data; and a plain-text summary is published for AI assistants.</li>
             <li><strong>An internal “How AI Breaker works” page</strong> for an executive, a product manager and a developer, each with a to-do list, lives behind the admin token and is updated with every product change. It is where this write-up’s facts come from.</li>
           </ul>
         </section>
@@ -220,7 +220,7 @@ export default function AIBreakerArticle() {
           <H2 id="building" kicker="11">How it was built: a team of agents, one decision log</H2>
           <p>I built AI Breaker with Claude Code, starting on 10 October 2026, the way I would run a small product team, because the failure mode of AI-assisted work is not bad code. It is forgetting a decision, re-arguing it, and shipping something that quietly contradicts last week.</p>
           <ul className="wx-points">
-            <li><strong>One context file, read at the start of every session.</strong> What we are building, the market, pricing, the levels, the technical approach with its known findings, the brand, the legal constraints, the ship gates, the roadmap, how to work with me, and a log of every decision with its date and reason. 140 entries so far. A decision that is superseded says what replaced it, and every agent reads the last two weeks of the log first, so last week’s decision beats a month-old spec.</li>
+            <li><strong>One context file, read at the start of every session.</strong> What we are building, the market, pricing, the choices and groups, the technical approach with its known findings, the brand, the legal constraints, the ship gates, the roadmap, how to work with me, and a log of every decision with its date and reason. 140 entries so far. A decision that is superseded says what replaced it, and every agent reads the last two weeks of the log first, so last week’s decision beats a month-old spec.</li>
             <li><strong>Specs with numbered acceptance criteria,</strong> 33 of them, each naming the roadmap phase, what it depends on, the trust property it serves, the enforced routes it researched, its UI states and its open questions with a recommendation. I approve a spec before anything is built, one question at a time.</li>
             <li><strong>Roles, as agents, each with its own instructions, tools and model.</strong> A product-manager agent writes the spec. A designer agent covers every state of a screen against the design rules. The main session builds. A tester agent verifies each criterion in the Home and Pro virtual machines; an extension tester does the same in Edge and Chrome; a copy checker reads every word a person will see. A code-reviewer agent reads the diff cold. Judgment roles run on the most capable model at high effort; the testers, whose job is to follow the criteria and report evidence, run on a faster one. The tester and reviewer get the spec, not the builder’s explanation of the code.</li>
             <li><strong>Results as data, and a skeptic before any rework.</strong> The tester writes a verdict file (each criterion, Home and Pro, the evidence, what it could not verify) and the reviewer returns typed findings. Every blocking finding then goes to a fresh agent whose only job is to refute it, so a plausible-but-wrong finding dies before it costs a rebuild. The whole chain, spec gate to close-out, is a saved workflow that runs in the same order every time.</li>
@@ -229,7 +229,7 @@ export default function AIBreakerArticle() {
             <li><strong>The AI that reads is not the code that acts.</strong> On the build station, a research agent that reads untrusted web pages gets no shell, no repository and no keys; it writes proposals in its own folder, and a deterministic runner validates them, runs the tests and opens draft pull requests for me.</li>
             <li><strong>Permissions granted one at a time, in writing.</strong> The AI may run the VM harness on my PC; it may set up the test machines; it may set up the rule station with me present. Each exception is dated and scoped in the context file, and the default stays “never change the host”.</li>
           </ul>
-          <p>Pushback is part of the process. The first version of the app was, in my words, “read only”: you could pick a level but not find the button that applied it. The designer agent’s spec names the four reasons why and the one-sentence fix, and the app was rebuilt around a single Review page whose Apply button is the only thing that changes anything.</p>
+          <p>Pushback is part of the process. The first version of the app was, in my words, “read only”: you could pick a level but not find the button that applied it. The designer agent’s spec names the four reasons why and the one-sentence fix, and the app was rebuilt around a single Review page whose Apply button was the only thing that changed anything. The simpler screen of 24 October replaced that page too: each choice or group now asks once, in one dialog where Cancel is the default.</p>
         </section>
 
         <section aria-labelledby="practices">
@@ -237,7 +237,7 @@ export default function AIBreakerArticle() {
           <ol className="wx-practices">
             <li><strong>Build for the people the industry forgot.</strong> Half of adults are wary of AI and most want more control. A dial they can trust is a product; a lecture about the benefits is not.</li>
             <li><strong>Make control real, not decorative.</strong> The button in the noise experiment worked because it would have worked. Every switch in AI Breaker is backed by a documented control, a journal entry and a Windows event that proves it.</li>
-            <li><strong>Build the undo before the feature.</strong> A tool that changes a system as SYSTEM earns trust through the way back, not the way in. Rollback, panic and recovery were written and harness-tested before any level existed.</li>
+            <li><strong>Build the undo before the feature.</strong> A tool that changes a system as SYSTEM earns trust through the way back, not the way in. Rollback, panic and recovery were written and harness-tested before any group existed.</li>
             <li><strong>Say “not covered” rather than pretend.</strong> A row that cannot be proven says so. A list that can go stale says when it froze. A feature that needs a restart says so before the click.</li>
             <li><strong>Write the rules once, then let the system enforce them.</strong> The catalog of targets the service may touch, the protected list of hosts the feed may never block, and the authorization computed from the plan are code, not reminders.</li>
             <li><strong>Run AI like a team, with a written memory and checks it can’t argue with.</strong> Roles, specs, a skeptic for every serious finding, a definition of done enforced by a script, and a dated decision log kept 129 commits consistent in nine days. The same practices run a human team.</li>
@@ -246,7 +246,7 @@ export default function AIBreakerArticle() {
 
         <section aria-labelledby="next">
           <H2 id="next" kicker="13">What’s next</H2>
-          <p>AI Breaker is in testing. The website takes a waitlist, and nothing is sold until the ship gate is met: a real code-signing certificate, clean Defender and SmartScreen results on a fresh machine, and the Copilot+ PC session that proves the rows which can only be proven there. A closed beta for people whose PCs fill the gaps in our test coverage comes before the paid launch, and a lawyer reviews the agreements before anything ships.</p>
+          <p>As of 25 October 2026, AI Breaker is in testing. The website takes a waitlist, and nothing is sold until the ship gate is met: a real code-signing certificate, clean Defender and SmartScreen results on a fresh machine, and the Copilot+ PC session that proves the rows which can only be proven there. A closed beta for people whose PCs fill the gaps in our test coverage comes before the paid launch, and a lawyer reviews the agreements before anything ships.</p>
           <p>The business version, for schools and small companies that want “approved AI” rather than “no AI”, is designed into the foundation so it needs no rewrite: policy keys, an event channel, a silent installer. The biggest risk is on the record too: Microsoft shipping its own off switch. The answer is coverage of third-party AI, proof and undo, which a native toggle will not offer.</p>
           <div className="wx-end">
             <p>If you would rather hold the switch, the waitlist is open.</p>
