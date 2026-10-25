@@ -335,7 +335,7 @@ td.strong, tr.detail td { overflow-wrap: anywhere; }
 .linklist small { color: var(--muted); font-size: 12px; line-height: 1.45; }
 .linklist code { color: var(--green); overflow-wrap: anywhere; margin-top: 4px; }
 /* A draft only Steven reads (Links → Drafts): a column a reader takes in, its diagrams scrolling on a phone. */
-.draft { max-width: 72ch; font-size: 15px; line-height: 1.65; }
+.draft { font-size: 15px; line-height: 1.65; container-type: inline-size; }
 .draft h2 { margin: 28px 0 8px; font-size: 18px; }
 .draft h3 { margin: 22px 0 6px; font-size: 15px; }
 .draft p, .draft ul, .draft ol, .draft blockquote { margin: 0 0 14px; }
@@ -346,6 +346,35 @@ td.strong, tr.detail td { overflow-wrap: anywhere; }
 .draft table { border-collapse: collapse; font-size: 14px; }
 .draft th, .draft td { padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
 .draft-meta { color: var(--muted); font-size: 13px; margin: -6px 0 18px; }
+/* A flow: steps top to bottom with a down arrow between them; on a wide article, left to right. */
+.draft-flow, .draft-bars { margin: 4px 0 22px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; }
+.draft-flow figcaption, .draft-bars figcaption { margin: 0 0 12px; font-weight: 800; font-size: 14px; }
+.draft-flow ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 26px; }
+.flow-step { position: relative; display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); line-height: 1.4; }
+.flow-step + .flow-step::before { content: '↓'; position: absolute; top: -24px; left: 50%; transform: translateX(-50%); color: var(--muted); font-size: 16px; }
+.flow-step strong { font-size: 14px; }
+.flow-step small { color: var(--muted); font-size: 12.5px; }
+.flow-kind { font: 11px 'DM Mono', monospace; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.flow-you { border-color: var(--yellow); }
+.flow-you .flow-kind { color: var(--warn-ink); }
+.flow-team, .flow-agent { border-color: var(--series-soft); }
+.flow-gate { border-style: dashed; }
+.flow-cost { border-color: var(--bad); background: var(--bad-bg); }
+.flow-cost .flow-kind { color: var(--bad); }
+.flow-loop { border-style: dashed; border-color: var(--series-soft); }
+.flow-members { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.flow-members span { padding: 1px 7px; border-radius: 999px; background: var(--series-track); font-size: 12px; }
+@container (min-width: 760px) {
+  .draft-flow ol { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 26px; }
+  .flow-step + .flow-step::before { content: '→'; top: 50%; left: -19px; transform: translateY(-50%); }
+}
+/* Bars: a label, a bar to the scale of the biggest, the value as written. */
+.draft-bars ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; align-items: center; gap: 6px 10px; font-size: 13.5px; }
+/* Every row on the list's own three columns, so the tracks start and end together. */
+.draft-bars li { display: contents; }
+.bar-track { height: 14px; border-radius: 4px; background: var(--series-track); overflow: hidden; }
+.bar-track span { display: block; height: 100%; background: var(--series); border-radius: 4px; }
+.bar-value { font: 12.5px 'DM Mono', monospace; text-align: right; }
 
 /* The résumé score */
 .score { display: flex; flex-wrap: wrap; align-items: center; gap: 20px 32px; margin-bottom: 8px; }
