@@ -285,6 +285,24 @@ describe("the team-verdicts marker as the workflow's jq writes it (m-8)", () => 
   })
 })
 
+describe('the panel verdicts as the workflow\'s jq merges them', () => {
+  const hasJq = (() => { try { execFileSync('jq', ['--version'], { stdio: 'ignore' }); return true } catch { return false } })()
+  it.skipIf(!hasJq)('reads the lead\'s "APPROVED" as APPROVE, keeps every other verdict, and drops roles not on the panel', () => {
+    const post = stepOf(team, 'Post the sign-offs and pass or fail')
+    const filter = /jq --argjson r "\$ROSTER" '([^']+)' \.review\/result\.json/.exec(post)[1]
+    const dir = mkdtempSync(join(tmpdir(), 'panel-'))
+    try {
+      const result = join(dir, 'result.json')
+      writeFileSync(result, JSON.stringify({ approved: true, roles: [{ role: 'senior-developer', verdict: 'APPROVED' }, { role: 'senior-tester', verdict: 'CHANGES_REQUESTED' }, { role: 'senior-recruiter', verdict: 'APPROVED' }] }))
+      const roster = { run: ['senior-developer', 'senior-tester'], carried: [{ role: 'security-engineer', verdict: 'APPROVE' }], skipped: [{ role: 'senior-recruiter', verdict: 'NOT_APPLICABLE' }] }
+      const merged = JSON.parse(execFileSync('jq', ['--argjson', 'r', JSON.stringify(roster), filter, result], { encoding: 'utf8' }))
+      expect(merged.roles.map((r) => [r.role, r.verdict])).toEqual([['senior-developer', 'APPROVE'], ['senior-tester', 'CHANGES_REQUESTED'], ['security-engineer', 'APPROVE'], ['senior-recruiter', 'NOT_APPLICABLE']])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('the panel: only the reviewers whose part changed, never on a draft', () => {
   const roster = jobOf('roster')
 
@@ -306,7 +324,7 @@ describe('the panel: only the reviewers whose part changed, never on a draft', (
     expect(team).toContain('PANEL: ${{ needs.roster.outputs.run }}')
     expect(team).toContain('ROSTER: ${{ needs.roster.outputs.json }}')
     const post = stepOf(team, 'Post the sign-offs and pass or fail')
-    expect(post).toContain(`jq --argjson r "$ROSTER" '.roles = ([(.roles // [])[] | select(.role as $role | $r.run | index($role))] + $r.carried + $r.skipped)'`)
+    expect(post).toContain(`jq --argjson r "$ROSTER" '.roles = ([(.roles // [])[] | select(.role as $role | $r.run | index($role)) | .verdict |= (if . == "APPROVED" then "APPROVE" else . end)] + $r.carried + $r.skipped)'`)
     expect(post.indexOf('$r.carried + $r.skipped')).toBeLessThan(post.indexOf('(.roles | length) == 6'))
   })
 
