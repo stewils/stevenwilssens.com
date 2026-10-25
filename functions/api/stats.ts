@@ -33,8 +33,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const tz = Math.min(Math.max(Number(url.searchParams.get('tz')) || 0, -840), 840)
   const since = Date.now() - days * 86_400_000
   const local = `(ts / 1000) + ${tz * 60}, 'unixepoch'`
-  const views = `WITH pv AS (SELECT * FROM events WHERE type = 'pageview' AND ts >= ?1),
-    eng AS (SELECT pageview_id, MAX(duration_ms) AS duration, MAX(scroll_pct) AS scroll FROM events WHERE type = 'engagement' AND ts >= ?1 GROUP BY pageview_id)`
+  const views = `WITH pv AS MATERIALIZED (SELECT * FROM events WHERE type = 'pageview' AND ts >= ?1),
+    eng AS MATERIALIZED (SELECT pageview_id, MAX(duration_ms) AS duration, MAX(scroll_pct) AS scroll FROM events WHERE type = 'engagement' AND ts >= ?1 GROUP BY pageview_id)`
 
   const queries: Record<string, string> = {
     totals: `${views} SELECT
@@ -53,14 +53,19 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     entryPages: `${views} SELECT path AS name, COUNT(*) AS visitors FROM (SELECT visitor, path, MIN(ts) FROM pv GROUP BY visitor) GROUP BY path ORDER BY visitors DESC LIMIT 20`,
     clicks: `SELECT category, label, target, context, COUNT(*) AS clicks, COUNT(DISTINCT visitor) AS visitors FROM events
       WHERE type = 'click' AND ts >= ?1 GROUP BY category, label, target, context ORDER BY clicks DESC LIMIT 100`,
-    visitors: `${views}, journeys AS (SELECT visitor, group_concat(path, ' → ') AS journey FROM (SELECT visitor, path FROM pv ORDER BY ts) GROUP BY visitor)
+    // Each per-visitor figure is grouped once and joined: correlated subqueries over the CTEs re-ran them for every
+    // visitor (5 million rows read and 10 seconds for 1,400 events), and D1 answers nothing else on the site meanwhile.
+    visitors: `${views}, journeys AS (SELECT visitor, group_concat(path, ' → ') AS journey FROM (SELECT visitor, path FROM pv ORDER BY ts) GROUP BY visitor),
+      firsts AS (SELECT visitor, referrer_host AS referrer, utm_source AS utmSource, utm_medium AS utmMedium
+        FROM (SELECT visitor, referrer_host, utm_source, utm_medium, ROW_NUMBER() OVER (PARTITION BY visitor ORDER BY ts) AS n FROM pv) WHERE n = 1),
+      engaged AS (SELECT p.visitor, SUM(eng.duration) AS engagedMs FROM (SELECT DISTINCT visitor, pageview_id FROM pv) AS p JOIN eng USING (pageview_id) GROUP BY p.visitor),
+      clicks AS (SELECT visitor, MAX(category IS 'download') AS downloaded, group_concat(DISTINCT label) AS clicked FROM events WHERE type = 'click' GROUP BY visitor)
       SELECT pv.visitor, MIN(pv.ts) AS firstSeen, MAX(pv.ts) AS lastSeen, COUNT(*) AS pageviews, journeys.journey,
         MAX(pv.city) AS city, MAX(pv.region) AS region, MAX(pv.country) AS country, MAX(pv.as_org) AS organization,
-        MAX(pv.browser) AS browser, MAX(pv.os) AS os, MAX(pv.device) AS device, (SELECT referrer_host FROM pv AS e WHERE e.visitor = pv.visitor ORDER BY ts LIMIT 1) AS referrer, (SELECT utm_source FROM pv AS e WHERE e.visitor = pv.visitor ORDER BY ts LIMIT 1) AS utmSource, (SELECT utm_medium FROM pv AS e WHERE e.visitor = pv.visitor ORDER BY ts LIMIT 1) AS utmMedium,
-        (SELECT SUM(duration) FROM eng WHERE pageview_id IN (SELECT pageview_id FROM pv AS p2 WHERE p2.visitor = pv.visitor)) AS engagedMs,
-        EXISTS (SELECT 1 FROM events AS c WHERE c.visitor = pv.visitor AND c.type = 'click' AND c.category = 'download') AS downloaded,
-        (SELECT group_concat(DISTINCT c.label) FROM events AS c WHERE c.visitor = pv.visitor AND c.type = 'click') AS clicked
-      FROM pv JOIN journeys USING (visitor) GROUP BY pv.visitor ORDER BY lastSeen DESC LIMIT 200`,
+        MAX(pv.browser) AS browser, MAX(pv.os) AS os, MAX(pv.device) AS device, firsts.referrer, firsts.utmSource, firsts.utmMedium,
+        engaged.engagedMs, COALESCE(clicks.downloaded, 0) AS downloaded, clicks.clicked
+      FROM pv JOIN journeys USING (visitor) LEFT JOIN firsts USING (visitor) LEFT JOIN engaged USING (visitor) LEFT JOIN clicks USING (visitor)
+      GROUP BY pv.visitor ORDER BY lastSeen DESC LIMIT 200`,
     entries: `SELECT utm_source AS source, utm_medium AS medium, referrer_host AS referrer, COUNT(*) AS visitors
       FROM (SELECT *, MIN(ts) FROM events WHERE type = 'pageview' AND ts >= ?1 GROUP BY visitor) GROUP BY source, medium, referrer`,
     vitals: `SELECT metric, metric_value AS value, metric_rating AS rating, COALESCE(path, '/') AS path, device, target FROM events
