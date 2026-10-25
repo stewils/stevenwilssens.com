@@ -715,8 +715,9 @@ jobs:
           fi
           # The panel's verdicts (from the model, only the roles in "run" count) plus the carried and skipped ones,
           # from the roster job's output, which nothing in this job can change. Before the verdicts marker is
-          # written, so the next round reads every role, the carried ones included.
-          jq --argjson r "$ROSTER" '.roles = ([(.roles // [])[] | select(.role as $role | $r.run | index($role))] + $r.carried + $r.skipped)' .review/result.json > "$RUNNER_TEMP/result.json"
+          # written, so the next round reads every role, the carried ones included. The lead sometimes writes
+          # "APPROVED" for the rules' APPROVE (PRs 94 and 98 failed on it with every reviewer approving): the same verdict.
+          jq --argjson r "$ROSTER" '.roles = ([(.roles // [])[] | select(.role as $role | $r.run | index($role)) | .verdict |= (if . == "APPROVED" then "APPROVE" else . end)] + $r.carried + $r.skipped)' .review/result.json > "$RUNNER_TEMP/result.json"
           cp "$RUNNER_TEMP/result.json" .review/result.json
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           # The model's text cannot open or close an HTML comment: a marker planted in it stays visible text, and
