@@ -222,10 +222,11 @@ describe('the team sizes and the Azure DevOps choice', () => {
     ])
   })
 
-  it('azure-devops says why Steven stayed at Microsoft', () => {
+  // An unfunded startup-style project: the scope is Steven alone, said so, rather than a team size.
+  it('azure-devops says it had no funded team yet and why Steven moved to Windows Data', () => {
     expect(pointsOf('azure-devops')).toEqual([
-      'Authored a DataOps product proposal compelling enough that the team building it was moved to GitHub, as the better home for the product.',
-      'Chose to stay at Microsoft rather than move to GitHub to lead the team building it.',
+      'Defined DataOps as its sole product lead: a startup-style project inside Azure DevOps before it had a funded team, writing the product proposal that got it funded and moved to GitHub as its better home.',
+      'Chose the Windows Data lead role over following the newly funded team to GitHub.',
     ])
   })
 
