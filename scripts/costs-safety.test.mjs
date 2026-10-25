@@ -102,11 +102,11 @@ describe('the Costs page’s styles', () => {
 
   it('puts each month label under its bar, every other one on a narrow plot, unclipped', () => {
     expect(css).toMatch(/\.chart--stacked \{[^}]*container-type: inline-size/)
-    expect(css).toMatch(/\.chart--stacked \.chart-axis \{[^}]*display: grid/)
+    expect(css).toMatch(/\.chart-axis--per-bar \{[^}]*display: grid/)
     const narrow = /@container \(max-width: 480px\) \{([^@]*?)\n\}/.exec(css)?.[1] ?? ''
-    expect(narrow).toMatch(/\.chart--stacked \.chart-axis span:nth-child\(even\) \{ visibility: hidden; \}/)
+    expect(narrow).toMatch(/\.chart-axis--per-bar span:nth-child\(even\) \{ visibility: hidden; \}/)
     // The labels it keeps are not clipped: they overflow into the hidden cells beside them, centred.
-    expect(narrow).toMatch(/\.chart--stacked \.chart-axis span \{ overflow: visible; display: flex; justify-content: center; white-space: nowrap; \}/)
+    expect(narrow).toMatch(/\.chart-axis--per-bar span \{ overflow: visible; display: flex; justify-content: center; white-space: nowrap; \}/)
   })
 
   it('rounds and dims a plain bar, never the parts inside a stacked one a second time', () => {

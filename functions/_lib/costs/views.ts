@@ -1,7 +1,7 @@
 // The five views of /admin#costs, worked out when they are read (GET /api/costs) from the
 // stored rows, the budgets, the price table and the pull requests GitHub knows: per feature
-// (by phase, with its budget and its pull request's state), per role, per UTC month, and the
-// waste. Pure, so every rule is tested on its own (views.test.ts).
+// (by phase, with its budget and its pull request's state), per role, per UTC month, per UTC
+// day of the last 30, and the waste. Pure, so every rule is tested on its own (views.test.ts).
 //
 // Money is kept in integer micro-dollars and apart by how sure it is: billed (charged to the
 // API key), estimated (the API price of tokens on the subscription) and unknown. A local row
@@ -21,7 +21,7 @@ export type PullState = { state: 'open' | 'merged' | 'closed' | 'superseded' | '
 export type LineKind = PhaseKind | 'site-update' | 'review-workflow'
 export type PhaseLine = { kind: LineKind; round: number; pr: number | null; at: number; money: Money; roles: { role: string; money: Money }[] }
 export type Feature = {
-  branch: string | null; pull: PullState | null; runs: number; lastRunAt: number
+  branch: string | null; pull: PullState | null; runs: number; firstRunAt: number; lastRunAt: number
   spec: Money; build: Money; review: Money; fix: Money; lead: Money; total: Money
   reviewRounds: number; fixRounds: number; budgetMicro: number | null; phases: PhaseLine[]; tokensIn: number; tokensOut: number
   waste: { money: Money; fixRounds: number; moreReviews: number; closed: boolean; redoneBy: number | null }
@@ -29,9 +29,12 @@ export type Feature = {
 export type RoleKind = 'team' | 'lead' | 'workflow' | 'other'
 export type RoleRow = { role: string; kind: RoleKind; runs: number; total: Money; share: number; perFeatureMicro: number; byPhase: Record<'spec' | 'build' | 'review' | 'fix' | 'lead', Money> }
 export type MonthRow = { month: string; money: Money; features: number; wasteMicro: number }
+// One UTC day: what was spent, how many features had a run, how many had their first run (started),
+// and the whole cost so far of the features that started that day (their average is startedTotal / started).
+export type DayRow = { day: string; money: Money; features: number; started: number; startedTotal: Money }
 export type CostsAnswer = {
   generatedAt: number; empty: boolean; month: string; repo: string | null; pricesRead: string
-  features: Feature[]; roles: RoleRow[]; months: MonthRow[]; waste: { fix: Money; reviews: Money; closed: Money }
+  features: Feature[]; roles: RoleRow[]; months: MonthRow[]; days: DayRow[]; waste: { fix: Money; reviews: Money; closed: Money }
 }
 
 // Branches that are not a feature: their runs collect under "No feature".
@@ -159,6 +162,11 @@ const phaseLines = (tagged: Tagged[]): PhaseLine[] => {
 }
 
 const monthOf = (ms: number) => new Date(ms).toISOString().slice(0, 7)
+const dayOf = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+export const lastDays = (now: number, count = 30) => {
+  const date = new Date(now)
+  return Array.from({ length: count }, (_, index) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - (count - 1 - index))).toISOString().slice(0, 10))
+}
 export const lastMonths = (now: number, count = 12) => {
   const date = new Date(now)
   return Array.from({ length: count }, (_, index) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - (count - 1 - index), 1)).toISOString().slice(0, 7))
@@ -196,6 +204,7 @@ export const buildViews = ({ rows, budgets, pulls: allPulls, pullsCapped = false
       branch,
       pull,
       runs: new Set(group.map((row) => row.runKey)).size,
+      firstRunAt: group.reduce((first, row) => Math.min(first, row.batchAt), Infinity),
       lastRunAt: group.reduce((latest, row) => Math.max(latest, row.endedAt), -Infinity),
       spec: part('spec'), build: part('build'), review: part('review'), fix: part('fix'), lead: part('lead'),
       total: sum(tagged.map((item) => item.money)),
@@ -245,10 +254,25 @@ export const buildViews = ({ rows, budgets, pulls: allPulls, pullsCapped = false
     }
   })
 
+  const byDay = new Map(lastDays(now).map((day): [string, DayRow & { worked: Set<string> }] => [day, { day, money: zero(), features: 0, started: 0, startedTotal: zero(), worked: new Set() }]))
+  for (const item of allTagged) {
+    const day = byDay.get(dayOf(item.row.batchAt))
+    if (!day) continue
+    add(day.money, item.money)
+    if (item.feature !== null) day.worked.add(item.feature)
+  }
+  for (const feature of features) {
+    const day = feature.branch === null ? undefined : byDay.get(dayOf(feature.firstRunAt))
+    if (!day) continue
+    day.started += 1
+    add(day.startedTotal, feature.total)
+  }
+  const days: DayRow[] = [...byDay.values()].map(({ worked, ...day }) => ({ ...day, features: worked.size }))
+
   const wasteOf = (reason: Tagged['waste']) => sum(allTagged.filter((item) => item.waste === reason).map((item) => item.money))
   return {
     generatedAt: now, empty: rows.length === 0, month: monthOf(now), repo, pricesRead,
-    features, roles, months,
+    features, roles, months, days,
     waste: { fix: wasteOf('fix'), reviews: wasteOf('reviews'), closed: wasteOf('closed') },
   }
 }

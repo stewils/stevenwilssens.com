@@ -228,7 +228,7 @@ export const makeTeamReads = (overrides: Partial<TeamReads> = {}): TeamReads => 
 export const money = (billed: number, estimated = 0, unknown = 0, unpriced: CostMoney['unpriced'] = []): CostMoney => ({ billed: Math.round(billed * 1e6), estimated: Math.round(estimated * 1e6), unknown: Math.round(unknown * 1e6), unpriced })
 const none = () => money(0)
 export const makeFeature = (overrides: Partial<CostFeature> = {}): CostFeature => ({
-  branch: 'dev-costs', pull: { state: 'open', number: 61, mergeCommit: null, supersededBy: null }, runs: 23, lastRunAt: ts(17),
+  branch: 'dev-costs', pull: { state: 'open', number: 61, mergeCommit: null, supersededBy: null }, runs: 23, firstRunAt: ts(10), lastRunAt: ts(17),
   spec: money(0, 0.8), build: money(0, 3.1), review: money(4.5), fix: money(1.2), lead: money(0, 2.8), total: money(5.7, 6.7),
   reviewRounds: 3, fixRounds: 2, budgetMicro: 10_000_000, tokensIn: 4_100_000, tokensOut: 310_000,
   phases: [
@@ -262,6 +262,14 @@ export const makeCosts = (overrides: Partial<CostsInfo> = {}): CostsInfo => ({
     money: month === '2026-10' ? money(12, 29.2) : month === '2026-09' ? money(20, 43.1) : month === '2026-08' ? money(10, 46.35) : none(),
     features: month === '2026-10' ? 5 : month >= '2026-08' ? 3 : 0,
     wasteMicro: month === '2026-10' ? 8_400_000 : 0,
+  })),
+  // The 30 days to Oct 19: spending on four of them, two features started on Oct 17 and one on Oct 19.
+  days: Array.from({ length: 30 }, (_, index) => new Date(Date.UTC(2026, 8, 20 + index)).toISOString().slice(0, 10)).map((day) => ({
+    day,
+    money: day === '2026-10-17' ? money(4, 6) : day === '2026-10-18' ? money(1.7, 0.7) : day === '2026-10-19' ? money(0, 2) : day === '2026-10-10' ? money(0, 1, 0.5) : none(),
+    features: day === '2026-10-17' ? 2 : day === '2026-10-18' || day === '2026-10-19' || day === '2026-10-10' ? 1 : 0,
+    started: day === '2026-10-17' ? 2 : day === '2026-10-19' ? 1 : 0,
+    startedTotal: day === '2026-10-17' ? money(5.7, 7.5) : day === '2026-10-19' ? money(0, 2) : none(),
   })),
   waste: { fix: money(1.2), reviews: money(1.0), closed: money(1.5) },
   ...overrides,
