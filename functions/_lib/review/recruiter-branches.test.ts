@@ -35,8 +35,8 @@ beforeEach(() => {
 describe('team sizes', () => {
   it('reads a team size in digits or words, with the people it counts', async () => {
     const { scopeWords } = await import('./recruiter')
-    for (const text of ['Led six PMs, working with about 20 developers.', 'Grew the team from one to five PMs.', 'Led a team of 12 engineers.', 'Led a PM organization of about 20.', 'Partnered with more than 100 developers and data scientists.', 'Led 8 product managers.', 'Worked with a dozen engineers.', 'Led two to four PMs.']) expect(scopeWords.test(text), text).toBe(true)
-    for (const text of ['Led the data team.', 'Shipped one feature to five markets.', 'One place for developers to share extensions.', 'Owned 3 products.', 'Grew usage 3x.', 'Someone led nine teams.']) expect(scopeWords.test(text), text).toBe(false)
+    for (const text of ['Led six PMs, working with about 20 developers.', 'Grew the team from one to five PMs.', 'Led a team of 12 engineers.', 'Led a PM organization of about 20.', 'Partnered with more than 100 developers and data scientists.', 'Led 8 product managers.', 'Worked with a dozen engineers.', 'Led two to four PMs.', 'Defined DataOps as its sole product lead: a startup-style project before it had a funded team.', 'Worked as the sole PM.']) expect(scopeWords.test(text), text).toBe(true)
+    for (const text of ['Led the data team.', 'Shipped one feature to five markets.', 'One place for developers to share extensions.', 'Owned 3 products.', 'Grew usage 3x.', 'Someone led nine teams.', 'The sole product of the team.', 'Led product for the team.']) expect(scopeWords.test(text), text).toBe(false)
   })
 
   it('takes a role with its team size in words as scoped', () => {

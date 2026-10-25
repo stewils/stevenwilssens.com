@@ -23,10 +23,11 @@ const span = (dates: string) => {
 }
 const monthName = (serial: number) => `${Object.keys(months)[serial % 12].replace(/^./, (c) => c.toUpperCase())} ${Math.floor(serial / 12)}`
 const presentTense = /^(Lead|Own|Partner|Drive|Build|Manage|Define|Deliver|Grow|Oversee|Create|Develop|Ship|Work)\b/
-// A team size the way it is written: in digits or words ("six PMs", "one to five PMs", "about 20 developers").
+// A team size the way it is written: in digits or words ("six PMs", "one to five PMs", "about 20 developers"),
+// or a role's scope said outright when there was no team to count ("as its sole product lead").
 const count = '(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|a dozen|dozens of|hundreds of)'
 const people = '(?:product managers|pms|engineers|developers|data scientists)'
-export const scopeWords = new RegExp(`\\b${count} to ${count} ${people}\\b|\\bteam of (?:about )?${count}\\b|\\b(?:pm|product management) organization of (?:about )?${count}\\b|\\b${count} ${people}\\b`, 'i')
+export const scopeWords = new RegExp(`\\b${count} to ${count} ${people}\\b|\\bteam of (?:about )?${count}\\b|\\b(?:pm|product management) organization of (?:about )?${count}\\b|\\b${count} ${people}\\b|\\bsole (?:product lead|product manager|pm)\\b`, 'i')
 
 export const reviewForRecruiters = ({ pages, resumeReport, linkedin, now, withLinkedIn = true }: ReviewInput): Review => {
   const findings: Finding[] = []
