@@ -11,7 +11,7 @@ import feed from './feed.json'
 import '../wilssens/article.css'
 
 // The write-up of why and how AI Breaker (aibreaker.org) was built, linked from /projects.
-// Facts come from the project's own decision log and specs as of 19 October 2026;
+// Facts come from the project's own decision log and specs as of 25 October 2026;
 // survey figures are cited inline. Screenshots: public sections of aibreaker.org.
 
 const sections = [
@@ -220,7 +220,7 @@ export default function AIBreakerArticle() {
           <H2 id="building" kicker="11">How it was built: a team of agents, one decision log</H2>
           <p>I built AI Breaker with Claude Code, starting on 10 October 2026, the way I would run a small product team, because the failure mode of AI-assisted work is not bad code. It is forgetting a decision, re-arguing it, and shipping something that quietly contradicts last week.</p>
           <ul className="wx-points">
-            <li><strong>One context file, read at the start of every session.</strong> What we are building, the market, pricing, the levels, the technical approach with its known findings, the brand, the legal constraints, the ship gates, the roadmap, how to work with me, and a log of every decision with its date and reason. 140 entries so far. A decision that is superseded says what replaced it, and every agent reads the last two weeks of the log first, so last week’s decision beats a month-old spec.</li>
+            <li><strong>One context file, read at the start of every session.</strong> What we are building, the market, pricing, the levels, the technical approach with its known findings, the brand, the legal constraints, the ship gates, the roadmap, how to work with me, and a log of every decision with its date and reason. 145 entries so far. A decision that is superseded says what replaced it, and every agent reads the last two weeks of the log first, so last week’s decision beats a month-old spec.</li>
             <li><strong>Specs with numbered acceptance criteria,</strong> 33 of them, each naming the roadmap phase, what it depends on, the trust property it serves, the enforced routes it researched, its UI states and its open questions with a recommendation. I approve a spec before anything is built, one question at a time.</li>
             <li><strong>Roles, as agents, each with its own instructions, tools and model.</strong> A product-manager agent writes the spec. A designer agent covers every state of a screen against the design rules. The main session builds. A tester agent verifies each criterion in the Home and Pro virtual machines; an extension tester does the same in Edge and Chrome; a copy checker reads every word a person will see. A code-reviewer agent reads the diff cold. Judgment roles run on the most capable model at high effort; the testers, whose job is to follow the criteria and report evidence, run on a faster one. The tester and reviewer get the spec, not the builder’s explanation of the code.</li>
             <li><strong>Results as data, and a skeptic before any rework.</strong> The tester writes a verdict file (each criterion, Home and Pro, the evidence, what it could not verify) and the reviewer returns typed findings. Every blocking finding then goes to a fresh agent whose only job is to refute it, so a plausible-but-wrong finding dies before it costs a rebuild. The whole chain, spec gate to close-out, is a saved workflow that runs in the same order every time.</li>
