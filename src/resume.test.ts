@@ -143,7 +143,7 @@ describe('the Windows Data roles', () => {
   it('csx-data keeps Perfect Day first and adds the team growth second', () => {
     expect(pointsOf('csx-data')).toEqual([
       'Redefined Windows quality measurement around end-to-end scenarios like gaming and the shell, creating the Perfect Day metric for issue-free user days.',
-      'Grew the team from one to five PMs, working with about 20 developers, leading to promotion to Principal Group Product Manager.',
+      'Growing the team led to promotion to Principal Group Product Manager.',
       'Drove measurable quality gains, with Perfect Day improving about 5% for gaming and 3–4% for the Windows shell.',
       'Provided the data behind Windows release decisions: whether a build was ready to move from internal audiences to Insider preview, which issues had to be fixed, and ultimately whether a release met the quality bar to ship.',
       'Built the alerting dashboards Windows teams used to catch customer-impacting issues, and ran the weekly Release Quality Review where area directors acted on them.',
