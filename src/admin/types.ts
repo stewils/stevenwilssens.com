@@ -136,5 +136,8 @@ export type CostsInfo = {
   generatedAt: number; empty: boolean; month: string; repo: string | null; pricesRead: string
   features: CostFeature[]; roles: CostRole[]; months: CostMonth[]; days: CostDay[]; waste: { fix: CostMoney; reviews: CostMoney; closed: CostMoney }
 }
+// GET /api/drafts (functions/api/drafts.ts): the drafts only Steven reads, and one with its Markdown.
+export type DraftSummary = { slug: string; title: string; summary: string; updatedAt: number }
+export type Draft = DraftSummary & { body: string }
 // The Costs page's data and why it is missing, when it is.
 export type CostsData = { info: CostsInfo | null; error: string }

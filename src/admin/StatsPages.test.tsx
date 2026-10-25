@@ -118,11 +118,63 @@ describe('Audience page', () => {
 describe('Links page', () => {
   it('links every address for running the site, opening in a new tab', () => {
     render(<LinksPage />)
-    expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent)).toEqual(['The site', 'Cloudflare', 'GitHub', 'Profiles', 'Outside checks'])
+    expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent)).toEqual(['Drafts', 'The site', 'Cloudflare', 'GitHub', 'Profiles', 'Outside checks'])
     const pdf = screen.getByRole('link', { name: /Résumé PDF/ })
     expect(pdf).toHaveAttribute('href', 'https://steven.wilssens.com/steven-wilssens-resume-2026.pdf')
     expect(pdf).toHaveAttribute('target', '_blank')
     expect(within(pdf).getByText('steven.wilssens.com/steven-wilssens-resume-2026.pdf')).toBeInTheDocument()
+  })
+
+  const summary = { slug: 'agent-costs', title: 'When the agents got expensive', summary: 'How the API bill grew and what fixed it', updatedAt: Date.UTC(2026, 9, 24, 18) }
+
+  it('lists the drafts, each opening in the admin at #links?read=<slug>, and says when it waits, failed or has none', () => {
+    render(<LinksPage drafts={{ list: [summary] }} />)
+    const drafts = document.querySelector<HTMLElement>('section.card[data-part="Drafts"]')!
+    expect(drafts).toHaveTextContent('Only for you: the text is kept in the database and read with your admin token, not published on the site.')
+    const link = within(drafts).getByRole('link', { name: /When the agents got expensive/ })
+    expect(link).toHaveAttribute('href', '#links?read=agent-costs')
+    expect(link).not.toHaveAttribute('target')
+    expect(link).toHaveTextContent('How the API bill grew and what fixed it')
+    cleanup()
+    render(<LinksPage />)
+    expect(screen.getByText('Loading the drafts…')).toBeInTheDocument()
+    cleanup()
+    render(<LinksPage drafts={{ error: 'HTTP 500' }} />)
+    expect(screen.getByText('The drafts could not be loaded (HTTP 500).')).toBeInTheDocument()
+    cleanup()
+    render(<LinksPage drafts={{ list: [] }} />)
+    expect(screen.getByText('No drafts yet.')).toBeInTheDocument()
+  })
+
+  it('reads one draft from its Markdown, with a way back, and says when it waits or is missing', () => {
+    const body = '## Before\n\nOne **agent**, `one` run, [the repo](https://github.com/stewils/stevenwilssens.com) and [bad](javascript:alert(1)).\n\n```\nask -> build\n```\n\n- first\n- second\n\n1. one\n2. two\n\n> a quote\n\n| When | Cost |\n|---|---|\n| Oct 22 | $159 |\n\n### After\nTwo lines\nof one paragraph.'
+    render(<LinksPage reading="agent-costs" draft={{ draft: { ...summary, body } }} />)
+    expect(screen.queryByRole('heading', { name: 'Drafts' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '← All links and drafts' })).toHaveAttribute('href', '#links')
+    const article = document.querySelector('article.draft')!
+    expect(within(article as HTMLElement).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['When the agents got expensive', 'Before', 'After'])
+    expect(article.querySelector('strong')).toHaveTextContent('agent')
+    expect(article.querySelector('p code')).toHaveTextContent('one')
+    expect(within(article as HTMLElement).getByRole('link', { name: 'the repo' })).toHaveAttribute('href', 'https://github.com/stewils/stevenwilssens.com')
+    // Only https links become links; anything else stays text.
+    expect(within(article as HTMLElement).queryByRole('link', { name: 'bad' })).not.toBeInTheDocument()
+    expect(article).toHaveTextContent('[bad](javascript:alert(1))')
+    expect(article.querySelector('pre.draft-diagram')).toHaveTextContent('ask -> build')
+    expect([...article.querySelectorAll('ul li')].map((item) => item.textContent)).toEqual(['first', 'second'])
+    expect([...article.querySelectorAll('ol li')].map((item) => item.textContent)).toEqual(['one', 'two'])
+    expect(article.querySelector('blockquote')).toHaveTextContent('a quote')
+    expect([...article.querySelectorAll('th')].map((cell) => cell.textContent)).toEqual(['When', 'Cost'])
+    expect([...article.querySelectorAll('td')].map((cell) => cell.textContent)).toEqual(['Oct 22', '$159'])
+    expect([...article.querySelectorAll('p')].at(-1)).toHaveTextContent('Two lines of one paragraph.')
+    cleanup()
+    render(<LinksPage reading="agent-costs" draft={null} />)
+    expect(screen.getByText('Loading the draft…')).toBeInTheDocument()
+    cleanup()
+    render(<LinksPage reading="nothing-here" draft={{ error: 'HTTP 404' }} />)
+    expect(screen.getByText('There is no draft called nothing-here.')).toBeInTheDocument()
+    cleanup()
+    render(<LinksPage reading="agent-costs" draft={{ error: 'HTTP 500' }} />)
+    expect(screen.getByText('The draft could not be loaded (HTTP 500).')).toBeInTheDocument()
   })
 })
 

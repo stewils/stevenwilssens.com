@@ -1,4 +1,7 @@
+import { formatTime } from './format'
+import { Markdown } from './markdown'
 import { resumePdf } from './ResumePage'
+import type { Draft, DraftSummary } from './types'
 
 // Every address for running the site, in one place. Cloudflare's ":account" links open
 // in the signed-in account; nothing here is a secret.
@@ -35,9 +38,52 @@ const groups: { title: string; links: [string, string, string][] }[] = [
   ] },
 ]
 
-export function LinksPage() {
+// What /api/drafts answered: the list, or why not (null while it loads); and the opened draft the same way.
+export type DraftsState = { list: DraftSummary[] } | { error: string } | null
+export type DraftState = { draft: Draft } | { error: string } | null
+
+// One draft, opened from Links → Drafts (#links?read=<slug>): its text comes from the database
+// with the admin token, never from the bundle.
+function DraftReader({ slug, state }: { slug: string; state: DraftState }) {
+  return (
+    <section className="card" data-part="Draft">
+      <p><a href="#links">← All links and drafts</a></p>
+      {state === null && <p className="empty">Loading the draft…</p>}
+      {state && 'error' in state && <p className="empty">{state.error === 'HTTP 404' ? `There is no draft called ${slug}.` : `The draft could not be loaded (${state.error}).`}</p>}
+      {state && 'draft' in state && (
+        <article className="draft">
+          <div className="card-head"><h2>{state.draft.title}</h2></div>
+          <p className="draft-meta">Draft, only for you · updated {formatTime(state.draft.updatedAt)}</p>
+          <Markdown source={state.draft.body} />
+        </article>
+      )}
+    </section>
+  )
+}
+
+function Drafts({ state }: { state: DraftsState }) {
+  return (
+    <section className="card" data-part="Drafts">
+      <div className="card-head"><h2>Drafts</h2></div>
+      <p className="note">Only for you: the text is kept in the database and read with your admin token, not published on the site.</p>
+      {state === null && <p className="empty">Loading the drafts…</p>}
+      {state && 'error' in state && <p className="empty">The drafts could not be loaded ({state.error}).</p>}
+      {state && 'list' in state && (state.list.length === 0 ? <p className="empty">No drafts yet.</p> : (
+        <ul className="linklist">
+          {state.list.map((draft) => (
+            <li key={draft.slug}><a href={`#links?read=${draft.slug}`}><strong>{draft.title}</strong><small>{draft.summary}</small><code>updated {formatTime(draft.updatedAt)}</code></a></li>
+          ))}
+        </ul>
+      ))}
+    </section>
+  )
+}
+
+export function LinksPage({ drafts = null, reading = null, draft = null }: { drafts?: DraftsState; reading?: string | null; draft?: DraftState } = {}) {
+  if (reading) return <DraftReader slug={reading} state={draft} />
   return (
     <>
+      <Drafts state={drafts} />
       {groups.map((group) => (
         <section className="card" key={group.title} data-part={group.title}>
           <div className="card-head"><h2>{group.title}</h2></div>

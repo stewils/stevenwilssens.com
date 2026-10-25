@@ -5,10 +5,11 @@ import { makeAsk, makeCosts, makeLogEntry, makeMcp, makeRating, makeResume, make
 
 // The dashboard against a fake admin API: /api/stats, /api/ask/admin, /api/mcp and
 // /api/resume and /api/team answer with the shapes the Pages Functions write.
+const DRAFT = { slug: 'agent-costs', title: 'When the agents got expensive', summary: 'How the API bill grew', updatedAt: NOW.getTime() }
 type Answer = { status?: number; body?: unknown } | Error | 'pending'
-type Routes = Partial<Record<'stats' | 'ask' | 'mcp' | 'resume' | 'team' | 'costs' | 'budget', Answer>>
-const routeOf = (url: string) => (url.startsWith('/api/stats') ? 'stats' : url.startsWith('/api/ask/admin') ? 'ask' : url.startsWith('/api/mcp') ? 'mcp' : url.startsWith('/api/team') ? 'team' : url.startsWith('/api/costs/budget') ? 'budget' : url.startsWith('/api/costs') ? 'costs' : 'resume')
-const bodies = { stats: makeStats, ask: makeAsk, mcp: makeMcp, resume: makeResume, team: makeTeamReads, costs: () => makeCosts({ features: [] }), budget: () => ({ branch: 'dev-costs', budgetMicro: null }) }
+type Routes = Partial<Record<'stats' | 'ask' | 'mcp' | 'resume' | 'team' | 'costs' | 'budget' | 'drafts' | 'draft', Answer>>
+const routeOf = (url: string) => (url.startsWith('/api/drafts?slug=') ? 'draft' : url.startsWith('/api/drafts') ? 'drafts' : url.startsWith('/api/stats') ? 'stats' : url.startsWith('/api/ask/admin') ? 'ask' : url.startsWith('/api/mcp') ? 'mcp' : url.startsWith('/api/team') ? 'team' : url.startsWith('/api/costs/budget') ? 'budget' : url.startsWith('/api/costs') ? 'costs' : 'resume')
+const bodies = { stats: makeStats, ask: makeAsk, mcp: makeMcp, resume: makeResume, team: makeTeamReads, costs: () => makeCosts({ features: [] }), budget: () => ({ branch: 'dev-costs', budgetMicro: null }), drafts: () => ({ drafts: [DRAFT] }), draft: () => ({ ...DRAFT, body: '## Before\n\nOne agent.' }) }
 
 let fetchMock: Mock<(url: string, init?: RequestInit) => Promise<Response>>
 const serve = (routes: Routes = {}) => {
@@ -622,7 +623,7 @@ describe('the Costs page', () => {
     expect(screen.getByRole('button', { name: 'Close details for dev-costs' }).closest('tr')).toHaveTextContent('$20.00')
     go('overview')
     expect(screen.queryByRole('link', { name: /over its budget/ })).not.toBeInTheDocument()
-    expect(within(screen.getByRole('heading', { name: 'Go to' }).closest('section')!).getByRole('link', { name: /^Costs/ })).toHaveTextContent('≈$41.20 this month ($12.00 billed) · 4 features')
+    expect(within(screen.getByRole('heading', { name: 'Go to' }).closest('section')!).getByRole('link', { name: /^Costs/ })).toHaveTextContent('$12.00 API key · ≈$29.20 Max plan this month · 4 features')
     expect(costGets()).toEqual(['/api/costs?r=0'])
   })
 
@@ -664,5 +665,35 @@ describe('the Costs page', () => {
     render(<Admin />)
     go('costs')
     expect(screen.getByText('Loading costs…')).toBeInTheDocument()
+  })
+})
+
+describe('Drafts on the Links page', () => {
+  it('asks for the drafts only on the Links page, and for a draft\'s text only once it is opened', async () => {
+    render(<Admin />)
+    await waitFor(() => expect(urls().some((url) => url.startsWith('/api/costs'))).toBe(true))
+    expect(urls().some((url) => url.startsWith('/api/drafts'))).toBe(false)
+    go('#links')
+    const link = await screen.findByRole('link', { name: /When the agents got expensive/ })
+    expect(urls().filter((url) => url.startsWith('/api/drafts'))).toEqual(['/api/drafts?r=0'])
+    expect(link).toHaveAttribute('href', '#links?read=agent-costs')
+    go('#links?read=agent-costs')
+    expect(await screen.findByRole('heading', { name: 'Before' })).toBeInTheDocument()
+    expect(urls()).toContain('/api/drafts?slug=agent-costs&r=0')
+    expect(fetchMock.mock.calls.find(([url]) => (url as string).startsWith('/api/drafts?slug='))![1]).toEqual({ headers: { Authorization: 'Bearer secret' } })
+  })
+
+  it('says when a draft is missing', async () => {
+    serve({ draft: { status: 404, body: { error: 'not found' } } })
+    history.replaceState(null, '', '/admin#links?read=gone')
+    render(<Admin />)
+    expect(await screen.findByText('There is no draft called gone.')).toBeInTheDocument()
+  })
+
+  it('says when the drafts could not be loaded', async () => {
+    serve({ drafts: { status: 500, body: { error: 'could not read the drafts' } } })
+    history.replaceState(null, '', '/admin#links')
+    render(<Admin />)
+    expect(await screen.findByText('The drafts could not be loaded (HTTP 500).')).toBeInTheDocument()
   })
 })

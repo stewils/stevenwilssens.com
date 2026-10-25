@@ -21,9 +21,9 @@ const Plain = ({ micro, mark = 'billed' as const }: { micro: number; mark?: 'bil
 const tokens = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n))
 const short = (sha: string) => sha.slice(0, 7)
 
-// "$5.70 billed · ≈$6.70 estimated", for a sum that is not all one kind.
+// "$5.70 API key · ≈$6.70 Max plan", for a sum that is not all one kind.
 function Split({ money, abbreviated = false }: { money: CostMoney; abbreviated?: boolean }) {
-  const parts = [money.billed > 0 && <span key="b"><Plain micro={money.billed} /> billed</span>, money.estimated > 0 && <span key="e"><Plain micro={money.estimated} mark="estimated" /> {abbreviated ? 'est.' : 'estimated'}</span>, money.unknown > 0 && <span key="u"><Plain micro={money.unknown} mark="unknown" /> billing unknown</span>].filter(Boolean)
+  const parts = [money.billed > 0 && <span key="b"><Plain micro={money.billed} /> API key</span>, money.estimated > 0 && <span key="e"><Plain micro={money.estimated} mark="estimated" /> {abbreviated ? 'plan' : 'Max plan'}</span>, money.unknown > 0 && <span key="u"><Plain micro={money.unknown} mark="unknown" /> billing unknown</span>].filter(Boolean)
   return <>{parts.map((part, index) => <span key={index}>{index > 0 && ' · '}{part}</span>)}</>
 }
 const mixed = (money: CostMoney) => [money.billed, money.estimated, money.unknown].filter((part) => part > 0).length > 1
@@ -269,7 +269,8 @@ export function CostsPage({ info, onBudget, roleNames = new Map() }: { info: Cos
       <section className="card" data-part="This month">
         <div className="card-head"><h2>This month</h2><span className="updated">{monthTitle(info.month)}</span></div>
         <div className="stats">
-          <div><span>Spent this month</span><strong><Money money={current.money} /></strong><small>{total(current.money) ? <Split money={current.money} /> : 'nothing yet'}</small></div>
+          <div><span>API key this month</span><strong><Plain micro={current.money.billed} /></strong><small>{total(current.money) ? <>of <Money money={current.money} /> in all</> : 'nothing yet'}</small></div>
+          <div><span>Max plan this month</span><strong><Plain micro={onPlan(current.money)} mark={current.money.unknown > 0 ? 'unknown' : 'estimated'} /></strong><small>at API rates</small></div>
           <div><span>Last month</span><strong>{last ? <Money money={last.money} /> : '—'}</strong><small>{trend && before ? `${trend.text} on ${monthTitle(before.month).split(' ')[0]}` : 'the first month'}</small></div>
           <div><span>Features</span><strong>{formatNumber(named.length)}</strong><small>{states.filter(([, n]) => n > 0).map(([word, n]) => `${n} ${word}`).join(' · ') || (unknownStates ? 'pull request states unknown' : 'none with a pull request yet')}</small></div>
           <div><span>Waste</span><strong><Plain micro={current.wasteMicro} mark={markOf(current.money)} /></strong><small>{total(current.money) ? `${formatPercent(current.wasteMicro / total(current.money), true)} of this month` : 'nothing this month'}</small></div>

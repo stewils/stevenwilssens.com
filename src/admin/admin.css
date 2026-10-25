@@ -334,6 +334,18 @@ td.strong, tr.detail td { overflow-wrap: anywhere; }
 .linklist strong { font-size: 14px; }
 .linklist small { color: var(--muted); font-size: 12px; line-height: 1.45; }
 .linklist code { color: var(--green); overflow-wrap: anywhere; margin-top: 4px; }
+/* A draft only Steven reads (Links → Drafts): a column a reader takes in, its diagrams scrolling on a phone. */
+.draft { max-width: 72ch; font-size: 15px; line-height: 1.65; }
+.draft h2 { margin: 28px 0 8px; font-size: 18px; }
+.draft h3 { margin: 22px 0 6px; font-size: 15px; }
+.draft p, .draft ul, .draft ol, .draft blockquote { margin: 0 0 14px; }
+.draft blockquote { padding: 4px 0 4px 14px; border-left: 3px solid var(--green); color: var(--muted); }
+.draft code { font: 13px 'DM Mono', monospace; }
+.draft-diagram { margin: 0 0 16px; padding: 14px 16px; overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; font: 12px/1.5 'DM Mono', monospace; }
+.draft .table-wrap { overflow-x: auto; margin: 0 0 16px; }
+.draft table { border-collapse: collapse; font-size: 14px; }
+.draft th, .draft td { padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.draft-meta { color: var(--muted); font-size: 13px; margin: -6px 0 18px; }
 
 /* The résumé score */
 .score { display: flex; flex-wrap: wrap; align-items: center; gap: 20px 32px; margin-bottom: 8px; }

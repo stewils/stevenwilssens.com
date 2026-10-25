@@ -231,7 +231,7 @@ describe('features over their budget', () => {
     expect(computeNeeds(costsData([feature('a', 11, 10)], 'HTTP 500'))).toEqual([])
     expect(computeNeeds({ ...data, costs: { info: null, error: '' } }).some((need) => need.page === 'costs')).toBe(false)
     expect(computeSummaries(costsData([], 'HTTP 500')).costs).toBe('Could not load the costs')
-    expect(computeSummaries(costsData([feature('a', 11, 10)])).costs).toBe('≈$41.20 this month ($12.00 billed) · 1 over budget')
+    expect(computeSummaries(costsData([feature('a', 11, 10)])).costs).toBe('$12.00 API key · ≈$29.20 Max plan this month · 1 over budget')
     expect(computeSummaries({ ...data, costs: { info: null, error: '' } }).costs).toBeUndefined()
   })
 })
