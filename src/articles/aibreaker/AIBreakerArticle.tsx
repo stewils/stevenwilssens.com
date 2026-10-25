@@ -11,7 +11,7 @@ import feed from './feed.json'
 import '../wilssens/article.css'
 
 // The write-up of why and how AI Breaker (aibreaker.org) was built, linked from /projects.
-// Facts come from the project's own decision log and specs as of 19 October 2026;
+// Facts come from the project's own decision log and specs as of 25 October 2026;
 // survey figures are cited inline. Screenshots: public sections of aibreaker.org.
 
 const sections = [
@@ -210,7 +210,7 @@ export default function AIBreakerArticle() {
           <p><a href="https://aibreaker.org" target="_blank" rel="noreferrer">aibreaker.org</a> is a separate product in the same repository: plain HTML and CSS on Cloudflare Pages with no build step, a few Pages Functions for the waitlist and visit counting, and a small database. It had to be as trustworthy as the app, because it is the first thing a wary buyer sees.</p>
           <ul className="wx-points">
             <li><strong>It loads nothing from other servers.</strong> No CDNs, no Google Fonts, no third-party analytics, no cookies. A content security policy enforces it, and the footer says so, so the promise and the code have to stay in step.</li>
-            <li><strong>Visits are counted the way this site counts them:</strong> a visitor is a hash of address, browser, a secret and the date, so nobody can be followed across days; no IP address is stored; Do Not Track and Global Privacy Control mean nothing is sent; everything is deleted after 13 months.</li>
+            <li><strong>Visits are counted the way this site counts them:</strong> a visitor is a hash of address, browser, a secret and the date, so nobody can be followed across days; no IP address is stored; country is the most precise place kept, because I stopped storing region and city and cleared what was there; Do Not Track and Global Privacy Control mean nothing is sent; everything is deleted after 13 months. A privacy statement at <a href="https://aibreaker.org/privacy" target="_blank" rel="noreferrer">aibreaker.org/privacy</a> lists what the site keeps and why, names its two processors, and promises the waitlist is deleted once the launch email has gone out.</li>
             <li><strong>The copy is governed by the product rules.</strong> Only what the app does or is proven to do; planned things say Planned; “Level 2”, never “L2”; no Microsoft logos and no implied endorsement; the FAQ is repeated word for word in the page’s structured data; and a plain-text summary is published for AI assistants.</li>
             <li><strong>An internal “How AI Breaker works” page</strong> for an executive, a product manager and a developer, each with a to-do list, lives behind the admin token and is updated with every product change. It is where this write-up’s facts come from.</li>
           </ul>
