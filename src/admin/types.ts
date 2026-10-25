@@ -124,16 +124,17 @@ export type CostMoney = { billed: number; estimated: number; unknown: number; un
 export type CostPull = { state: 'open' | 'merged' | 'closed' | 'superseded' | 'none' | 'unknown'; number: number | null; mergeCommit: string | null; supersededBy: number | null }
 export type CostLine = { kind: 'spec' | 'build' | 'review' | 'fix' | 'lead' | 'site-update' | 'review-workflow'; round: number; pr: number | null; at: number; money: CostMoney; roles: { role: string; money: CostMoney }[] }
 export type CostFeature = {
-  branch: string | null; pull: CostPull | null; runs: number; lastRunAt: number
+  branch: string | null; pull: CostPull | null; runs: number; firstRunAt: number; lastRunAt: number
   spec: CostMoney; build: CostMoney; review: CostMoney; fix: CostMoney; lead: CostMoney; total: CostMoney
   reviewRounds: number; fixRounds: number; budgetMicro: number | null; phases: CostLine[]; tokensIn: number; tokensOut: number
   waste: { money: CostMoney; fixRounds: number; moreReviews: number; closed: boolean; redoneBy: number | null }
 }
 export type CostRole = { role: string; kind: 'team' | 'lead' | 'workflow' | 'other'; runs: number; total: CostMoney; share: number; perFeatureMicro: number; byPhase: Record<'spec' | 'build' | 'review' | 'fix' | 'lead', CostMoney> }
 export type CostMonth = { month: string; money: CostMoney; features: number; wasteMicro: number }
+export type CostDay = { day: string; money: CostMoney; features: number; started: number; startedTotal: CostMoney }
 export type CostsInfo = {
   generatedAt: number; empty: boolean; month: string; repo: string | null; pricesRead: string
-  features: CostFeature[]; roles: CostRole[]; months: CostMonth[]; waste: { fix: CostMoney; reviews: CostMoney; closed: CostMoney }
+  features: CostFeature[]; roles: CostRole[]; months: CostMonth[]; days: CostDay[]; waste: { fix: CostMoney; reviews: CostMoney; closed: CostMoney }
 }
 // The Costs page's data and why it is missing, when it is.
 export type CostsData = { info: CostsInfo | null; error: string }

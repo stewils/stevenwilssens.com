@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import type { CostRow } from './store'
-import { buildViews, lastMonths, moneyOf, ownPulls, pullStateOf, reviewRounds, totalOf, zero, type PullInfo } from './views'
+import { buildViews, lastDays, lastMonths, moneyOf, ownPulls, pullStateOf, reviewRounds, totalOf, zero, type PullInfo } from './views'
 
 // Money worked out by hand: claude-opus-5-5 output is $20 per million tokens, so N output
 // tokens are 20 * N micro-dollars (1,000 tokens = $0.02).
@@ -213,5 +213,35 @@ describe('the roles', () => {
     const answer = views([])
     expect(answer).toMatchObject({ empty: true, features: [], repo: 'stewils/stevenwilssens.com', pricesRead: '2026-10-19' })
     expect(answer.months.every((month) => totalOf(month.money) === 0)).toBe(true)
+  })
+})
+
+describe('the days', () => {
+  it('are the last 30 UTC days ending with today', () => {
+    const days = lastDays(NOW)
+    expect(days).toHaveLength(30)
+    expect([days[0], days.at(-1)]).toEqual(['2026-09-20', '2026-10-19'])
+    // Across a month and a year end.
+    expect(lastDays(Date.UTC(2027, 0, 2), 3)).toEqual(['2026-12-31', '2027-01-01', '2027-01-02'])
+  })
+
+  it('split the spend by how it was paid, count features worked on and started, and total the started ones', () => {
+    const at = (day: number, hour = 10) => Date.UTC(2026, 9, day, hour)
+    const answer = views([
+      // dev-costs starts on Oct 17 and goes on on Oct 18; resume-mail starts on Oct 18.
+      local({ branch: 'dev-costs', batchAt: at(17) }),
+      review(100, 1, { branch: 'dev-costs', batchAt: at(18) }),
+      local({ branch: 'resume-mail', runKey: 'local:s2', batchAt: at(18, 23), billing: 'unknown' }),
+      // main is no feature; a row older than 30 days counts in no day, though its feature still started then.
+      local({ branch: 'main', runKey: 'local:s3', batchAt: at(19) }),
+      local({ branch: 'old-idea', runKey: 'local:s4', batchAt: Date.UTC(2026, 7, 1) }),
+    ])
+    const days = Object.fromEntries(answer.days.map((day) => [day.day, day]))
+    expect(answer.days).toHaveLength(30)
+    expect(days['2026-10-17']).toEqual({ day: '2026-10-17', money: { billed: 0, estimated: 20_000, unknown: 0, unpriced: [] }, features: 1, started: 1, startedTotal: { billed: 1_000_000, estimated: 20_000, unknown: 0, unpriced: [] } })
+    expect(days['2026-10-18']).toEqual({ day: '2026-10-18', money: { billed: 1_000_000, estimated: 0, unknown: 20_000, unpriced: [] }, features: 2, started: 1, startedTotal: { billed: 0, estimated: 0, unknown: 20_000, unpriced: [] } })
+    expect(days['2026-10-19']).toMatchObject({ money: { billed: 0, estimated: 20_000, unknown: 0 }, features: 0, started: 0 })
+    expect(answer.days.reduce((all, day) => all + day.started, 0)).toBe(2)
+    expect(answer.features.find((feature) => feature.branch === 'dev-costs')!.firstRunAt).toBe(at(17))
   })
 })

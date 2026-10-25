@@ -2,8 +2,8 @@ import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { BarChart } from './Charts'
 import { amountText, commitLink, costOf, isOver, lineName, markOf, monthTitle, overBudget, parseAmount, pullLink, roleName, sum, total, zero } from './costs'
 import { DataTable, type Column } from './DataTable'
-import { formatAgo, formatCost, formatNumber, formatPercent, formatUsd, formatUsdAxis, niceMax, trendOf } from './format'
-import type { CostFeature, CostMoney, CostMonth, CostRole, CostsInfo } from './types'
+import { dayAxis, dayLabel, formatAgo, formatCost, formatNumber, formatPercent, formatUsd, formatUsdAxis, niceMax, trendOf } from './format'
+import type { CostDay, CostFeature, CostMoney, CostMonth, CostRole, CostsInfo } from './types'
 
 // What each change cost to build with Claude (specs/dev-costs.md): this month, every feature
 // by phase with its budget, the months, the roles and the waste. Every figure goes through
@@ -151,12 +151,61 @@ const featureColumns = (repo: string | null): Column<CostFeature>[] => [
 
 const monthColumns: Column<CostMonth>[] = [
   { key: 'month', label: 'Month', value: (row) => row.month, render: (row) => monthTitle(row.month) },
-  { key: 'billed', label: 'Billed', num: true, value: (row) => row.money.billed, render: (row) => <Plain micro={row.money.billed} /> },
-  { key: 'estimated', label: 'Estimated', num: true, value: (row) => row.money.estimated + row.money.unknown, render: (row) => <Amount value={formatCost(row.money.estimated + row.money.unknown, row.money.unknown > 0 ? 'unknown' : 'estimated', row.money.unpriced.length > 0)} /> },
+  { key: 'billed', label: 'API key', num: true, value: (row) => row.money.billed, render: (row) => <Plain micro={row.money.billed} /> },
+  { key: 'estimated', label: 'Max plan', num: true, value: (row) => row.money.estimated + row.money.unknown, render: (row) => <Amount value={formatCost(row.money.estimated + row.money.unknown, row.money.unknown > 0 ? 'unknown' : 'estimated', row.money.unpriced.length > 0)} /> },
   { key: 'total', label: 'Total', num: true, value: (row) => total(row.money), render: (row) => <Money money={row.money} /> },
   { key: 'features', label: 'Features', num: true, value: (row) => row.features },
   { key: 'waste', label: 'Waste', num: true, value: (row) => row.wasteMicro, render: (row) => <Plain micro={row.wasteMicro} mark={markOf(row.money)} /> },
 ]
+
+// The two ways a run is paid for: billed to the API key, or on the Max plan (estimated at API rates; a
+// run that did not say which it used counts with the plan, marked ?$).
+const PAID = <span className="chart-legend"><span><i className="billed" />API key</span><span><i className="est" />Max plan</span></span>
+const onPlan = (money: CostMoney) => money.estimated + money.unknown
+const paidWords = (money: CostMoney) => `${formatCost(money.billed).words} on the API key, ${formatCost(onPlan(money), 'estimated').words} on the Max plan`
+const averageOf = (day: CostDay): CostMoney => (day.started ? { billed: Math.round(day.startedTotal.billed / day.started), estimated: Math.round(day.startedTotal.estimated / day.started), unknown: Math.round(day.startedTotal.unknown / day.started), unpriced: day.startedTotal.unpriced } : zero())
+const plural = (n: number, word: string) => `${formatNumber(n)} ${n === 1 ? word : `${word}s`}`
+
+// The last 30 UTC days: what was spent and how it was paid, how many features were worked on and
+// started, and what a feature cost on average by the day it started (a recent one may still grow).
+export function LastDays({ days }: { days: CostDay[] }) {
+  if (!days.some((day) => total(day.money) > 0 || day.features > 0)) return <p className="empty">Nothing recorded in the last 30 days.</p>
+  const spent = sum(days.map((day) => day.money))
+  const started = days.reduce((all, day) => all + day.started, 0)
+  const startedTotal = sum(days.map((day) => day.startedTotal))
+  const average = started ? total(startedTotal) / started : 0
+  const averages = days.map(averageOf)
+  const axis = dayAxis(days)
+  return (
+    <>
+      <BarChart
+        title="Spent per day, last 30 days"
+        legend={PAID}
+        readout={`${costOf(spent).text} in 30 days · ${formatCost(spent.billed).text} API key · ${formatCost(onPlan(spent), 'estimated').text} Max plan`}
+        format={formatUsdAxis}
+        max={niceMax(Math.max(...days.map((day) => total(day.money)), 1))}
+        axisLabels={axis}
+        bars={days.map((day) => ({ key: day.day, label: dayLabel(day.day), value: day.money.billed, estimated: onPlan(day.money), detail: total(day.money) === 0 ? 'nothing recorded' : paidWords(day.money) }))}
+      />
+      <BarChart
+        title="Average cost of a feature, by the day it started"
+        legend={PAID}
+        readout={started ? `${formatCost(Math.round(average), markOf(startedTotal)).text} per feature over 30 days` : 'No feature started in 30 days'}
+        format={formatUsdAxis}
+        max={niceMax(Math.max(...averages.map(total), 1))}
+        axisLabels={axis}
+        bars={days.map((day, index) => ({ key: day.day, label: dayLabel(day.day), value: averages[index].billed, estimated: onPlan(averages[index]), detail: day.started ? `${plural(day.started, 'feature')} started, ${costOf(averages[index]).words} each on average (${paidWords(averages[index])})` : 'no feature started' }))}
+      />
+      <BarChart
+        title="Features per day"
+        readout={`${plural(started, 'feature')} started in 30 days`}
+        axisLabels={axis}
+        bars={days.map((day) => ({ key: day.day, label: dayLabel(day.day), value: day.features, detail: `${plural(day.features, 'feature')} worked on, ${formatNumber(day.started)} started` }))}
+      />
+      <p className="note">Days in UTC. A feature counts on the day of its first recorded run, with everything it has cost since, so the latest days can still grow.</p>
+    </>
+  )
+}
 
 const roleColumns = (names: Map<string, string>): Column<CostRole>[] => [
   { key: 'role', label: 'Role', value: (row) => roleName(row.role, names), render: (row) => (row.kind === 'workflow' || row.kind === 'other' ? <><span className="muted">{roleName(row.role, names)}</span>{row.kind === 'workflow' && <><br /><small className="muted">not split by role</small></>}</> : roleName(row.role, names)) },
@@ -184,7 +233,7 @@ const wasteColumns: Column<WasteRow>[] = [
 ]
 
 const notes = {
-  month: 'was billed to the API key. ≈$ is an estimate: the tokens of a run on the Claude subscription, priced at Anthropic’s API rates. ?$ means the run did not say which it used. Cancelled or timed-out GitHub runs are not recorded. Open a feature to set its budget.',
+  month: 'was billed to the API key. ≈$ is an estimate: the tokens of a run on the Max plan, priced at Anthropic’s API rates. ?$ means the run did not say which it used. Cancelled or timed-out GitHub runs are not recorded. Open a feature to set its budget.',
   empty: 'A feature appears here after its first recorded run: the Review and Site update workflows record theirs on GitHub, and your Claude Code sessions record theirs when they end, once the ingest secret is set on GitHub, in Cloudflare and on your machine (README → Costs). Cancelled or timed-out GitHub runs are not recorded. Budgets are set per feature, so they come with the first one.',
   waste: 'What went into work that did not reach main as first built: every fix round, every review round after the first in the same place (your sessions, or the Review workflow on the pull request), and all of a pull request that was closed or redone. Counted to learn from, not to avoid.',
 }
@@ -229,6 +278,11 @@ export function CostsPage({ info, onBudget, roleNames = new Map() }: { info: Cos
         <p className="note">$ {notes.month} <a href="#assistant">The assistant’s own cost is on Ask about Steven.</a></p>
       </section>
 
+      <section className="card" data-part="Last 30 days">
+        <div className="card-head"><h2>Last 30 days</h2></div>
+        <LastDays days={info.days ?? []} />
+      </section>
+
       <section className="card" data-part="Features">
         <div className="card-head"><h2>Features</h2></div>
         <DataTable columns={featureColumns(info.repo)} rows={info.features} rowKey={(row) => row.branch ?? '(no feature)'} rowName={(row) => row.branch ?? 'No feature'} label="Features" empty="No feature has a recorded run yet." expand={(row) => <FeatureDetail feature={row} onSave={onBudget} names={roleNames} />} />
@@ -236,10 +290,10 @@ export function CostsPage({ info, onBudget, roleNames = new Map() }: { info: Cos
 
       <section className="card" data-part="Over time">
         <div className="card-head"><h2>Over time</h2></div>
-        {active < 2 ? <p className="empty">The chart starts with the second month.</p> : (
+        {active < 2 ? <p className="empty">The monthly chart starts with the second month.</p> : (
           <BarChart
             title="The last 12 months"
-            legend={<span className="chart-legend"><span><i className="billed" />billed</span><span><i className="est" />estimated</span></span>}
+            legend={PAID}
             readout={lastFull}
             format={formatUsdAxis}
             max={niceMax(Math.max(...months.map((month) => total(month.money)), 1))}
@@ -247,7 +301,7 @@ export function CostsPage({ info, onBudget, roleNames = new Map() }: { info: Cos
             bars={months.map((month) => {
               const now = month.month === info.month
               const name = `${monthTitle(month.month).split(' ')[0]}${now ? ' so far' : ''}`
-              const detail = total(month.money) === 0 && !month.money.unpriced.length ? 'nothing recorded' : `${formatCost(month.money.billed).words} billed, ${formatCost(month.money.estimated + month.money.unknown, 'estimated').words}, ${month.features} ${month.features === 1 ? 'feature' : 'features'}`
+              const detail = total(month.money) === 0 && !month.money.unpriced.length ? 'nothing recorded' : `${paidWords(month.money)}, ${plural(month.features, 'feature')}`
               return { key: month.month, label: name, value: month.money.billed, estimated: month.money.estimated + month.money.unknown, detail }
             })}
           />

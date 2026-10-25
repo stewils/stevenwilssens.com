@@ -39,9 +39,62 @@ describe('the Costs page', () => {
     expect(screen.getByText('Try again later; nothing recorded is lost.')).toBeInTheDocument()
   })
 
-  it('has its parts in order: This month, Features, Over time, Roles, Waste', () => {
+  it('has its parts in order: This month, Last 30 days, Features, Over time, Roles, Waste', () => {
     show()
-    expect([...document.querySelectorAll('section.card')].map((section) => section.getAttribute('data-part'))).toEqual(['This month', 'Features', 'Over time', 'Roles', 'Waste'])
+    expect([...document.querySelectorAll('section.card')].map((section) => section.getAttribute('data-part'))).toEqual(['This month', 'Last 30 days', 'Features', 'Over time', 'Roles', 'Waste'])
+  })
+})
+
+describe('Last 30 days', () => {
+  const charts = () => [...card('Last 30 days').querySelectorAll('figure')]
+
+  it('draws the cost, the cost per feature and the features, in that order, a bar per day', () => {
+    show()
+    expect(charts().map((chart) => chart.querySelector('figcaption > span')!.firstChild!.textContent)).toEqual(['Spent per day, last 30 days', 'Average cost of a feature, by the day it started', 'Features per day'])
+    for (const chart of charts()) expect(within(chart).getAllByRole('button')).toHaveLength(30)
+    // Three day labels under 30 bars spread edge to edge (no per-bar columns, which would put the last day mid-chart).
+    for (const chart of charts()) expect(chart.querySelector<HTMLElement>('.chart-axis')!.style.gridTemplateColumns).toBe('')
+    // Both cost charts say how each figure was paid; the count has no legend.
+    expect(charts().map((chart) => chart.querySelector('.chart-legend')?.textContent ?? null)).toEqual(['API keyMax plan', 'API keyMax plan', null])
+  })
+
+  it('splits each day into the API key and the Max plan, the unknown with the plan', () => {
+    show()
+    const [spent] = charts()
+    expect(within(spent).getByRole('button', { name: 'Oct 17: $4.00 on the API key, estimated $6.00 on the Max plan' })).toBeInTheDocument()
+    expect(within(spent).getByRole('button', { name: 'Oct 10: none on the API key, estimated $1.50 on the Max plan' })).toBeInTheDocument()
+    expect(within(spent).getByRole('button', { name: 'Oct 1: nothing recorded' })).toBeInTheDocument()
+    expect(spent.querySelector('.chart-readout')).toHaveTextContent(/\$15\.90 in 30 days · \$5\.70 API key · ≈\$10\.20 Max plan$/)
+  })
+
+  it('averages a feature over the ones that started that day, split the same way', () => {
+    show()
+    const [, average] = charts()
+    // Two features started on Oct 17: $5.70 on the key and $7.50 on the plan, so $2.85 and $3.75 each.
+    expect(within(average).getByRole('button', { name: /^Oct 17: 2 features started, .*\$6\.60 each on average \(\$2\.85 on the API key, estimated \$3\.75 on the Max plan\)$/ })).toBeInTheDocument()
+    expect(within(average).getByRole('button', { name: 'Oct 18: no feature started' })).toBeInTheDocument()
+    // Three started in the 30 days, $15.20 in all.
+    expect(average.querySelector('.chart-readout')).toHaveTextContent('≈$5.07 per feature over 30 days')
+  })
+
+  it('counts the features worked on and started each day', () => {
+    show()
+    const [, , count] = charts()
+    expect(within(count).getByRole('button', { name: 'Oct 17: 2 features worked on, 2 started' })).toBeInTheDocument()
+    expect(within(count).getByRole('button', { name: 'Oct 18: 1 feature worked on, 0 started' })).toBeInTheDocument()
+    expect(count.querySelector('.chart-readout')).toHaveTextContent('3 features started in 30 days')
+  })
+
+  it('says when nothing was started, and when nothing was recorded at all (or the answer has no days)', () => {
+    const quiet = makeCosts().days.map((day) => ({ ...day, started: 0, startedTotal: money(0) }))
+    show(makeCosts({ days: quiet }))
+    expect(charts()[1].querySelector('.chart-readout')).toHaveTextContent('No feature started in 30 days')
+    cleanup()
+    show(makeCosts({ days: makeCosts().days.map((day) => ({ ...day, money: money(0), features: 0, started: 0, startedTotal: money(0) })) }))
+    expect(within(card('Last 30 days')).getByText('Nothing recorded in the last 30 days.')).toBeInTheDocument()
+    cleanup()
+    show({ ...makeCosts(), days: undefined } as unknown as CostsInfo)
+    expect(within(card('Last 30 days')).getByText('Nothing recorded in the last 30 days.')).toBeInTheDocument()
   })
 })
 
@@ -58,7 +111,7 @@ describe('This month', () => {
     expect(within(stat(month, 'Waste')).getByText('estimated $8.40')).toBeInTheDocument()
     expect(stat(month, 'Over budget')).toHaveTextContent('1of 1 with a budget')
     expect(stat(month, 'Over budget')).toHaveClass('highlight')
-    expect(within(month).getByText(/^\$ was billed to the API key\. ≈\$ is an estimate: the tokens of a run on the Claude subscription, priced at Anthropic’s API rates\. \?\$ means the run did not say which it used\. Cancelled or timed-out GitHub runs are not recorded\. Open a feature to set its budget\./)).toBeInTheDocument()
+    expect(within(month).getByText(/^\$ was billed to the API key\. ≈\$ is an estimate: the tokens of a run on the Max plan, priced at Anthropic’s API rates\. \?\$ means the run did not say which it used\. Cancelled or timed-out GitHub runs are not recorded\. Open a feature to set its budget\./)).toBeInTheDocument()
     expect(within(month).getByRole('link', { name: 'The assistant’s own cost is on Ask about Steven.' })).toHaveAttribute('href', '#assistant')
   })
 
@@ -193,12 +246,12 @@ describe('Over time', () => {
   it('draws the 12 months stacked, with a legend and the last full month, and lists every month', () => {
     show()
     const part = card('Over time')
-    expect(within(part).getByText('billed')).toBeInTheDocument()
+    expect(part.querySelector('.chart-legend')).toHaveTextContent('API keyMax plan')
     expect(within(part).getByText('Last full month ≈$63.10, +12% on the month before')).toBeInTheDocument()
     expect(within(part).getAllByRole('button', { name: /^(January|February|March|April|May|June|July|August|September|October|November|December)/ })).toHaveLength(12)
-    expect(within(part).getByRole('button', { name: 'October so far: $12.00 billed, estimated $29.20, 5 features' })).toBeInTheDocument()
+    expect(within(part).getByRole('button', { name: 'October so far: $12.00 on the API key, estimated $29.20 on the Max plan, 5 features' })).toBeInTheDocument()
     const table = within(part).getByRole('table', { name: 'Cost per month' })
-    expect(within(table).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(['Month', 'Billed', 'Estimated', 'Total', 'Features', 'Waste'])
+    expect(within(table).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(['Month', 'API key', 'Max plan', 'Total', 'Features', 'Waste'])
     expect(within(table).getAllByRole('row')).toHaveLength(13)
     expect(within(table).getAllByRole('row')[1]).toHaveTextContent('October 2026')
     // Twelve fixed months need no search box.
@@ -220,7 +273,7 @@ describe('Over time', () => {
   it('starts the chart with the second month', () => {
     const months = makeCosts().months.map((month) => (month.month === '2026-10' ? month : { ...month, money: money(0) }))
     show(makeCosts({ months }))
-    expect(within(card('Over time')).getByText('The chart starts with the second month.')).toBeInTheDocument()
+    expect(within(card('Over time')).getByText('The monthly chart starts with the second month.')).toBeInTheDocument()
     expect(within(card('Over time')).queryByRole('button', { name: /so far/ })).not.toBeInTheDocument()
   })
 

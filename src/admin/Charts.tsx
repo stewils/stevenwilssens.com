@@ -102,6 +102,7 @@ export function BarChart({ title, bars, axisLabels, max: fixedMax, format = form
   const peak = Math.max(...bars.map(height), 0)
   const max = fixedMax ?? Math.max(2, peak + (peak % 2))
   const active = hovered === null ? null : bars[hovered]
+  const perBar = stacked && axisLabels.length === bars.length
   const pct = (value: number) => `${Math.min(100, (value / max) * 100)}%`
   return (
     <figure className={`chart${stacked ? ' chart--stacked' : ''}`}>
@@ -122,8 +123,9 @@ export function BarChart({ title, bars, axisLabels, max: fixedMax, format = form
           ))}
         </div>
       </div>
-      {/* Stacked months: one axis column per bar, so each label sits under its bar. */}
-      <div className="chart-axis" style={stacked ? { gridTemplateColumns: `repeat(${axisLabels.length}, minmax(0, 1fr))` } : undefined}>{axisLabels.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}</div>
+      {/* A label per bar (stacked months): one axis column per bar, so each label sits under its bar. Fewer
+          labels than bars (first, middle and last day) spread from edge to edge, as on the other charts. */}
+      <div className={`chart-axis${perBar ? ' chart-axis--per-bar' : ''}`} style={perBar ? { gridTemplateColumns: `repeat(${axisLabels.length}, minmax(0, 1fr))` } : undefined}>{axisLabels.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}</div>
     </figure>
   )
 }
