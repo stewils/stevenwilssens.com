@@ -140,7 +140,14 @@ describe('the resume PDF', () => {
 // Steven's approved wording for the two Windows Data roles, word for word and in order:
 // Perfect Day stays first in csx-data, because the PDF prints only an older role's first bullet.
 describe('the Windows Data roles', () => {
-  it('csx-data keeps Perfect Day first and adds the team growth second', () => {
+  // The PDF prints an older role's summary but only its first bullet, so the team size lives in the summary.
+  it('csx-data states its team size in the summary, in the data and the PDF', async () => {
+    const summary = 'Led a team grown from one to five PMs, working with about 20 developers, building data products that told the story of the Windows customer experience and informed continuous improvement.'
+    expect(experiences.find((item) => item.key === 'csx-data')!.summary).toBe(summary)
+    expect(await pdfText()).toContain(normalize(summary))
+  }, 30_000)
+
+  it('csx-data keeps Perfect Day first and the promotion second', () => {
     expect(pointsOf('csx-data')).toEqual([
       'Redefined Windows quality measurement around end-to-end scenarios like gaming and the shell, creating the Perfect Day metric for issue-free user days.',
       'Growing the team led to promotion to Principal Group Product Manager.',
