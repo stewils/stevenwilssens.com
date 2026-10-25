@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import appSource from './App.tsx?raw'
 import resumeSource from './resume.ts?raw'
 import { analyzeResume, atsScore, compareScores, dataQuestions, extractPdf, formatComparison, lenses, readBaseline, resumePath } from '../scripts/resume-check.mjs'
-import { about, experiences, profile, selectedWork } from './resume'
+import { about, experiences, honors, profile, recommendations, selectedWork } from './resume'
 
 const pointsOf = (key: string) => experiences.find((item) => item.key === key)!.points
 // The PDF's text the way resume-check reads it: one line, straight quotes and hyphens, lower case.
@@ -40,6 +40,30 @@ describe('the resume PDF', () => {
     expect(perfectDay).toBeGreaterThan(heading)
     expect(perfectDay).toBeLessThan(next)
   }, 30_000)
+
+  // A summary that drifts from src/resume.ts is only a warning in the checker, so it is pinned here in full.
+  it('carries the new summary and every bullet of the two latest roles, with no site or tense findings', async () => {
+    const report = await analyzeResume()
+    expect(report.findings.filter((finding: { lens: string }) => finding.lens === 'site')).toEqual([])
+    expect(report.findings.filter((finding: { id: string }) => finding.id.startsWith('tense-'))).toEqual([])
+    // A word hyphenated at a line end ("co-" | "inventor") reads back as "co- inventor".
+    const text = (await pdfText()).replace(/(\w)- (?=\w)/g, '$1-')
+    expect(text).toContain(normalize(profile.summary))
+    for (const point of experiences.slice(0, 2).flatMap((item) => item.points)) expect(text).toContain(normalize(point))
+  }, 30_000)
+
+  it('prints the HiPo honor once without empty parentheses, and the dated honors with their year', async () => {
+    const text = await pdfText()
+    expect(text.split("selected for microsoft's high potential (hipo) program")).toHaveLength(2)
+    expect(text).not.toContain('(issued by microsoft)')
+    expect(text).not.toMatch(/\(\s*\)/)
+    expect(text).toMatch(/lighthouse award for teamwork\s*\(2012\)/)
+    expect(text).toContain('compass award for individual excellence (2011)')
+    expect(text).toContain('gold star award (2011)')
+    expect(text).toContain('microsoft mvp: vs team system (2006)')
+  }, 30_000)
+
+  // The honors line in every layout of the template, and one honor's formatting, are tested in scripts/resume.test.mjs.
 
   // Header line 2, under the location an ATS parses; the facts for a close read stay off the PDF.
   it('prints the work arrangement in the PDF, "hybrid" and "remote" as words', async () => {
@@ -123,6 +147,7 @@ describe('the Windows Data roles', () => {
       'Drove measurable quality gains, with Perfect Day improving about 5% for gaming and 3–4% for the Windows shell.',
       'Provided the data behind Windows release decisions: whether a build was ready to move from internal audiences to Insider preview, which issues had to be fixed, and ultimately whether a release met the quality bar to ship.',
       'Built the alerting dashboards Windows teams used to catch customer-impacting issues, and ran the weekly Release Quality Review where area directors acted on them.',
+      'Measured quality across more than 1.6 billion highly diverse Windows devices, data that governed every Windows release from 2020 to 2026.',
     ])
   })
 
@@ -197,10 +222,11 @@ describe('the team sizes and the Azure DevOps choice', () => {
     ])
   })
 
-  it('azure-devops says why Steven stayed at Microsoft', () => {
+  // An unfunded startup-style project: the scope is Steven alone, said so, rather than a team size.
+  it('azure-devops says it had no funded team yet and why Steven moved to Windows Data', () => {
     expect(pointsOf('azure-devops')).toEqual([
-      'Authored a DataOps product proposal compelling enough that the team building it was moved to GitHub, as the better home for the product.',
-      'Chose to stay at Microsoft rather than move to GitHub to lead the team building it.',
+      'Defined DataOps as its sole product lead: a startup-style project inside Azure DevOps before it had a funded team, writing the product proposal that got it funded and moved to GitHub as its better home.',
+      'Chose the Windows Data lead role over following the newly funded team to GitHub.',
     ])
   })
 
@@ -300,6 +326,49 @@ describe('the hiring logistics', () => {
 })
 
 // The guards and the designer's limits run on this copy in functions/_lib/mcp/about.test.ts.
+// Casting stays first, because the PDF prints only an older role's first bullet.
+describe('the spatial audio roles', () => {
+  it('spatial-audio-senior keeps casting first and adds the 2015 audio ask last', () => {
+    expect(pointsOf('spatial-audio-senior')).toEqual([
+      'Brought casting to Windows and Windows Phone, shipping Miracast, DLNA and Play To so people could send media from a PC or phone to a TV.',
+      'Enabled HD conferencing on Surface RT and drove Media Foundation and Windows SDK work for media developers.',
+      'Brought spatial sound to Windows and Xbox: Windows Sonic for headphones, plus Dolby Atmos and DTS:X across headphones, home theater, and built-in laptop speakers on Surface, Lenovo and other devices.',
+      'Asked in 2015 to define the next revolutionary step for audio at Microsoft, leading to the Spatial Audio Platform and Windows Sonic.',
+    ])
+  })
+})
+
+describe('the summary', () => {
+  it('profile.summary is Steven’s approved text, word for word', () => {
+    expect(profile.summary).toBe('Product leader with nearly 20 years at Microsoft who sees early where customers and markets are heading, and builds for it: choosing low latency over 4K as the differentiator for xCloud game streaming, forecasting how a key Windows AI feature would land in retail well before broad rollout, and inventing products in areas I was new to, from spatial audio for Windows and Xbox to the data and experimentation systems that decide what ships on more than 1.6 billion Windows devices. Co-inventor on 19 granted US patents spanning spatial audio, game streaming, casting and device telemetry. I lead teams of 10 to 20 product managers, use data, experimentation and AI to find what works, and keep building products myself.')
+  })
+
+  it('keeps the two sources the summary relies on: the xCloud bullet and Amit Gupte’s forecast', () => {
+    expect(pointsOf('spatial-audio-lead')).toContain('Shaped Xbox xCloud game streaming strategy, prioritizing low latency over 4K resolution and making it the platform\'s key differentiator.')
+    const gupte = recommendations.find(([name]) => name === 'Amit Gupte')!
+    expect(gupte[2]).toContain('accurately forecast how a key Windows AI feature would land in retail well before broad rollout')
+    expect(profile.summary).toContain('low latency over 4K')
+    expect(profile.summary).toContain('forecasting how a key Windows AI feature would land in retail')
+  })
+})
+
+describe('the honors', () => {
+  it('adds the HiPo selection first, undated, and keeps the four honors as they were', () => {
+    expect(honors).toEqual([
+      ['Selected for Microsoft’s High Potential (HiPo) program', 'Issued by Microsoft'],
+      ['Microsoft Lighthouse Award for Teamwork', 'Issued by Microsoft · Jan 2012'],
+      ['Microsoft Compass Award for Individual Excellence', 'Issued by Microsoft · Jan 2011'],
+      ['Microsoft Gold Star Award', 'Issued by Microsoft · Jan 2011'],
+      ['Most Valuable Professional (MVP): VS Team System', 'Issued by Microsoft · Jan 2006'],
+    ])
+    expect(resumeSource).toContain('TODO(steven): year of the HiPo selection')
+    for (const [title, issued] of honors) {
+      expect(title.trim()).not.toBe('')
+      expect(issued.trim()).not.toBe('')
+    }
+  })
+})
+
 describe('the About copy', () => {
   it('exports the About copy as data: one sentence under the title and 2 to 4 paragraphs, none empty', () => {
     expect(about.intro.trim()).not.toBe('')

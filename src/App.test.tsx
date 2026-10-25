@@ -91,7 +91,10 @@ describe('resume site', () => {
     render(<App />)
 
     expect(screen.getByText('Seattle, Washington')).toBeInTheDocument()
-    expect(within(screen.getByRole('list', { name: 'Honors and awards' })).getAllByRole('listitem')).toHaveLength(4)
+    const honorItems = within(screen.getByRole('list', { name: 'Honors and awards' })).getAllByRole('listitem')
+    expect(honorItems).toHaveLength(5)
+    expect(honorItems[0]).toHaveTextContent('Selected for Microsoft’s High Potential (HiPo) program')
+    expect(honorItems[0]).toHaveTextContent('Issued by Microsoft')
     // The logistics as one group, in the order a recruiter's screen asks them.
     const aside = document.querySelector('aside.side-note')!
     const labels = [...aside.querySelectorAll(':scope > span')].map((span) => span.textContent)
@@ -104,6 +107,18 @@ describe('resume site', () => {
     expect(valueOf('Travel')).toBe('Open to coordinated travel')
     expect(valueOf('Employers')).toBe(profile.employers)
     expect(valueOf('Relocation')).toBe(profile.relocation)
+  })
+
+  it('lists five honors on /honors, the HiPo selection first with "Issued by Microsoft" as its line', () => {
+    setPath('/honors')
+    const { container } = render(<App />)
+
+    const list = container.querySelector('.archive-list.honor')!
+    const titles = within(list as HTMLElement).getAllByRole('heading', { level: 2 })
+    expect(titles).toHaveLength(5)
+    expect(titles[0]).toHaveTextContent('Selected for Microsoft’s High Potential (HiPo) program')
+    expect(titles[0].nextElementSibling).toHaveTextContent(/^Issued by Microsoft$/)
+    expect(titles[1]).toHaveTextContent('Microsoft Lighthouse Award for Teamwork')
   })
 
   it('renders the About copy from src/resume.ts, the first paragraph as the green opening', () => {
@@ -253,7 +268,7 @@ describe('resume site', () => {
 
     const itemOf = (role: string) => screen.getByRole('heading', { name: role }).closest('.timeline-item') as HTMLElement
     expect(within(itemOf('Principal Product Manager Lead - Silicon, Graphics, Media')).getAllByRole('listitem')[0]).toHaveTextContent('Led six PMs, working with about 20 developers.')
-    expect(within(itemOf('Principal Product Manager Lead - Azure DevOps')).getAllByRole('listitem')[1]).toHaveTextContent('Chose to stay at Microsoft rather than move to GitHub to lead the team building it.')
+    expect(within(itemOf('Principal Product Manager Lead - Azure DevOps')).getAllByRole('listitem')[1]).toHaveTextContent('Chose the Windows Data lead role over following the newly funded team to GitHub.')
     expect(itemOf('Software Developer').querySelector('.timeline-date')).toHaveTextContent('Jan 2005 - Dec 2005')
     expect(screen.getByRole('button', { name: /^Go to\s*2005\s*Software Developer/ })).toBeInTheDocument()
     expect(screen.queryByText(/Jan 2004/)).toBeNull()
