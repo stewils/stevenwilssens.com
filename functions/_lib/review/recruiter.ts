@@ -11,7 +11,9 @@ export type Finding = { area: string; severity: Severity; finding: string; why: 
 export type Question = { about: string; question: string; whyItMatters: string }
 // The score is the ATS score: only findings with lens 'ats' make it (scripts/resume-check.mjs).
 export type ResumeReport = { exists?: boolean; score: number; pages?: number; errors?: number; warnings?: number; ats?: { errors: number; warnings: number }; matchesSite?: boolean; checkedAt?: string; findings: { severity: 'error' | 'warn' | 'info'; lens?: 'ats' | 'site' | 'recruiter'; id: string; message: string }[]; questions: { about: string; question: string }[] }
-export type ReviewInput = { pages: Record<string, string | null>; resumeReport: ResumeReport | null; linkedin: { fixes: LinkedInFix[]; summary: string } | null; now: number }
+// withLinkedIn: false when the caller cannot see LinkedIn at all (the repository's check: the import lives in
+// the MCP server), so its absence is not held against the site; the MCP's review always looks.
+export type ReviewInput = { pages: Record<string, string | null>; resumeReport: ResumeReport | null; linkedin: { fixes: LinkedInFix[]; summary: string } | null; now: number; withLinkedIn?: boolean }
 export type Review = { score: number; headline: string; findings: Finding[]; questions: Question[]; counts: Record<Severity, number> }
 
 const months: Record<string, number> = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 }
@@ -21,9 +23,13 @@ const span = (dates: string) => {
 }
 const monthName = (serial: number) => `${Object.keys(months)[serial % 12].replace(/^./, (c) => c.toUpperCase())} ${Math.floor(serial / 12)}`
 const presentTense = /^(Lead|Own|Partner|Drive|Build|Manage|Define|Deliver|Grow|Oversee|Create|Develop|Ship|Work)\b/
-const scopeWords = /\b\d+ to \d+ (product managers|pms|engineers)|team of (about )?\d+|(pm|product management) organization of (about )?\d+|\d+ (product managers|pms|engineers|data scientists)\b/i
+// A team size the way it is written: in digits or words ("six PMs", "one to five PMs", "about 20 developers"),
+// or a role's scope said outright when there was no team to count ("as its sole product lead").
+const count = '(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|a dozen|dozens of|hundreds of)'
+const people = '(?:product managers|pms|engineers|developers|data scientists)'
+export const scopeWords = new RegExp(`\\b${count} to ${count} ${people}\\b|\\bteam of (?:about )?${count}\\b|\\b(?:pm|product management) organization of (?:about )?${count}\\b|\\b${count} ${people}\\b|\\bsole (?:product lead|product manager|pm)\\b`, 'i')
 
-export const reviewForRecruiters = ({ pages, resumeReport, linkedin, now }: ReviewInput): Review => {
+export const reviewForRecruiters = ({ pages, resumeReport, linkedin, now, withLinkedIn = true }: ReviewInput): Review => {
   const findings: Finding[] = []
   const questions: Question[] = []
   const current = new Date(now).getFullYear() * 12 + new Date(now).getMonth()
@@ -87,7 +93,8 @@ export const reviewForRecruiters = ({ pages, resumeReport, linkedin, now }: Revi
   }
 
   // 8. LinkedIn.
-  if (!linkedin) findings.push({ area: 'linkedin', severity: 'medium', finding: 'LinkedIn has not been imported, so it cannot be compared with the site and the resume.', why: 'Most recruiters read LinkedIn before the site; the three must tell the same story.', fix: 'Call save_linkedin_profile with the "Save to PDF" text or the data-export CSV files, then compare_linkedin.' })
+  if (!withLinkedIn) { /* the caller cannot see LinkedIn: nothing to say about it */ }
+  else if (!linkedin) findings.push({ area: 'linkedin', severity: 'medium', finding: 'LinkedIn has not been imported, so it cannot be compared with the site and the resume.', why: 'Most recruiters read LinkedIn before the site; the three must tell the same story.', fix: 'Call save_linkedin_profile with the "Save to PDF" text or the data-export CSV files, then compare_linkedin.' })
   else for (const fix of linkedin.fixes) findings.push({ area: `linkedin:${fix.area}`, severity: /^(headline|about|position|dates)/.test(fix.area) ? 'medium' : 'low', finding: `LinkedIn: ${fix.area} differs. LinkedIn says "${fix.linkedinSays.slice(0, 120)}"; the site says "${fix.siteSays.slice(0, 120)}".`, why: fix.why, fix: fix.paste ? `Paste into LinkedIn: ${fix.paste.slice(0, 300)}${fix.paste.length > 300 ? '…' : ''}` : 'Resolve the difference on LinkedIn or in src/resume.ts.' })
 
   const order: Record<Severity, number> = { high: 0, medium: 1, low: 2 }

@@ -136,8 +136,12 @@ describe('the recruiter review', () => {
     expect(areas).toContain('resume')
     expect(areas).toContain('linkedin')
     expect(areas).not.toContain('scope:windows-devices-data')
+    // "five PMs, working with about 20 developers" and "Led six PMs" are team sizes, in words.
+    expect(areas).not.toContain('scope:csx-data')
+    expect(areas).not.toContain('scope:spatial-audio-lead')
+    expect(areas).toContain('scope:azure-devops')
     // Cosmos starts the month after Info Support ends, so the real data leaves no overlap to ask
-    // about; Azure DevOps still states no team size as digits.
+    // about; Azure DevOps states no team size at all.
     expect(review.questions.some((q) => /overlaps/.test(q.question) || q.about === 'cosmos')).toBe(false)
     expect(review.questions.some((q) => q.about === 'azure-devops' && /How many product managers/.test(q.question))).toBe(true)
     expect(review.score).toBeLessThan(100)
