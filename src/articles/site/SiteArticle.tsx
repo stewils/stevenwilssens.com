@@ -12,7 +12,7 @@ import '../wilssens/article.css'
 
 // The write-up of how this site is built and run, linked from /projects. Numbers come
 // from the site's own analytics database, the résumé checker and the MCP server as of
-// 23 October 2026; update them together with the date in the closing section.
+// 26 October 2026; update them together with the date in the closing section.
 
 const sections = [
   ['source', 'One file, five outputs'],
