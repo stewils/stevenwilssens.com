@@ -28,6 +28,7 @@ main { padding: 74px 0 110px; }.profile-hero { display: grid; grid-template-colu
 .project-url { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; background: #0c0f14; color: #c9cdd8; font-size: 12px; font-weight: 600; }
 .project-url svg { color: #8a91a3; }
 .project-viewport { display: block; aspect-ratio: 16 / 10; overflow: hidden; container-type: size; }
+.project-placeholder { display: flex; align-items: center; justify-content: center; height: 100%; padding: 24px; color: #e8ebf2; font-size: clamp(28px, 5vw, 44px); font-weight: 700; letter-spacing: -.02em; text-align: center; }
 .project-viewport img { display: block; width: 100%; height: auto; transform: translateY(0); transition: transform 1.2s cubic-bezier(.4,0,.2,1); }
 .project-frame:hover .project-viewport img, .project-frame:focus-visible .project-viewport img { transform: translateY(calc(-100% + 100cqh)); transition-duration: 7s; }
 .project-frame:hover .project-browser, .project-frame:focus-visible .project-browser { transform: translateY(-4px); box-shadow: 0 1px 0 rgb(255 255 255 / .06) inset, 0 26px 50px -20px rgb(0 0 0 / .65); }
