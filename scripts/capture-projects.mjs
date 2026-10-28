@@ -11,6 +11,7 @@ const sites = [
   ['https://leo.wilssens.com/', 'leo'],
   ['https://steven.wilssens.com/', 'steven'],
   ['https://aibreaker.org/', 'aibreaker'],
+  ['https://wattfighters.com/', 'wattfighters'],
 ].filter(([, name]) => !process.argv[2] || name === process.argv[2]);
 const b = await chromium.launch({ channel: 'msedge' });
 const optOut = () => {

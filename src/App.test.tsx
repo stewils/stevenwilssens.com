@@ -146,6 +146,20 @@ describe('resume site', () => {
     expect(within(featured).getByRole('link', { name: /Read the write-up/ })).toHaveAttribute('href', '/building-wilssens')
   })
 
+  it('lists Watt Fighters first under Projects, with a Visit project link and no write-up link', () => {
+    setPath('/projects')
+    render(<App />)
+
+    const cards = screen.getAllByRole('article')
+    expect(within(cards[0]).getByRole('heading', { name: 'Watt Fighters' })).toBeInTheDocument()
+    expect(within(cards[1]).getByRole('heading', { name: 'wilssens.com' })).toBeInTheDocument()
+    expect(within(cards[0]).getByText('Game')).toBeInTheDocument()
+    expect(within(cards[0]).getByText(/^A velodrome racing game for riders on smart trainers and power meters:.*Coach Mac and a race announcer.*is in open beta now\.$/)).toBeInTheDocument()
+    expect(within(cards[0]).getByRole('img', { name: /wattfighters\.com home page/ })).toBeInTheDocument()
+    expect(within(cards[0]).getByRole('link', { name: /Visit project/ })).toHaveAttribute('href', 'https://wattfighters.com')
+    expect(within(cards[0]).queryByRole('link', { name: /Read how it was built/ })).toBeNull()
+  })
+
   it('lists AI Breaker under Projects with a link to its write-up', () => {
     setPath('/projects')
     render(<App />)
@@ -409,7 +423,7 @@ describe('resume site', () => {
     render(<App />)
 
     const links = screen.getAllByRole('link', { name: 'Visit project ↗' })
-    expect(links.map((link) => link.getAttribute('href'))).toEqual(['https://wilssens.com', 'https://aibreaker.org', 'https://juniortrackcycling.com', 'https://leo.wilssens.com'])
+    expect(links.map((link) => link.getAttribute('href'))).toEqual(['https://wattfighters.com', 'https://wilssens.com', 'https://aibreaker.org', 'https://juniortrackcycling.com', 'https://leo.wilssens.com'])
   })
 
   it('lists this site as a project without linking away to it', () => {
