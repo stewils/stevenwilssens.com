@@ -30,7 +30,7 @@ Recruiter impact: small. A new first card on a secondary page; no change to the 
 
 ## Design
 
-The card reuses `project-card`. There is no screenshot yet, so the frame shows the project name on the browser-frame background (`.project-placeholder`) and omits the phone image.
+The card reuses `project-card` with desktop and phone screenshots of wattfighters.com from `scripts/capture-projects.mjs` (the `wattfighters` entry), like the other projects.
 
 ## Threat model
 

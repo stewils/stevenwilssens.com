@@ -154,6 +154,8 @@ describe('resume site', () => {
     expect(within(cards[0]).getByRole('heading', { name: 'Watt Fighters' })).toBeInTheDocument()
     expect(within(cards[1]).getByRole('heading', { name: 'wilssens.com' })).toBeInTheDocument()
     expect(within(cards[0]).getByText('Game')).toBeInTheDocument()
+    expect(within(cards[0]).getByText(/^A velodrome racing game for riders on smart trainers and power meters:.*Coach Mac and a race announcer.*is in open beta now\.$/)).toBeInTheDocument()
+    expect(within(cards[0]).getByRole('img', { name: /wattfighters\.com home page/ })).toBeInTheDocument()
     expect(within(cards[0]).getByRole('link', { name: /Visit project/ })).toHaveAttribute('href', 'https://wattfighters.com')
     expect(within(cards[0]).queryByRole('link', { name: /Read how it was built/ })).toBeNull()
   })
