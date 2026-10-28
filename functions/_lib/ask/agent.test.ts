@@ -377,6 +377,8 @@ describe('answering', () => {
     expect(response.status).toBe(200)
     await response.text()
     expect(systems[1]).toContain('[site:projects]')
+    // Every project on /projects is in the projects section, Watt Fighters first.
+    expect(systems[1]).toContain('Watt Fighters (wattfighters.com)')
     expect(systems[1]).not.toContain('his write-up in full')
   })
 

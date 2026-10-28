@@ -38,7 +38,7 @@ None new: static text and an outbound link with `rel="noreferrer"`, `target="_bl
 
 ## Technical approach
 
-`src/App.tsx` (`projects`, `renderProjectFrame`), `src/App.css`, `src/App.test.tsx`.
+`src/App.tsx` (`projects`, `renderFeatured`), `src/App.test.tsx`, `scripts/capture-projects.mjs`, `src/assets/projects/wattfighters-*.jpg`, and the assistant's project list (`functions/_lib/ask/prompt.ts`, tested in `functions/_lib/ask/agent.test.ts`).
 
 ## Test plan
 
@@ -48,7 +48,7 @@ None new: static text and an outbound link with `rel="noreferrer"`, `target="_bl
 
 ## Open questions for Steven
 
-1. Screenshots: this run could not capture wattfighters.com. Recommendation: add `['https://wattfighters.com/', 'wattfighters']` to `scripts/capture-projects.mjs`, run it, and import the two images on the card.
+None. (The screenshots were captured with `scripts/capture-projects.mjs wattfighters` and are on the card.)
 
 ## Sign-offs
 
