@@ -169,6 +169,8 @@ describe('resume site', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Building Watt Fighters' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /What this shows about how I lead products/ })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /What the AI got wrong/ })).toBeInTheDocument()
+    expect([...document.querySelectorAll('h2.wx-h2')].map((heading) => heading.textContent).slice(-7)).toEqual(['09What the AI got wrong, and how it was caught', '10Keeping it working: from a problem to a fix', '11When a fix may go live on its own', '12The alerts, and the bell', '13The estimate, and its limits', '14Best practices', '15What’s next'])
+    expect(screen.getAllByRole('link', { name: 'Keeping it working' }).map((link) => link.getAttribute('href'))).toEqual(['#fixing', '#fixing'])
     expect(screen.getAllByRole('link', { name: 'Visit wattfighters.com ↗' })[0]).toHaveAttribute('href', 'https://wattfighters.com')
   })
 
