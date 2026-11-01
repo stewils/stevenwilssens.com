@@ -459,6 +459,30 @@ describe('Keeping it working, on /building-wattfighters', () => {
     ])
   })
 
+  it('says a waiting fix is released with “Release it” or a merged pull request, in both drawings of both diagrams', () => {
+    const { container } = render(<WattFightersArticle />)
+    const [flow, decide] = ['fixing', 'alone'].map((id) => section(container, id).querySelector('figure')!)
+    const built = (svg: SVGElement, title: string) => [...svg.querySelectorAll<SVGGElement>('g[data-status="built"]')].find((part) => part.querySelector('text')!.textContent === title)!
+    for (const [figure, title] of [[flow, 'The decision'], [decide, 'Fix ready']] as const) {
+      for (const svg of figure.querySelectorAll<SVGElement>('svg[role="img"]')) {
+        const box = built(svg, title)
+        expect([...box.querySelectorAll('text')].map((text) => text.textContent)).toEqual(expect.arrayContaining(['Built', 'waits for my “Release it”', 'or a merge']))
+        expect(svg.querySelector('desc')!.textContent).toContain('waits for my Release it or a merged pull request')
+      }
+    }
+    // The planned pill sits inside the taller decision box, below its last line.
+    for (const svg of flow.querySelectorAll<SVGElement>('svg[role="img"]')) {
+      const box = built(svg, 'The decision')
+      const frame = box.querySelector('rect')!
+      const lastLine = [...box.querySelectorAll('text')].at(-1)!
+      const pill = [...svg.querySelectorAll<SVGGElement>('g[data-status="planned"]')].find((part) => part.querySelector('text')!.textContent === 'Loud: live in an hour')!.querySelector('rect')!
+      const [top, height] = [Number(frame.getAttribute('y')), Number(frame.getAttribute('height'))]
+      const pillTop = Number(pill.getAttribute('y'))
+      expect(pillTop).toBeGreaterThan(Number(lastLine.getAttribute('y')))
+      expect(pillTop + Number(pill.getAttribute('height'))).toBeLessThanOrEqual(top + height)
+    }
+  })
+
   it('marks the switches per row: five planned, the two that cannot be switched off built', () => {
     const { container } = render(<WattFightersArticle />)
     const table = section(container, 'alone').querySelector('.wx-table-wrap > table.wx-table')!
