@@ -201,7 +201,7 @@ jobs:
           npx vite build --ssr scripts/assistant-export.ts --outDir .assistant-export --emptyOutDir --logLevel warn
           node .assistant-export/assistant-export.js dist https://steven.wilssens.com/api/notes "$RUNNER_TEMP/assistant-input/branch.json"
           echo "digest=$(sha256sum "$RUNNER_TEMP/assistant-input/branch.json" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: steps.scope.outputs.run == 'true' && steps.scope.outputs.setup == 'true'
         with:
           name: assistant-input-branch
@@ -238,7 +238,7 @@ jobs:
           npx vite build --ssr scripts/assistant-export.ts --outDir .assistant-export --emptyOutDir --logLevel warn
           node .assistant-export/assistant-export.js dist https://steven.wilssens.com/api/notes "$RUNNER_TEMP/assistant-input/main.json"
           echo "digest=$(sha256sum "$RUNNER_TEMP/assistant-input/main.json" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: assistant-input-main
           path: ${{ runner.temp }}/assistant-input
@@ -306,7 +306,7 @@ jobs:
           fi
           if [ -f "$out" ]; then echo "digest=$(sha256sum "$out" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"; fi
           exit "$code"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: assistant-check
@@ -741,14 +741,14 @@ jobs:
           fi
       - name: Keep the screenshots
         if: always() && steps.who.outputs.dependabot != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: screenshots
           path: .review/screenshots
           if-no-files-found: ignore
       - name: Keep the reports
         if: always() && steps.who.outputs.dependabot != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: team-review
           path: |

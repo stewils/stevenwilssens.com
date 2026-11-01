@@ -425,7 +425,7 @@ jobs:
           cp /tmp/resume-new-findings.txt "$RUNNER_TEMP/change/resume-new-findings.txt" 2>/dev/null || true
       - name: Keep the change for the publish job
         if: steps.commit.outputs.changed == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: site-update-change
           path: ${{ runner.temp }}/change
@@ -651,7 +651,7 @@ jobs:
           set -e
           mkdir -p "$RUNNER_TEMP/resume-data"
           node scripts/resume-data.mjs "refs/heads/$BRANCH" "$RUNNER_TEMP/resume-data/after.json"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: resume-data
           path: ${{ runner.temp }}/resume-data
