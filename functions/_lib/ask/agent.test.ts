@@ -380,7 +380,7 @@ describe('answering', () => {
     // Every project on /projects is in the projects section, Watt Fighters first.
     expect(systems[1]).toContain('Watt Fighters (wattfighters.com)')
     // The Watt Fighters line names its platforms and its write-up, like the other projects.
-    expect(systems[1]).toContain('as an iPhone and iPad app in the App Store, and as Android and Windows apps')
+    expect(systems[1]).toContain('as an iPhone and iPad app in TestFlight, and as Android and Windows apps')
     expect(systems[1]).toContain('[site:wattfighters]')
     expect(systems[1]).not.toContain('his write-up in full')
   })

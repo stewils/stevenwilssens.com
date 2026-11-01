@@ -7,7 +7,7 @@ Short spec: Steven is not available to answer questions and the text of all thre
 
 ## Problem
 
-Steven's newest project is on the Projects page without a write-up and without a place on the résumé. Recruiters who read the résumé see no mention of the 8-day build, and the card does not say that the game is in the App Store or on Android.
+Steven's newest project is on the Projects page without a write-up and without a place on the résumé. Recruiters who read the résumé see no mention of the 8-day build, and the card does not say that the game is in TestFlight or on Android.
 
 ## Outcome
 

@@ -31,7 +31,7 @@ const articleUrl = 'https://steven.wilssens.com/building-wattfighters'
 const linkedInShare = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(articleUrl)}`
 
 // [key in the feed, prefix, decimals, label]
-const stats: Stat[] = [['days', '', 0, 'days from the first commit (24 October 2026) to an app in the App Store'], ['trackEvents', '', 0, 'track events on 20 velodromes'], ['commits', '', 0, 'commits, about 197,000 lines of code and 213 test files'], ['personYears', '~', 0, 'person-years: what a conventional team would need, by a feature-by-feature estimate']]
+const stats: Stat[] = [['days', '', 0, 'days from the first commit (24 October 2026) to the iPhone app in TestFlight'], ['trackEvents', '', 0, 'track events on 20 velodromes'], ['commits', '', 0, 'commits, about 197,000 lines of code and 213 test files'], ['personYears', '~', 0, 'person-years: what a conventional team would need, by a feature-by-feature estimate']]
 
 const Figure = ({ children, caption }: { children: ReactNode; caption: string }) => <figure className="wx-figure wx-diagram"><div className="wx-diagram-scroll" role="group" aria-label={caption} tabIndex={0}>{children}</div><figcaption>{caption}</figcaption></figure>
 
@@ -77,7 +77,7 @@ export default function WattFightersArticle() {
           <p>I built it with Claude Code, Anthropic’s AI coding tool, starting on 24 October 2026.</p>
         </aside>
 
-        <p className="wx-lede">Watt Fighters is a multiplayer 3D track-cycling game. You ride a smart trainer or a power meter at home, and on the screen you race on a velodrome against bots or other riders, in the events a track racer knows. The first commit is dated 24 October 2026. Eight days later an app was in the App Store.</p>
+        <p className="wx-lede">Watt Fighters is a multiplayer 3D track-cycling game. You ride a smart trainer or a power meter at home, and on the screen you race on a velodrome against bots or other riders, in the events a track racer knows. The first commit is dated 24 October 2026. Eight days later the iPhone app was in TestFlight, Apple’s test release before the App Store.</p>
 
         <p>I raced track for ten years as a professional and won a national title, and I now have a son who races. The game gives a track racer what is hard to find: a real race, with the tactics of a real race, any evening, without a velodrome or a field of riders at the same level.</p>
 
@@ -136,7 +136,7 @@ export default function WattFightersArticle() {
         <section aria-labelledby="online">
           <H2 id="online" kicker="06">Online, accounts and the apps</H2>
           <p>Online racing runs in rooms on Cloudflare Durable Objects. Accounts are on Supabase, with an email link, Google or Apple to sign in. There is a ladder from Cat 5 to Pro with standings. A finished race can be watched again as a replay, and exported as an MP4 for Instagram. Rides can be uploaded to Strava, and the trainer’s resistance can be controlled by the game.</p>
-          <p>The game is one codebase, with only a thin platform layer for each app, and a test enforces that thinness. It runs on the web, in Chrome and Edge, as a Windows app, as an Android app, and as an iPhone and iPad app in the App Store. If a rule about racing lived in the Windows app, the iPhone app would be wrong the next day. The test makes sure the platform layer stays a layer.</p>
+          <p>The game is one codebase, with only a thin platform layer for each app, and a test enforces that thinness. It runs on the web, in Chrome and Edge, as a Windows app, as an Android app, and as an iPhone and iPad app in TestFlight. If a rule about racing lived in the Windows app, the iPhone app would be wrong the next day. The test makes sure the platform layer stays a layer.</p>
           <p>An Apple TV app is planned for the App Store by 14 November 2026.</p>
         </section>
 
