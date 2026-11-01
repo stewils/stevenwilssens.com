@@ -64,17 +64,17 @@ const today = 'Today every fix waits for my “Release it”.'
 const sources: [string, Status][] = [['My marks in races', 'built'], ['Game errors and crashes', 'planned'], ['Server errors and health', 'planned'], ['Players’ messages', 'planned']]
 const count: Step = { status: 'planned', title: 'Count', lines: ['counts from 3 people', 'loud: 5% in an hour', 'or 10% in a day,', 'and at least 5 people'] }
 const fixer: Step = { status: 'built', title: 'The fixer', lines: ['every 5 minutes', 'a failing test first', 'then the fix', 'every test passes'] }
-const decision: Step = { status: 'built', title: 'The decision', lines: ['see Who decides', 'waits for my “Release it”'] }
+const decision: Step = { status: 'built', title: 'The decision', lines: ['see Who decides', 'waits for my “Release it”', 'or a merge'] }
 const release: Step = { status: 'built', title: 'The release', lines: ['bundled', 'at most one an hour', 'every test runs'] }
 const watching: Step = { status: 'planned', title: 'Watching for 2 hours', lines: ['players on the new version'] }
 const gone: Step = { status: 'planned', title: 'Problem gone', lines: ['GitHub issue closed,', 'the test stays', 'for good'] }
 const back: Step = { status: 'planned', title: 'New loud problem', lines: ['the old version', 'goes back live'] }
 const fixTitle = 'From a problem to a fix'
-const fixDescription = 'From a problem to a fix, in order. Where problems come from: my marks in races (built); game errors and crashes, server errors and health checks, and players’ messages (planned). Count (planned): a problem counts from 3 people and is loud at 5% of players in an hour or 10% in a day, with at least 5 people. The fixer (built): a Claude Code session every 5 minutes writes a failing test first, then the fix, and every test passes. The decision (built): the fix waits for my Release it; a loud fix going live in an hour on its own is planned. The release (built): bundled, at most one an hour, every test runs. Watching for 2 hours (planned): if the problem is gone, the GitHub issue is closed and the test stays for good; if a new loud problem starts, the old version goes back live.'
-const sourcesHeight = 38 + sources.length * 30, decisionHeight = 116
+const fixDescription = 'From a problem to a fix, in order. Where problems come from: my marks in races (built); game errors and crashes, server errors and health checks, and players’ messages (planned). Count (planned): a problem counts from 3 people and is loud at 5% of players in an hour or 10% in a day, with at least 5 people. The fixer (built): a Claude Code session every 5 minutes writes a failing test first, then the fix, and every test passes. The decision (built): the fix waits for my Release it or a merged pull request; a loud fix going live in an hour on its own is planned. The release (built): bundled, at most one an hour, every test runs. Watching for 2 hours (planned): if the problem is gone, the GitHub issue is closed and the test stays for good; if a new loud problem starts, the old version goes back live.'
+const sourcesHeight = 38 + sources.length * 30, decisionHeight = 132
 
 // The decision is built (it waits for me); its automatic path is a planned pill inside it.
-const DecisionBox = ({ x, y, w }: { x: number; y: number; w: number }) => <g><StatusBox x={x} y={y} w={w} h={decisionHeight} step={decision} /><g data-part=""><Chip x={x + 12} y={y + 82} w={w - 24} label="Loud: live in an hour" status="planned" /></g></g>
+const DecisionBox = ({ x, y, w }: { x: number; y: number; w: number }) => <g><StatusBox x={x} y={y} w={w} h={decisionHeight} step={decision} /><g data-part=""><Chip x={x + 12} y={y + 98} w={w - 24} label="Loud: live in an hour" status="planned" /></g></g>
 
 export function FixFlowDiagram() {
   // Stacked: one column 276 wide in a 300 viewBox, 24px between the boxes for the arrows,
@@ -111,12 +111,12 @@ export function FixFlowDiagram() {
 
 const protectedBand: Step = { status: 'built', title: 'Touches a protected part', lines: ['always waits for me, however many players have the problem'] }
 const protectedBandTall: Step = { ...protectedBand, lines: ['always waits for me, however many', 'players have the problem'] }
-const quietReady: Step = { status: 'built', title: 'Fix ready', lines: ['waits for my “Release it”'] }
+const quietReady: Step = { status: 'built', title: 'Fix ready', lines: ['waits for my “Release it”', 'or a merge'] }
 const quietCannot: Step = { status: 'built', title: 'Can’t fix', lines: ['an email with why'] }
 const loudReady: Step = { status: 'planned', title: 'Fix ready', lines: ['email and text; live in an hour', 'unless I stop it', '(today every fix waits)'] }
 const loudCannot: [string, Status][] = [['Email with why', 'built'], ['Urgent, with a text', 'planned']]
 const decideTitle = 'Who decides'
-const decideDescription = 'Who decides. A fix that touches a protected part always waits for me (built). Quiet problem, fix ready: it waits for my Release it (built). Quiet problem, can’t fix: an email says why (built). Loud problem, fix ready: an email and a text, and it goes live in an hour unless I stop it (planned; today every fix waits). Loud problem, can’t fix: an email says why (built), marked urgent, with a text (planned).'
+const decideDescription = 'Who decides. A fix that touches a protected part always waits for me (built). Quiet problem, fix ready: it waits for my Release it or a merged pull request (built). Quiet problem, can’t fix: an email says why (built). Loud problem, fix ready: an email and a text, and it goes live in an hour unless I stop it (planned; today every fix waits). Loud problem, can’t fix: an email says why (built), marked urgent, with a text (planned).'
 const cellHeight = 100
 
 export function DecideDiagram() {

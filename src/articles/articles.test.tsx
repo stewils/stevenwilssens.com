@@ -383,12 +383,13 @@ describe('Keeping it working, on /building-wattfighters', () => {
     const builtSteps = [
       'My own marks. In debug mode I mark a moment in a race and write on the admin page what went wrong. The note goes to the fixer.',
       'The fixer is a Claude Code session that starts every 5 minutes, in a clean copy of the code. It writes a failing test first, then the fix, and every test must pass.',
-      'The fix waits on its own branch for my “Release it” on the admin page.',
+      'The fix waits for me as a pull request on GitHub. I release it with “Release it” on the admin page, or by merging the pull request. Either way every test runs before it goes live.',
       'Releases go out at most once an hour, bundled, and every test runs.',
       'Every mark gets a GitHub issue. It is commented when a fix is ready and closed when the fix is live.',
       'No failing test, no fix.',
       'The protected parts.',
-      'A fix waits for me on its own branch, ready to read and release from the admin page.',
+      'A fix waits for me as a pull request on GitHub, with Claude’s summary, the test that showed the problem, the size of the change and my own words. I release it on the admin page or by merging the pull request.',
+      'When a fix goes live, is sent back or is left, the fixer closes its pull request and says why. A fix that touches a protected part gets a comment on its pull request: read it before you release it.',
       'A fix the fixer can’t make sends me an email saying why.',
       'Emails go to support@wattfighters.com when a fix is ready, when it can’t be made, when it is live, and when it fails to go live.',
       'Bundles. Fixes go live together, never two releases within an hour',
@@ -456,6 +457,30 @@ describe('Keeping it working, on /building-wattfighters', () => {
     expect([...hour.querySelector('.wx-flow-wide')!.querySelectorAll('g[data-status]')].map((part) => [part.querySelector('text')!.textContent, part.getAttribute('data-status')])).toEqual([
       ['Planned · “Let me check it first” stops it at any time', 'planned'], ['Problem turns loud', 'planned'], ['Fix ready', 'planned'], ['Email and text', 'planned'], ['Other fixes join', 'built'], ['15 minutes left', 'planned'], ['Goes live', 'planned'], ['Watching', 'planned'], ['One bundle, at most one release an hour', 'built'],
     ])
+  })
+
+  it('says a waiting fix is released with “Release it” or a merged pull request, in both drawings of both diagrams', () => {
+    const { container } = render(<WattFightersArticle />)
+    const [flow, decide] = ['fixing', 'alone'].map((id) => section(container, id).querySelector('figure')!)
+    const built = (svg: SVGElement, title: string) => [...svg.querySelectorAll<SVGGElement>('g[data-status="built"]')].find((part) => part.querySelector('text')!.textContent === title)!
+    for (const [figure, title] of [[flow, 'The decision'], [decide, 'Fix ready']] as const) {
+      for (const svg of figure.querySelectorAll<SVGElement>('svg[role="img"]')) {
+        const box = built(svg, title)
+        expect([...box.querySelectorAll('text')].map((text) => text.textContent)).toEqual(expect.arrayContaining(['Built', 'waits for my “Release it”', 'or a merge']))
+        expect(svg.querySelector('desc')!.textContent).toContain('waits for my Release it or a merged pull request')
+      }
+    }
+    // The planned pill sits inside the taller decision box, below its last line.
+    for (const svg of flow.querySelectorAll<SVGElement>('svg[role="img"]')) {
+      const box = built(svg, 'The decision')
+      const frame = box.querySelector('rect')!
+      const lastLine = [...box.querySelectorAll('text')].at(-1)!
+      const pill = [...svg.querySelectorAll<SVGGElement>('g[data-status="planned"]')].find((part) => part.querySelector('text')!.textContent === 'Loud: live in an hour')!.querySelector('rect')!
+      const [top, height] = [Number(frame.getAttribute('y')), Number(frame.getAttribute('height'))]
+      const pillTop = Number(pill.getAttribute('y'))
+      expect(pillTop).toBeGreaterThan(Number(lastLine.getAttribute('y')))
+      expect(pillTop + Number(pill.getAttribute('height'))).toBeLessThanOrEqual(top + height)
+    }
   })
 
   it('marks the switches per row: five planned, the two that cannot be switched off built', () => {
