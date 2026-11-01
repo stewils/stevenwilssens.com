@@ -454,7 +454,7 @@ jobs:
           ref: main
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: site-update-change
           path: ${{ runner.temp }}/change
@@ -635,7 +635,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: site-update-change
           path: ${{ runner.temp }}/change
@@ -682,11 +682,11 @@ jobs:
           cache: npm
       # main's lockfile: the email script's model client.
       - run: npm ci --ignore-scripts
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: site-update-change
           path: ${{ runner.temp }}/change
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: resume-data
           path: ${{ runner.temp }}/resume-data

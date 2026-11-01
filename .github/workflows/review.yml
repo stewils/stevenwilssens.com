@@ -266,11 +266,11 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: assistant-input-branch
           path: ${{ runner.temp }}/assistant-input-branch
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: assistant-input-main
           path: ${{ runner.temp }}/assistant-input-main
@@ -563,7 +563,7 @@ jobs:
       - name: The assistant check's answers
         if: steps.who.outputs.dependabot != 'true' && needs.assistant-input.outputs.run == 'true'
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: assistant-check
           # Outside the checkout: only assistant-check.md comes in, and only once its digest checks out.
