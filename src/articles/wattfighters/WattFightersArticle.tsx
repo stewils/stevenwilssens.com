@@ -79,14 +79,14 @@ export default function WattFightersArticle() {
 
         <p className="wx-lede">Watt Fighters is a multiplayer 3D track-cycling game. You ride a smart trainer or a power meter at home, and on the screen you race on a velodrome against bots or other riders, in the events a track racer knows. The first commit is dated 24 October 2026. Eight days later an app was in the App Store.</p>
 
-        <p>I raced track for ten years as a professional and won a national title, and I now have a son who races. The game is the thing I wanted when I trained indoors: a real race, with the tactics of a real race, that does not need a velodrome or a field of riders of my own level.</p>
+        <p>I raced track for ten years as a professional and won a national title, and I now have a son who races. The game gives a track racer what is hard to find: a real race, with the tactics of a real race, any evening, without a velodrome or a field of riders at the same level.</p>
 
         <section aria-labelledby="fair">
           <H2 id="fair" kicker="01">A fair race between a kid and a parent</H2>
-          <p>Two riders on power meters race on a velodrome. One is a kid with a 120 W threshold power (FTP). The other is a parent at 340 W. In the other indoor cycling apps that race is over after the first lap, because the faster rider simply rides away. Nobody learns anything, and the kid stops asking to race.</p>
+          <p>Two riders on power meters race on a velodrome. One is a kid with a 120 W threshold power (FTP). The other is a parent at 340 W. Left alone, the stronger rider simply rides away, and the race is decided before it starts.</p>
           <p>Watt Fighters adds a handicap that learns each rider. It measures a rider’s threshold and their sprint, and adjusts what their power is worth on the track, so the same race is close for both. The race comes down to who rides it better, not who has the bigger engine.</p>
           <p>You only pedal. The game rides the line up and down the banking for you, so nobody has to steer a bike with a trainer and a keyboard at the same time. Racing on a velodrome is a question of power, timing and position, and those are the parts the rider controls.</p>
-          <p>The rules of the events did not start from a blank page. They started from the browser games my son Leo built about the sport: the match sprint, the elimination and the points race. Those are copied into the project as they are, and the rules in them are the rules a commissaire would apply. <a href="/building-leo">The write-up on Leo’s site</a> says more about how he made them.</p>
+          <p>The rules of the events did not start from a blank page. They started from the browser games my son Leo built about the sport: the match sprint, the elimination and the points race. Those are copied into the project as they are. <a href="/building-leo">The write-up on Leo’s site</a> describes his games.</p>
         </section>
 
         <section aria-labelledby="track">
@@ -117,7 +117,7 @@ export default function WattFightersArticle() {
             <li><strong>No swerving in the final straight.</strong> That is a rule in real sprints.</li>
             <li><strong>Crashes</strong>, with a realism slider, so a young rider can turn them down.</li>
           </ul>
-          <p>One of the first bugs shows why this needs a racer. Bots were being disqualified in the neutral lap, the first laps behind the derny in a keirin, because the judging went by where they rode on the track. A bot that drifted a little high was out. A commissaire does not judge it that way. They judge pace: whether the riders are holding the speed they were asked to hold. So the judging moved to pace, and the disqualifications stopped.</p>
+          <p>One of the first bugs shows why this needs a racer. Bunch races start with a neutral lap, ridden together at an easy pace, and a rider who rides away or drops off gets a warning and then is disqualified. The first version judged it by position: the biggest group was the bunch, and anyone outside it was away. When a slow player held up the bots behind, the bots ahead were suddenly “off the front”, and 13 riders were disqualified in one call. A commissaire would not blame them. So the bunch became the first group riding the neutral pace, and only the rider who left a gap gets the blame. In 150 simulated neutral laps after that, no ordinary rider was ever warned.</p>
         </section>
 
         <section aria-labelledby="velodromes">
