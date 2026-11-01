@@ -208,7 +208,7 @@ Steven Wilssens · 2026 · [LinkedIn](https://www.linkedin.com/in/x) · steven@w
 
     const read = async (path: string) => path === '/building-aibreaker.md' ? null : `# ${path}\n\nBody of ${path}\n`
     const articles = await loadArticles(read)
-    expect(Object.keys(articles).sort()).toEqual(['site:article', 'site:building', 'site:juniortrackcycling', 'site:leo'])
+    expect(Object.keys(articles).sort()).toEqual(['site:article', 'site:building', 'site:juniortrackcycling', 'site:leo', 'site:wattfighters'])
     const prompt = systemPrompt([], articles)
     expect(prompt).toContain("# [site:building] Building steven.wilssens.com, his write-up in full (page https://steven.wilssens.com/building-this-site)")
     expect(prompt).toContain('Body of /building-this-site.md')

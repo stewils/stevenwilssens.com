@@ -120,8 +120,15 @@ body.compact .role li { font-size: 8.7pt; line-height: 1.24; }
 body.compact .early div { font-size: 9pt; line-height: 1.3; }
 body.compact .foot { font-size: 8.7pt; }
 body.compact .foot .honors { line-height: 1.32; }
+/* Tight: a little less type as well as less margin, so the older roles keep their first bullet. */
+body.tight .role li { font-size: 8.1pt; line-height: 1.16; }
+body.tight .role { padding: 3px 0; }
+body.tight section { margin-top: 5px; }
+body.tight .summary-text { font-size: 9.1pt; line-height: 1.3; }
+body.tight .early div { font-size: 8.6pt; line-height: 1.22; }
+body.tight .foot { font-size: 8.3pt; }
 </style></head>
-<body class="${compact ? 'compact' : ''}">
+<body class="${[compact ? 'compact' : '', tight ? 'tight' : ''].filter(Boolean).join(' ')}">
 <header>
   <div>
     <h1>${esc(profile.name)}</h1>

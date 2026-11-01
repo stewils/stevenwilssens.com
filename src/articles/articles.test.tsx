@@ -7,6 +7,7 @@ import SiteArticle, { ReportCard } from './site/SiteArticle'
 import { LoopDiagram, TeamFlowDiagram } from './site/Diagrams'
 import JuniorTrackCyclingArticle from './juniortrackcycling/JuniorTrackCyclingArticle'
 import LeoArticle from './leo/LeoArticle'
+import WattFightersArticle from './wattfighters/WattFightersArticle'
 import { Stats } from './wilssens/Stats'
 import sources from './sources.json'
 import wilssensFeed from './wilssens/feed.json'
@@ -14,6 +15,7 @@ import siteFeed from './site/feed.json'
 import aibreakerFeed from './aibreaker/feed.json'
 import juniorFeed from './juniortrackcycling/feed.json'
 import leoFeed from './leo/feed.json'
+import wattFeed from './wattfighters/feed.json'
 
 const report = { since: '2026-10-01', questions: 1234, answered: 30, gaps: 10, gapsCovered: 4, gapsOpen: 6, costMicro: 1_250_000, costPerAnswerMicro: 41_667, publicNotes: 3 }
 const fetchMock = vi.fn()
@@ -34,6 +36,7 @@ const articles = [
   ['building-this-site', SiteArticle, 'Building steven.wilssens.com'],
   ['building-juniortrackcycling', JuniorTrackCyclingArticle, 'Building juniortrackcycling.com'],
   ['building-leo', LeoArticle, 'Building leo.wilssens.com'],
+  ['building-wattfighters', WattFightersArticle, 'Building Watt Fighters'],
 ] as const
 
 describe('the Building write-ups', () => {
@@ -64,11 +67,12 @@ describe('the Building write-ups', () => {
     expect(feedOf(WilssensArticle)).toBe('/api/building/wilssens')
     expect(feedOf(SiteArticle)).toBe('/api/building/site')
     expect(feedOf(LeoArticle)).toBeNull()
+    expect(feedOf(WattFightersArticle)).toBeNull()
     expect(feedOf(JuniorTrackCyclingArticle)).toBeNull()
   })
 
   it('keeps every feed in the shape the pages read: a date and finite numbers', () => {
-    for (const feed of [wilssensFeed, siteFeed, aibreakerFeed, juniorFeed, leoFeed] as { asOf: string; numbers: Record<string, unknown> }[]) {
+    for (const feed of [wilssensFeed, siteFeed, aibreakerFeed, juniorFeed, leoFeed, wattFeed] as { asOf: string; numbers: Record<string, unknown> }[]) {
       expect(Date.parse(feed.asOf)).not.toBeNaN()
       for (const [key, value] of Object.entries(feed.numbers)) expect(Number.isFinite(value), key).toBe(true)
     }
