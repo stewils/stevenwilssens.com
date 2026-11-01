@@ -214,7 +214,7 @@ export default function WattFightersArticle() {
           <p>Then the fixer takes over:</p>
           <ul className="wx-points">
             <li><Built /> The fixer is a Claude Code session that starts every 5 minutes, in a clean copy of the code. It writes a failing test first, then the fix, and every test must pass.</li>
-            <li><Built /> The fix waits on its own branch for my “Release it” on the admin page.</li>
+            <li><Built /> The fix waits for me as a pull request on GitHub. I release it with “Release it” on the admin page, or by merging the pull request. Either way every test runs before it goes live.</li>
             <li><Built /> Releases go out at most once an hour, bundled, and every test runs.</li>
             <li><Built /> Every mark gets a GitHub issue. It is commented when a fix is ready and closed when the fix is live.</li>
             <li><Planned /> After a release, 2 hours of watching. If the problem is gone, the issue is closed and the test stays for good. If a new loud problem starts, the old version goes back live.</li>
@@ -240,7 +240,8 @@ export default function WattFightersArticle() {
           <p>A fix that needs a new app build (anything native in the Windows or Android app) can’t go out on its own either.</p>
           <Figure caption="Who decides. A fix that touches a protected part always waits for me. Solid cells run today, dashed ones are planned." fits legend><DecideDiagram /></Figure>
           <ul className="wx-points">
-            <li><Built /> A fix waits for me on its own branch, ready to read and release from the admin page. Today that is every fix. Once problems are counted, it stays the rule for a quiet problem.</li>
+            <li><Built /> A fix waits for me as a pull request on GitHub, with Claude’s summary, the test that showed the problem, the size of the change and my own words. I release it on the admin page or by merging the pull request. Today that is every fix. Once problems are counted, it stays the rule for a quiet problem.</li>
+            <li><Built /> When a fix goes live, is sent back or is left, the fixer closes its pull request and says why. A fix that touches a protected part gets a comment on its pull request: read it before you release it.</li>
             <li><Planned /> A loud problem’s fix that touches no protected part sends me an email and a text, and goes live after one hour unless I tap “Let me check it first”.</li>
             <li><Built /> A fix the fixer can’t make sends me an email saying why.</li>
             <li><Planned /> When the problem is loud, that email is marked urgent and a text goes with it.</li>
