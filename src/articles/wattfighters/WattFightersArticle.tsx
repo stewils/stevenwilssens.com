@@ -70,7 +70,7 @@ export default function WattFightersArticle() {
         <aside className="wx-brief" aria-labelledby="brief">
           <h2 id="brief">What this shows about how I lead products</h2>
           <ul>
-            <li><strong>Domain expertise is the fastest spec.</strong> Ten years as a professional track racer and a national track champion meant every racing question (how the neutral lap is judged, what a keirin feels like, which gear a sprinter rides) was answered in one sentence instead of a research project. <a href="#track">Track racing, not road racing</a></li>
+            <li><strong>Domain expertise is the fastest spec.</strong> Ten years as a professional track racer and a USA Track Masters national title meant every racing question (how the neutral lap is judged, what a keirin feels like, which gear a sprinter rides) was answered in one sentence instead of a research project. <a href="#track">Track racing, not road racing</a></li>
             <li><strong>AI-assisted development run like an engineering organisation.</strong> Many Claude Code sessions worked at once on one codebase. A rules file, docs every session must update in the same change, a memory of my decisions, and a rule that each session commits only its own work kept them from breaking each other. <a href="#building">Many sessions, one set of rules</a></li>
             <li><strong>Trust the tests, check with your own eyes.</strong> Every deploy runs the tests and ships only when they pass. Every 3D change is checked close up in screenshots, because the AI reports “done” with the same confidence when it is wrong. <a href="#wrong">What the AI got wrong</a></li>
           </ul>
@@ -79,7 +79,7 @@ export default function WattFightersArticle() {
 
         <p className="wx-lede">Watt Fighters is a multiplayer 3D track-cycling game. You ride a smart trainer or a power meter at home, and on the screen you race on a velodrome against bots or other riders, in the events a track racer knows. The first commit is dated 24 October 2026. Eight days later the iPhone app was in TestFlight, Apple’s test release before the App Store.</p>
 
-        <p>I raced track for ten years as a professional and won a national title, and I now have a son who races. The game gives a track racer what is hard to find: a real race, with the tactics of a real race, any evening, without a velodrome or a field of riders at the same level.</p>
+        <p>I raced track for ten years as a professional, I am a USA Track Masters national champion, and I now have a son who races. The game gives a track racer what is hard to find: a real race, with the tactics of a real race, any evening, without a velodrome or a field of riders at the same level.</p>
 
         <section aria-labelledby="fair">
           <H2 id="fair" kicker="01">A fair race between a kid and a parent</H2>
