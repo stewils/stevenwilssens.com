@@ -168,7 +168,7 @@ export default function WattFightersArticle() {
           <p>Two more rules keep sessions from breaking each other. Each session commits only its own changes, so it never commits another session’s half-done work by accident. And the deploy runs from a clean copy of the code, not from the folder a session is working in, so nobody’s unfinished work goes live.</p>
           <p>A memory keeps my decisions across sessions. When I decide something once, such as how a screen looks or what a word means, it is written down, and a session that starts tomorrow already knows.</p>
           <p>There are also twelve lab pages. A lab lets me try a change before it reaches the real races. By the rules, changes go live first, and into the labs only when I ask for it.</p>
-          <p className="wx-callout">The rules file is the contract. Every session reads it first, so ten sessions behave like one team.</p>
+          <p className="wx-callout">The rules file is the contract. Every session reads it first, so many sessions behave like one team.</p>
         </section>
 
         <section aria-labelledby="wrong">
