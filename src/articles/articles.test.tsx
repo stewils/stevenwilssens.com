@@ -365,7 +365,7 @@ describe('Keeping it working, on /building-wattfighters', () => {
     const brief = container.querySelector('.wx-brief')!
     const items = brief.querySelectorAll('li')
     expect(items).toHaveLength(4)
-    expect(items[3]).toHaveTextContent('Safe speed needs rules for when a machine may ship. A fix goes live on its own only when a test shows the problem, every test passes, many players have it, and it touches no protected part. Everything else waits for me. Keeping it working')
+    expect(items[3]).toHaveTextContent('Safe speed needs rules for when a machine may ship. Today every fix waits for me. The plan is that a fix goes live on its own only when a test shows the problem, every test passes, many players have it, and it touches no protected part. Keeping it working')
     expect(within(items[3] as HTMLElement).getByRole('link', { name: 'Keeping it working' })).toHaveAttribute('href', '#fixing')
     expect(container.querySelector('#fixing')).not.toBeNull()
   })
