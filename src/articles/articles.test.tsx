@@ -339,3 +339,146 @@ describe('the assistant section on /building-this-site', () => {
     expect(text.trim().split(/\s+/).length).toBeLessThanOrEqual(44 + 45 + 20)
   })
 })
+
+describe('Keeping it working, on /building-wattfighters', () => {
+  const section = (container: HTMLElement, id: string) => container.querySelector<HTMLElement>(`section[aria-labelledby="${id}"]`)!
+  const headings = (container: HTMLElement) => [...container.querySelectorAll('.wx-body h2.wx-h2')].map((h) => [h.id, h.textContent])
+
+  it('adds sections 10 to 12 after What the AI got wrong, renumbers the rest, and lists them all in the contents', () => {
+    const { container } = render(<WattFightersArticle />)
+    expect(headings(container).slice(8)).toEqual([
+      ['wrong', '09What the AI got wrong, and how it was caught'],
+      ['fixing', '10Keeping it working: from a problem to a fix'],
+      ['alone', '11When a fix may go live on its own'],
+      ['alerts', '12The alerts, and the bell'],
+      ['estimate', '13The estimate, and its limits'],
+      ['practices', '14Best practices'],
+      ['next', '15What’s next'],
+    ])
+    const toc = [...container.querySelectorAll<HTMLAnchorElement>('[data-toc]')]
+    expect(toc.map((link) => link.dataset.toc)).toEqual(headings(container).map(([id]) => id))
+    expect(toc.slice(9, 12).map((link) => [link.getAttribute('href'), link.textContent])).toEqual([['#fixing', 'Keeping it working'], ['#alone', 'When a fix may go live on its own'], ['#alerts', 'The alerts, and the bell']])
+  })
+
+  it('adds the leadership bullet, word for word, linking to the first new section', () => {
+    const { container } = render(<WattFightersArticle />)
+    const brief = container.querySelector('.wx-brief')!
+    const items = brief.querySelectorAll('li')
+    expect(items).toHaveLength(4)
+    expect(items[3]).toHaveTextContent('Safe speed needs rules for when a machine may ship. Today every fix waits for me. The plan is that a fix goes live on its own only when a test shows the problem, every test passes, many players have it, and it touches no protected part. Keeping it working')
+    expect(within(items[3] as HTMLElement).getByRole('link', { name: 'Keeping it working' })).toHaveAttribute('href', '#fixing')
+    expect(container.querySelector('#fixing')).not.toBeNull()
+  })
+
+  it('starts every step of the three sections with Built or Planned, and marks the built ones exactly', () => {
+    const { container } = render(<WattFightersArticle />)
+    const steps = ['fixing', 'alone', 'alerts'].flatMap((id) => [...section(container, id).querySelectorAll<HTMLElement>('.wx-points > li')])
+    // The protected parts are one list under a step that is already marked Built.
+    const protectedParts = steps.filter((li) => li.textContent!.endsWith(';') || li.textContent!.endsWith('(tests not counted).'))
+    expect(protectedParts.map((li) => li.textContent)).toEqual(['the databases’ migrations;', 'sign-in and accounts;', 'payments and anything that charges money;', 'secrets and settings files, and the list of packages;', 'Leo’s games, the deploy script, and the fixer itself;', 'any change bigger than 10 files or 300 lines (tests not counted).'])
+    const marked = steps.filter((li) => !protectedParts.includes(li))
+    for (const li of marked) expect(li.firstElementChild?.tagName, li.textContent!).toBe('STRONG')
+    for (const li of marked) expect(li.firstElementChild!.textContent, li.textContent!).toMatch(/^(Built|Planned)\.$/)
+    const built = marked.filter((li) => li.firstElementChild!.textContent === 'Built.').map((li) => li.textContent!)
+    const builtSteps = [
+      'My own marks. In debug mode I mark a moment in a race and write on the admin page what went wrong. The note goes to the fixer.',
+      'The fixer is a Claude Code session that starts every 5 minutes, in a clean copy of the code. It writes a failing test first, then the fix, and every test must pass.',
+      'The fix waits on its own branch for my “Release it” on the admin page.',
+      'Releases go out at most once an hour, bundled, and every test runs.',
+      'Every mark gets a GitHub issue. It is commented when a fix is ready and closed when the fix is live.',
+      'No failing test, no fix.',
+      'The protected parts.',
+      'A fix waits for me on its own branch, ready to read and release from the admin page.',
+      'A fix the fixer can’t make sends me an email saying why.',
+      'Emails go to support@wattfighters.com when a fix is ready, when it can’t be made, when it is live, and when it fails to go live.',
+      'Bundles. Fixes go live together, never two releases within an hour',
+    ]
+    expect(built).toHaveLength(builtSteps.length)
+    builtSteps.forEach((step, i) => expect(built[i].startsWith(`Built. ${step}`), built[i]).toBe(true))
+    // Everything that is not built yet says so: no planned feature hides in a built step.
+    for (const text of built) expect(text).not.toMatch(/text message|crash|loud|second Claude|watch|old version/i)
+    const planned = marked.filter((li) => li.firstElementChild!.textContent === 'Planned.').map((li) => li.textContent!)
+    for (const feature of [/catches every error/, /checks itself every 5 minutes/, /Players’ messages/, /counts once 3 different people/, /goes live after one hour unless I tap/, /2 hours/, /A text message/, /less than 15 minutes left/]) expect(planned.some((text) => feature.test(text)), String(feature)).toBe(true)
+    expect(section(container, 'alerts').querySelector(':scope > p:last-of-type')!.textContent).toMatch(/^Built\. The bell, for players\./)
+    for (const id of ['fixing', 'alone', 'alerts']) expect(container.querySelector(`#${id}`)!.textContent).not.toMatch(/Built|Planned/)
+  })
+
+  it('keeps every number of the ask', () => {
+    const { container } = render(<WattFightersArticle />)
+    const text = ['fixing', 'alone', 'alerts'].map((id) => section(container, id).textContent).join(' ')
+    for (const phrase of [
+      'checks itself every 5 minutes', 'Both windows slide every 5 minutes', 'starts every 5 minutes', 'once 3 different people', '5% of the people playing in the last hour', '10% of everyone who played in the last 24 hours', 'at least 5 people have it',
+      'loud at 20% in the hour or 10% in the day', 'off to begin with', 'under 10 frames a second for 10 seconds', 'frozen over 5 seconds', 'more than 2% errors on a route', '1 in 20 answers slower than 2 seconds',
+      '1 in 20 race messages slower than 250 ms', 'more than 5% of online riders dropped', 'checks from outside every minute', 'bigger than 10 files or 300 lines (tests not counted)', 'goes live after one hour', 'for 2 hours',
+      'less than 15 minutes left', 'at least 15 minutes to stop it', 'work once and for 24 hours', 'at most one an hour per problem and 6 a day in all', 'pops up for 8 seconds', '4 riders (2%)', '14:05',
+    ]) expect(text, phrase).toContain(phrase)
+  })
+
+  it('draws the three diagrams twice, across and stacked, each with its own title, description and marks', () => {
+    const { container } = render(<WattFightersArticle />)
+    const figures = ['fixing', 'alone', 'alerts'].map((id) => section(container, id).querySelector('figure')!)
+    const ids = new Set<string>()
+    for (const [figure, title] of figures.map((figure, i) => [figure, ['From a problem to a fix', 'Who decides', 'The hour'][i]] as const)) {
+      expect(figure).toHaveClass('wx-diagram--fits')
+      const svgs = [...figure.querySelectorAll<SVGElement>('svg[role="img"]')]
+      expect(svgs.map((svg) => svg.getAttribute('class'))).toEqual(['wx-flow-wide', 'wx-flow-tall'])
+      for (const svg of svgs) {
+        expect(svg.querySelector('title')).toHaveTextContent(title)
+        const desc = svg.querySelector('desc')!
+        expect(svg.getAttribute('aria-describedby')).toBe(desc.id)
+        expect(desc.textContent).toMatch(/\(built\)/)
+        expect(desc.textContent).toMatch(/\(planned/)
+        ids.add(desc.id)
+        for (const marker of svg.querySelectorAll('marker')) ids.add(marker.id)
+        // Every marked part says it in words, and only planned parts are dashed.
+        for (const part of svg.querySelectorAll('[data-status]')) {
+          const word = part.getAttribute('data-status') === 'built' ? 'Built' : 'Planned'
+          if (part.querySelector('text')) expect(part.textContent).toContain(word)
+          for (const shape of part.querySelectorAll(':scope > rect, :scope > path')) expect(shape.hasAttribute('stroke-dasharray')).toBe(word === 'Planned')
+        }
+        for (const node of svg.querySelectorAll('[font-size]')) expect(Number(node.getAttribute('font-size'))).toBeGreaterThanOrEqual(11)
+        expect(svg.innerHTML).not.toMatch(/d-warn/)
+      }
+      // The legend: words carry the meaning, the swatches are decoration.
+      const legend = figure.querySelector('.wx-legend')!
+      expect(legend).toHaveTextContent('Built, working today')
+      expect(legend).toHaveTextContent('Planned, written down, not built')
+      for (const swatch of legend.querySelectorAll('svg')) expect(swatch).toHaveAttribute('aria-hidden', 'true')
+    }
+    expect(ids.size).toBe(8)
+    const [flow, decide, hour] = figures
+    expect([...flow.querySelector('.wx-flow-wide')!.querySelectorAll('[data-status]')].map((part) => [part.querySelector('text')!.textContent, part.getAttribute('data-status')])).toEqual([
+      ['My marks in races', 'built'], ['Game errors and crashes', 'planned'], ['Server errors and health', 'planned'], ['Players’ messages', 'planned'],
+      ['Count', 'planned'], ['The fixer', 'built'], ['The decision', 'built'], ['Loud: live in an hour', 'planned'], ['The release', 'built'], ['Watching for 2 hours', 'planned'], ['Problem gone', 'planned'], ['New loud problem', 'planned'],
+    ])
+    expect(decide.querySelector('.wx-flow-wide')!.textContent).toMatch(/Touches a protected part.*Built.*always waits for me/)
+    expect([...decide.querySelector('.wx-flow-wide')!.querySelectorAll('[data-status]')].map((part) => part.getAttribute('data-status'))).toEqual(['built', 'built', 'built', 'planned', 'built', 'planned'])
+    expect([...hour.querySelector('.wx-flow-wide')!.querySelectorAll('g[data-status]')].map((part) => [part.querySelector('text')!.textContent, part.getAttribute('data-status')])).toEqual([
+      ['Planned · “Let me check it first” stops it at any time', 'planned'], ['Problem turns loud', 'planned'], ['Fix ready', 'planned'], ['Email and text', 'planned'], ['Other fixes join', 'built'], ['15 minutes left', 'planned'], ['Goes live', 'planned'], ['Watching', 'planned'], ['One bundle, at most one release an hour', 'built'],
+    ])
+  })
+
+  it('marks the switches per row: five planned, the two that cannot be switched off built', () => {
+    const { container } = render(<WattFightersArticle />)
+    const table = section(container, 'alone').querySelector('.wx-table-wrap > table.wx-table')!
+    expect([...table.querySelectorAll('thead th')].map((th) => th.textContent)).toEqual(['Switch', 'Starts', 'Can it change'])
+    expect([...table.querySelectorAll('tbody tr')].map((row) => [...row.children].map((cell) => cell.textContent))).toEqual([
+      ['Planned. A second Claude check of every fix', 'Off', 'Yes'],
+      ['Planned. Players’ bugs to the fixer', 'Off', 'Yes'],
+      ['Planned. A loud problem needs 5 people', 'On', 'Yes'],
+      ['Planned. A problem counts from 3 people', 'On', 'Yes'],
+      ['Planned. Go back to the old version on a new loud problem', 'On', 'Yes'],
+      ['Built. Protected parts wait for review', 'On', 'No, it can’t be switched off'],
+      ['Built. At most one release an hour', 'On', 'No, it can’t be switched off'],
+    ])
+    for (const cell of table.querySelectorAll('tbody td')) expect(cell.getAttribute('data-label')).toBe(table.querySelectorAll('thead th')[(cell as HTMLTableCellElement).cellIndex].textContent)
+    expect(section(container, 'alone')).toHaveTextContent('each change is logged and emailed. Planned: the switches arrive with the features they control.')
+  })
+
+  it('names no laptop, no repository and no phone number, anywhere on the page, the diagrams included', () => {
+    const { container } = render(<WattFightersArticle />)
+    expect(container.textContent).not.toMatch(/laptop|repositor|\brepo\b/i)
+    expect(container.textContent).not.toMatch(/\+?\d[\d ().-]{8,}\d/)
+    expect(container.textContent!.match(/[\w.+-]+@[\w-]+\.[\w.]+/g)).toEqual(['support@wattfighters.com'])
+  })
+})

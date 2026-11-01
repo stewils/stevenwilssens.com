@@ -66,6 +66,10 @@
 .wx-diagram svg { display: block; width: 100%; height: auto; overflow: visible; font-family: inherit; }
 /* A diagram drawn twice (across, and stacked for a phone): only one shows. */
 .wx-diagram svg.wx-flow-tall { display: none; }
+/* A legend under a diagram, in HTML so it wraps: a small swatch beside each word. */
+.wx-legend { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 12px 0 0 !important; color: var(--muted); font-size: 13.5px; line-height: 1.5; }
+.wx-legend span { display: inline-flex; align-items: center; gap: 8px; }
+.wx-diagram .wx-legend svg { display: inline-block; flex: none; width: 28px; min-width: 0; height: 14px; }
 .wx-shot-frame { position: relative; display: block; width: 100%; overflow: hidden; padding: 0; border: 1px solid var(--line); border-radius: 14px; background: #0c0f14; cursor: zoom-in; box-shadow: 0 24px 50px -28px rgb(0 0 0 / .6); transition: transform 300ms cubic-bezier(.2,.8,.2,1), box-shadow 300ms ease; }
 .wx-shot-frame:hover, .wx-shot-frame:focus-visible { transform: translateY(-4px); box-shadow: 0 32px 60px -28px rgb(0 0 0 / .7); }
 .wx-shot-frame:focus-visible { outline: 2px solid var(--green); outline-offset: 4px; }
