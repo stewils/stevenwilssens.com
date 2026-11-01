@@ -30,7 +30,7 @@ const keysOf = (source: string) => {
 
 describe('the Building write-ups read only numbers their feed has (AC-8)', () => {
   it('finds every article', () => {
-    expect(articles.map(([path]) => path)).toEqual(['aibreaker/AIBreakerArticle.tsx', 'juniortrackcycling/JuniorTrackCyclingArticle.tsx', 'leo/LeoArticle.tsx', 'site/SiteArticle.tsx', 'wilssens/WilssensArticle.tsx'])
+    expect(articles.map(([path]) => path)).toEqual(['aibreaker/AIBreakerArticle.tsx', 'juniortrackcycling/JuniorTrackCyclingArticle.tsx', 'leo/LeoArticle.tsx', 'site/SiteArticle.tsx', 'wattfighters/WattFightersArticle.tsx', 'wilssens/WilssensArticle.tsx'])
   })
 
   it.each(articles)('%s yields at least one key, and every one is in its feed.json', (path, name) => {

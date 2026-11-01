@@ -55,7 +55,8 @@ describe('structured data for search engines', () => {
     expect(about('building-this-site')).toEqual({ '@id': `${siteUrl}/#website` })
     expect(about('building-juniortrackcycling')).toMatchObject({ url: 'https://juniortrackcycling.com/' })
     expect(about('building-leo')).toMatchObject({ url: 'https://leo.wilssens.com/' })
-    for (const page of ['building-wilssens', 'building-aibreaker', 'building-this-site', 'building-juniortrackcycling', 'building-leo'] as const) {
+    expect(about('building-wattfighters')).toMatchObject({ '@type': 'VideoGame', name: 'Watt Fighters' })
+    for (const page of ['building-wattfighters', 'building-wilssens', 'building-aibreaker', 'building-this-site', 'building-juniortrackcycling', 'building-leo'] as const) {
       const article = ofType(page, 'Article')[0]
       expect(article.description, page).toBe(pageMeta[page].description)
       expect(Date.parse(article.datePublished as string), page).not.toBeNaN()

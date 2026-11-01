@@ -208,7 +208,7 @@ Steven Wilssens · 2026 · [LinkedIn](https://www.linkedin.com/in/x) · steven@w
 
     const read = async (path: string) => path === '/building-aibreaker.md' ? null : `# ${path}\n\nBody of ${path}\n`
     const articles = await loadArticles(read)
-    expect(Object.keys(articles).sort()).toEqual(['site:article', 'site:building', 'site:juniortrackcycling', 'site:leo'])
+    expect(Object.keys(articles).sort()).toEqual(['site:article', 'site:building', 'site:juniortrackcycling', 'site:leo', 'site:wattfighters'])
     const prompt = systemPrompt([], articles)
     expect(prompt).toContain("# [site:building] Building steven.wilssens.com, his write-up in full (page https://steven.wilssens.com/building-this-site)")
     expect(prompt).toContain('Body of /building-this-site.md')
@@ -379,6 +379,9 @@ describe('answering', () => {
     expect(systems[1]).toContain('[site:projects]')
     // Every project on /projects is in the projects section, Watt Fighters first.
     expect(systems[1]).toContain('Watt Fighters (wattfighters.com)')
+    // The Watt Fighters line names its platforms and its write-up, like the other projects.
+    expect(systems[1]).toContain('as an iPhone and iPad app in TestFlight, and as Android and Windows apps')
+    expect(systems[1]).toContain('[site:wattfighters]')
     expect(systems[1]).not.toContain('his write-up in full')
   })
 
