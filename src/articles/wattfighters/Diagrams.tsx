@@ -96,7 +96,7 @@ export function FixFlowDiagram() {
       <StatusBox x={400} y={356} w={164} step={gone} /><StatusBox x={580} y={356} w={164} step={back} />
       <g data-part="" fontSize="11.5" fill={quiet}><text x="16" y="404">While the Stop switch is on,</text><text x="16" y="420">every fix waits for my “Release it”.</text></g>
     </svg>
-    <svg className="wx-flow-tall" viewBox={`0 0 300 ${end + 44}`} role="img" aria-label={fixTitle} aria-describedby="wf-fix-tall-desc" fontSize="13" fontFamily="inherit"><Arrow id="wf-fix-tall-arrow" />
+    <svg className="wx-flow-tall" viewBox={`0 0 300 ${end + 60}`} role="img" aria-label={fixTitle} aria-describedby="wf-fix-tall-desc" fontSize="13" fontFamily="inherit"><Arrow id="wf-fix-tall-arrow" />
       <title>{fixTitle}</title><desc id="wf-fix-tall-desc">{fixDescription}</desc>
       <text x="12" y="28" fontSize="15" fontWeight="600" fill={ink}>{fixTitle}</text>
       <g data-part="" fill="none" stroke={edge} strokeWidth="1.25">
@@ -105,7 +105,7 @@ export function FixFlowDiagram() {
       </g>
       {column.map(([step], i) => step === 'sources' ? <MixedBox key="sources" x={12} y={tops[i]} w={276} title="Where problems come from" chips={sources} /> : step === 'decision' ? <DecisionBox key="decision" x={12} y={tops[i]} w={276} /> : <StatusBox key={step.title} x={12} y={tops[i]} w={276} step={step} />)}
       <StatusBox x={12} y={branchTop} w={136} step={gone} /><StatusBox x={152} y={branchTop} w={136} step={back} />
-      <g data-part=""><text x="150" y={end + 28} textAnchor="middle" fontSize="11.5" fill={quiet}>{today}</text></g>
+      <g data-part="" fontSize="11.5" fill={quiet}><text x="150" y={end + 28} textAnchor="middle">While the Stop switch is on,</text><text x="150" y={end + 44} textAnchor="middle">every fix waits for my “Release it”.</text></g>
     </svg>
   </>
 }
@@ -134,14 +134,14 @@ export function DecideDiagram() {
       <StatusBox x={120} y={248} w={244} h={cellHeight} step={loudReady} /><MixedBox x={380} y={248} w={244} title="Can’t fix" chips={loudCannot} />
       <g data-part=""><text x="16" y="372" fontSize="11.5" fill={quiet}>{today}</text></g>
     </svg>
-    <svg className="wx-flow-tall" viewBox={`0 0 300 ${end + 40}`} role="img" aria-label={decideTitle} aria-describedby="wf-decide-tall-desc" fontSize="13" fontFamily="inherit">
+    <svg className="wx-flow-tall" viewBox={`0 0 300 ${end + 56}`} role="img" aria-label={decideTitle} aria-describedby="wf-decide-tall-desc" fontSize="13" fontFamily="inherit">
       <title>{decideTitle}</title><desc id="wf-decide-tall-desc">{decideDescription}</desc>
       <text x="12" y="28" fontSize="15" fontWeight="600" fill={ink}>{decideTitle}</text>
       <StatusBox x={12} y={48} w={276} step={protectedBandTall} />
       <g data-part="" fontWeight="600" fill={ink}><text x="12" y={quietTop - 12}>Quiet problem</text><text x="12" y={loudTop - 12}>Loud problem</text></g>
       <StatusBox x={12} y={quietTop} w={276} h={cellHeight} step={quietReady} /><StatusBox x={12} y={quietTop + cellHeight + 12} w={276} h={cellHeight} step={quietCannot} />
       <StatusBox x={12} y={loudTop} w={276} h={cellHeight} step={loudReady} /><MixedBox x={12} y={loudTop + cellHeight + 12} w={276} title="Can’t fix" chips={loudCannot} />
-      <g data-part=""><text x="150" y={end + 28} textAnchor="middle" fontSize="11.5" fill={quiet}>{today}</text></g>
+      <g data-part="" fontSize="11.5" fill={quiet}><text x="150" y={end + 28} textAnchor="middle">While the Stop switch is on,</text><text x="150" y={end + 44} textAnchor="middle">every fix waits for my “Release it”.</text></g>
     </svg>
   </>
 }
@@ -169,7 +169,7 @@ const dot = (cx: number, cy: number, status: Status) => <circle cx={cx} cy={cy} 
 export function HourDiagram() {
   const axis = 170
   // Stacked: the time line down the left, the moments to its right, and “Let me check it
-  // first” as a box after the hour starts, with a dashed bracket over the hour.
+  // first” as a box after the hour starts.
   const tall: Step[] = [moments[0], moments[1], moments[2], textMessage, stopIt, moments[3], moments[4], moments[5], moments[6]]
   const tops: number[] = []
   let y = 48

@@ -224,7 +224,7 @@ export default function WattFightersArticle() {
 
         <section aria-labelledby="alone">
           <H2 id="alone" kicker="11">When a fix may go live on its own</H2>
-          <p>Today no fix goes live on its own: every fix waits for me. These are the rules for when one may. The first two already hold for every fix.</p>
+          <p>These are the rules for when a fix may go live on its own. They are built. While the Stop switch is on, every fix still waits for me. The first two rules hold for every fix.</p>
           <ul className="wx-points">
             <li><Built /> <strong>No failing test, no fix.</strong> The fixer must first write a test that fails the way the players’ game fails. Then the fix must make that test pass, and every other test too.</li>
             <li><Built /> <strong>The protected parts.</strong> A fix may change any file, but a fix that touches a protected part never goes live on its own, however many players have the problem.</li>
