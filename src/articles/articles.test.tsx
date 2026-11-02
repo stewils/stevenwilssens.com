@@ -365,7 +365,7 @@ describe('Keeping it working, on /building-wattfighters', () => {
     const brief = container.querySelector('.wx-brief')!
     const items = brief.querySelectorAll('li')
     expect(items).toHaveLength(4)
-    expect(items[3]).toHaveTextContent('Safe speed needs rules for when a machine may ship. Today every fix waits for me. The plan is that a fix goes live on its own only when a test shows the problem, every test passes, many players have it, and it touches no protected part. Keeping it working')
+    expect(items[3]).toHaveTextContent('Safe speed needs rules for when a machine may ship. The rules are built: a fix goes live on its own only when a test shows the problem, every test passes, many players have it, and it touches no protected part. Until I switch off the Stop switch, every fix still waits for me. Keeping it working')
     expect(within(items[3] as HTMLElement).getByRole('link', { name: 'Keeping it working' })).toHaveAttribute('href', '#fixing')
     expect(container.querySelector('#fixing')).not.toBeNull()
   })
@@ -382,23 +382,42 @@ describe('Keeping it working, on /building-wattfighters', () => {
     const built = marked.filter((li) => li.firstElementChild!.textContent === 'Built.').map((li) => li.textContent!)
     const builtSteps = [
       'My own marks. In debug mode I mark a moment in a race and write on the admin page what went wrong. The note goes to the fixer.',
+      'The game. It catches every error',
+      'The server. It reports every error and checks itself every 5 minutes',
+      'Players’ messages. Claude decides',
+      'A problem counts once 3 different people have hit it.',
+      'A bug players write about is loud at 20% in the hour or 10% in the day. That is a switch, off to begin with.',
       'The fixer is a Claude Code session that starts every 5 minutes, in a clean copy of the code. It writes a failing test first, then the fix, and every test must pass.',
-      'The fix waits on its own branch for my “Release it” on the admin page.',
+      'The fix waits for me as a pull request on GitHub. I release it with “Release it” on the admin page, or by merging the pull request. Either way every test runs before it goes live.',
       'Releases go out at most once an hour, bundled, and every test runs.',
       'Every mark gets a GitHub issue. It is commented when a fix is ready and closed when the fix is live.',
+      'After a release, 2 hours of watching.',
       'No failing test, no fix.',
       'The protected parts.',
-      'A fix waits for me on its own branch, ready to read and release from the admin page.',
+      'A fix waits for me as a pull request on GitHub, with Claude’s summary, the test that showed the problem, the size of the change and my own words. I release it on the admin page or by merging the pull request.',
+      'When a fix goes live, is sent back or is left, the fixer closes its pull request and says why. A fix that touches a protected part gets a comment on its pull request: read it before you release it.',
+      'A loud problem’s fix that touches no protected part sends me an email, and goes live after one hour unless I tap “Let me check it first”. A Stop switch keeps every fix waiting for me, and it is on to begin with.',
       'A fix the fixer can’t make sends me an email saying why.',
+      'When the problem is loud, that email is marked urgent.',
+      'After a release, the server watches the problems it fixed for 2 hours',
       'Emails go to support@wattfighters.com when a fix is ready, when it can’t be made, when it is live, and when it fails to go live.',
+      'An email also says how many players have it and what share that is',
+      'The buttons in an email (“Release it”, “Let me check it first”) are links that work once and for 24 hours.',
       'Bundles. Fixes go live together, never two releases within an hour',
+      'A fix that would join a bundle with less than 15 minutes left waits for the next one',
     ]
     expect(built).toHaveLength(builtSteps.length)
     builtSteps.forEach((step, i) => expect(built[i].startsWith(`Built. ${step}`), built[i]).toBe(true))
-    // Everything that is not built yet says so: no planned feature hides in a built step.
-    for (const text of built) expect(text).not.toMatch(/text message|crash|loud|second Claude|watch|old version/i)
+    // What is still planned says so: only the texts, and the same sentence in the game’s server list.
     const planned = marked.filter((li) => li.firstElementChild!.textContent === 'Planned.').map((li) => li.textContent!)
-    for (const feature of [/catches every error/, /checks itself every 5 minutes/, /Players’ messages/, /counts once 3 different people/, /goes live after one hour unless I tap/, /2 hours/, /A text message/, /less than 15 minutes left/]) expect(planned.some((text) => feature.test(text)), String(feature)).toBe(true)
+    expect(planned).toEqual(['Planned. A text message goes out only for a loud problem: at most one an hour per problem and 6 a day in all, with one link. Replying CHECK stops the hour. The texts are written into the code; they start when the text message service is set up.'])
+    const server = built.find((text) => text.startsWith('Built. The server.'))!
+    expect(server).toContain('A check for 1 in 20 race messages slower than 250 ms is still planned, because the game doesn’t time those messages yet.')
+    expect(server).not.toContain('1 in 20 answers slower than 2 seconds, 1 in 20 race')
+    expect(built.find((text) => text.startsWith('Built. The game.'))).toContain('The Windows and Android apps catch their own crashes too; that reaches players with their next app builds.')
+    expect(section(container, 'alone')).toHaveTextContent('They are on the admin page’s QOS tab, with the problems, the fixes and the server’s health.')
+    expect(section(container, 'alone')).not.toHaveTextContent('the switches arrive with the features they control')
+    expect(section(container, 'fixing').querySelector(':scope > p')!.textContent).toContain('Almost all of it runs today. Each step still says which: Built runs today, Planned is written down and not built.')
     expect(section(container, 'alerts').querySelector(':scope > p:last-of-type')!.textContent).toMatch(/^Built\. The bell, for players\./)
     for (const id of ['fixing', 'alone', 'alerts']) expect(container.querySelector(`#${id}`)!.textContent).not.toMatch(/Built|Planned/)
   })
@@ -427,7 +446,8 @@ describe('Keeping it working, on /building-wattfighters', () => {
         const desc = svg.querySelector('desc')!
         expect(svg.getAttribute('aria-describedby')).toBe(desc.id)
         expect(desc.textContent).toMatch(/\(built\)/)
-        expect(desc.textContent).toMatch(/\(planned/)
+        if (title !== 'From a problem to a fix') expect(desc.textContent).toMatch(/\(planned/)
+        else expect(desc.textContent).not.toMatch(/planned/)
         ids.add(desc.id)
         for (const marker of svg.querySelectorAll('marker')) ids.add(marker.id)
         // Every marked part says it in words, and only planned parts are dashed.
@@ -448,31 +468,66 @@ describe('Keeping it working, on /building-wattfighters', () => {
     expect(ids.size).toBe(8)
     const [flow, decide, hour] = figures
     expect([...flow.querySelector('.wx-flow-wide')!.querySelectorAll('[data-status]')].map((part) => [part.querySelector('text')!.textContent, part.getAttribute('data-status')])).toEqual([
-      ['My marks in races', 'built'], ['Game errors and crashes', 'planned'], ['Server errors and health', 'planned'], ['Players’ messages', 'planned'],
-      ['Count', 'planned'], ['The fixer', 'built'], ['The decision', 'built'], ['Loud: live in an hour', 'planned'], ['The release', 'built'], ['Watching for 2 hours', 'planned'], ['Problem gone', 'planned'], ['New loud problem', 'planned'],
+      ['My marks in races', 'built'], ['Game errors and crashes', 'built'], ['Server errors and health', 'built'], ['Players’ messages', 'built'],
+      ['Count', 'built'], ['The fixer', 'built'], ['The decision', 'built'], ['Loud: live in an hour', 'built'], ['The release', 'built'], ['Watching for 2 hours', 'built'], ['Problem gone', 'built'], ['New loud problem', 'built'],
     ])
     expect(decide.querySelector('.wx-flow-wide')!.textContent).toMatch(/Touches a protected part.*Built.*always waits for me/)
-    expect([...decide.querySelector('.wx-flow-wide')!.querySelectorAll('[data-status]')].map((part) => part.getAttribute('data-status'))).toEqual(['built', 'built', 'built', 'planned', 'built', 'planned'])
+    expect([...decide.querySelector('.wx-flow-wide')!.querySelectorAll('[data-status]')].map((part) => part.getAttribute('data-status'))).toEqual(['built', 'built', 'built', 'built', 'built', 'planned'])
     expect([...hour.querySelector('.wx-flow-wide')!.querySelectorAll('g[data-status]')].map((part) => [part.querySelector('text')!.textContent, part.getAttribute('data-status')])).toEqual([
-      ['Planned · “Let me check it first” stops it at any time', 'planned'], ['Problem turns loud', 'planned'], ['Fix ready', 'planned'], ['Email and text', 'planned'], ['Other fixes join', 'built'], ['15 minutes left', 'planned'], ['Goes live', 'planned'], ['Watching', 'planned'], ['One bundle, at most one release an hour', 'built'],
+      ['Built · “Let me check it first” stops it at any time', 'built'], ['Problem turns loud', 'built'], ['Fix ready', 'built'], ['Email', 'built'], ['Other fixes join', 'built'], ['15 minutes left', 'built'], ['Goes live', 'built'], ['Watching', 'built'], ['Text', 'planned'], ['One bundle, at most one release an hour', 'built'],
     ])
+    // The stacked hour keeps the text message as its one dashed step.
+    expect([...hour.querySelector('.wx-flow-tall')!.querySelectorAll('g[data-status="planned"]')].map((part) => part.querySelector('text')!.textContent)).toEqual(['Text message'])
   })
 
-  it('marks the switches per row: five planned, the two that cannot be switched off built', () => {
+  it('says a waiting fix is released with “Release it” or a merged pull request, in both drawings of both diagrams', () => {
+    const { container } = render(<WattFightersArticle />)
+    const [flow, decide] = ['fixing', 'alone'].map((id) => section(container, id).querySelector('figure')!)
+    const built = (svg: SVGElement, title: string) => [...svg.querySelectorAll<SVGGElement>('g[data-status="built"]')].find((part) => part.querySelector('text')!.textContent === title)!
+    for (const [figure, title] of [[flow, 'The decision'], [decide, 'Fix ready']] as const) {
+      for (const svg of figure.querySelectorAll<SVGElement>('svg[role="img"]')) {
+        const box = built(svg, title)
+        expect([...box.querySelectorAll('text')].map((text) => text.textContent)).toEqual(expect.arrayContaining(['Built', 'waits for my “Release it”', 'or a merge']))
+        expect(svg.querySelector('desc')!.textContent).toContain('waits for my Release it or a merged pull request')
+      }
+    }
+    // The loud pill sits inside the taller decision box, below its last line.
+    for (const svg of flow.querySelectorAll<SVGElement>('svg[role="img"]')) {
+      const box = built(svg, 'The decision')
+      const frame = box.querySelector('rect')!
+      const lastLine = [...box.querySelectorAll('text')].at(-1)!
+      const pill = [...svg.querySelectorAll<SVGGElement>('g[data-status="built"]')].find((part) => part.querySelector('text')!.textContent === 'Loud: live in an hour')!.querySelector('rect')!
+      const [top, height] = [Number(frame.getAttribute('y')), Number(frame.getAttribute('height'))]
+      const pillTop = Number(pill.getAttribute('y'))
+      expect(pillTop).toBeGreaterThan(Number(lastLine.getAttribute('y')))
+      expect(pillTop + Number(pill.getAttribute('height'))).toBeLessThanOrEqual(top + height)
+    }
+  })
+
+  it('says in the captions and the drawings that the Stop switch keeps every fix waiting', () => {
+    const { container } = render(<WattFightersArticle />)
+    expect(section(container, 'fixing').querySelector('figcaption')).toHaveTextContent('While the Stop switch is on, every fix waits for my “Release it”.')
+    expect(container.textContent).not.toMatch(/Today every fix waits/)
+    for (const id of ['fixing', 'alone']) for (const svg of section(container, id).querySelectorAll('svg[role="img"]')) expect(svg.textContent).toMatch(/While the Stop switch is on,\s*every fix waits for my “Release it”\./)
+    expect(section(container, 'alone').querySelector('desc')!.textContent).toContain('while the Stop switch is on, every fix waits for me')
+  })
+
+  it('marks every switch Built, the Stop switch first', () => {
     const { container } = render(<WattFightersArticle />)
     const table = section(container, 'alone').querySelector('.wx-table-wrap > table.wx-table')!
     expect([...table.querySelectorAll('thead th')].map((th) => th.textContent)).toEqual(['Switch', 'Starts', 'Can it change'])
     expect([...table.querySelectorAll('tbody tr')].map((row) => [...row.children].map((cell) => cell.textContent))).toEqual([
-      ['Planned. A second Claude check of every fix', 'Off', 'Yes'],
-      ['Planned. Players’ bugs to the fixer', 'Off', 'Yes'],
-      ['Planned. A loud problem needs 5 people', 'On', 'Yes'],
-      ['Planned. A problem counts from 3 people', 'On', 'Yes'],
-      ['Planned. Go back to the old version on a new loud problem', 'On', 'Yes'],
+      ['Built. Stop: every fix waits for me', 'On', 'Yes'],
+      ['Built. A second Claude check of every fix', 'Off', 'Yes'],
+      ['Built. Players’ bugs to the fixer', 'Off', 'Yes'],
+      ['Built. A loud problem needs 5 people', 'On', 'Yes'],
+      ['Built. A problem counts from 3 people', 'On', 'Yes'],
+      ['Built. Go back to the old version on a new loud problem', 'On', 'Yes'],
       ['Built. Protected parts wait for review', 'On', 'No, it can’t be switched off'],
       ['Built. At most one release an hour', 'On', 'No, it can’t be switched off'],
     ])
     for (const cell of table.querySelectorAll('tbody td')) expect(cell.getAttribute('data-label')).toBe(table.querySelectorAll('thead th')[(cell as HTMLTableCellElement).cellIndex].textContent)
-    expect(section(container, 'alone')).toHaveTextContent('each change is logged and emailed. Planned: the switches arrive with the features they control.')
+    expect(section(container, 'alone')).toHaveTextContent('each change is logged and emailed. They are on the admin page’s QOS tab, with the problems, the fixes and the server’s health.')
   })
 
   it('names no laptop, no repository and no phone number, anywhere on the page, the diagrams included', () => {

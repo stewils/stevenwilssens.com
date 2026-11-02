@@ -11,8 +11,9 @@ import '../wilssens/article.css'
 // The write-up of how Watt Fighters (wattfighters.com) was built, linked from /projects.
 // Every fact comes from Steven's own account of the project as of 1 November 2026.
 // The numbers in the header are in feed.json; the estimate in section 13 is his own model.
-// Sections 10 to 12 mark every step Built or Planned: much of that system is written down,
-// with its numbers chosen, but not built yet (as of 1 November 2026).
+// Sections 10 to 12 mark every step Built or Planned: the fix system is built and live (as of
+// 2 November 2026) except the text messages, which start when the text message service is
+// set up, and the timing of race messages on the server.
 
 const sections = [
   ['fair', 'A fair race between a kid and a parent'],
@@ -83,7 +84,7 @@ export default function WattFightersArticle() {
             <li><strong>Domain expertise is the fastest spec.</strong> Ten years as a professional track racer and a USA Track Masters national title meant every racing question (how the neutral lap is judged, what a keirin feels like, which gear a sprinter rides) was answered in one sentence instead of a research project. <a href="#track">Track racing, not road racing</a></li>
             <li><strong>AI-assisted development run like an engineering organisation.</strong> Many Claude Code sessions worked at once on one codebase. A rules file, docs every session must update in the same change, a memory of my decisions, and a rule that each session commits only its own work kept them from breaking each other. <a href="#building">Many sessions, one set of rules</a></li>
             <li><strong>Trust the tests, check with your own eyes.</strong> Every deploy runs the tests and ships only when they pass. Every 3D change is checked close up in screenshots, because the AI reports “done” with the same confidence when it is wrong. <a href="#wrong">What the AI got wrong</a></li>
-            <li><strong>Safe speed needs rules for when a machine may ship.</strong> Today every fix waits for me. The plan is that a fix goes live on its own only when a test shows the problem, every test passes, many players have it, and it touches no protected part. <a href="#fixing">Keeping it working</a></li>
+            <li><strong>Safe speed needs rules for when a machine may ship.</strong> The rules are built: a fix goes live on its own only when a test shows the problem, every test passes, many players have it, and it touches no protected part. Until I switch off the Stop switch, every fix still waits for me. <a href="#fixing">Keeping it working</a></li>
           </ul>
           <p>I built it with Claude Code, Anthropic’s AI coding tool, starting on 24 October 2026.</p>
         </aside>
@@ -196,34 +197,34 @@ export default function WattFightersArticle() {
 
         <section aria-labelledby="fixing">
           <H2 id="fixing" kicker="10">Keeping it working: from a problem to a fix</H2>
-          <p>Shipping fast only helps if what breaks is fixed fast too. This part is about how a problem is found, who may ship its fix, and what happens when the machine is wrong. Some of it runs today. Much of it is written down, with its numbers chosen, but not built yet, so every step says which: <strong>Built</strong> runs today, <strong>Planned</strong> is written down and not built.</p>
-          <Figure caption="From a problem to a fix. Solid steps run today, dashed steps are planned. Today every fix waits for my “Release it”." fits legend><FixFlowDiagram /></Figure>
+          <p>Shipping fast only helps if what breaks is fixed fast too. This part is about how a problem is found, who may ship its fix, and what happens when the machine is wrong. Almost all of it runs today. Each step still says which: <strong>Built</strong> runs today, <strong>Planned</strong> is written down and not built.</p>
+          <Figure caption="From a problem to a fix. Solid steps run today, dashed steps are planned. While the Stop switch is on, every fix waits for my “Release it”." fits legend><FixFlowDiagram /></Figure>
           <p>Problems come from four places:</p>
           <ul className="wx-points">
             <li><Built /> <strong>My own marks.</strong> In debug mode I mark a moment in a race and write on the admin page what went wrong. The note goes to the fixer.</li>
-            <li><Planned /> <strong>The game.</strong> It catches every error, a race that ends in an error, the 3D drawing under 10 frames a second for 10 seconds, a page frozen over 5 seconds, and a failed call to the server. A crash is reported the next time the game starts, from a small “running” note the game keeps while it runs. The Windows and Android apps catch their own crashes.</li>
-            <li><Planned /> <strong>The server.</strong> It reports every error and checks itself every 5 minutes: more than 2% errors on a route, 1 in 20 answers slower than 2 seconds, 1 in 20 race messages slower than 250 ms, more than 5% of online riders dropped, the database failing. A second small server checks from outside every minute, so a server that is fully down is noticed too.</li>
-            <li><Planned /> <strong>Players’ messages.</strong> Claude decides whether each one is a bug, an idea, both or neither. It finds the same bug even in other words (“the race froze at the start” and “stuck on the start line” are one bug), and puts it on GitHub without the player’s name or email.</li>
+            <li><Built /> <strong>The game.</strong> It catches every error, a race that ends in an error, the 3D drawing under 10 frames a second for 10 seconds, a page frozen over 5 seconds, and a failed call to the server. A crash is reported the next time the game starts, from a small “running” note the game keeps while it runs. The Windows and Android apps catch their own crashes too; that reaches players with their next app builds.</li>
+            <li><Built /> <strong>The server.</strong> It reports every error and checks itself every 5 minutes: more than 2% errors on a route, 1 in 20 answers slower than 2 seconds, more than 5% of online riders dropped, the database failing. A second small server checks from outside every minute, so a server that is fully down is noticed too. A check for 1 in 20 race messages slower than 250 ms is still planned, because the game doesn’t time those messages yet.</li>
+            <li><Built /> <strong>Players’ messages.</strong> Claude decides whether each one is a bug, an idea, both or neither. It finds the same bug even in other words (“the race froze at the start” and “stuck on the start line” are one bug), and puts it on GitHub without the player’s name or email.</li>
           </ul>
           <p>Reports carry no names, emails or ride data.</p>
           <p>Not every problem weighs the same, so each one is counted:</p>
           <ul className="wx-points">
-            <li><Planned /> A problem counts once 3 different people have hit it. It is loud when 5% of the people playing in the last hour have it, or 10% of everyone who played in the last 24 hours, and at least 5 people have it. Both windows slide every 5 minutes.</li>
-            <li><Planned /> A bug players write about is loud at 20% in the hour or 10% in the day. That is a switch, off to begin with.</li>
+            <li><Built /> A problem counts once 3 different people have hit it. It is loud when 5% of the people playing in the last hour have it, or 10% of everyone who played in the last 24 hours, and at least 5 people have it. Both windows slide every 5 minutes.</li>
+            <li><Built /> A bug players write about is loud at 20% in the hour or 10% in the day. That is a switch, off to begin with.</li>
           </ul>
           <p>Then the fixer takes over:</p>
           <ul className="wx-points">
             <li><Built /> The fixer is a Claude Code session that starts every 5 minutes, in a clean copy of the code. It writes a failing test first, then the fix, and every test must pass.</li>
-            <li><Built /> The fix waits on its own branch for my “Release it” on the admin page.</li>
+            <li><Built /> The fix waits for me as a pull request on GitHub. I release it with “Release it” on the admin page, or by merging the pull request. Either way every test runs before it goes live.</li>
             <li><Built /> Releases go out at most once an hour, bundled, and every test runs.</li>
             <li><Built /> Every mark gets a GitHub issue. It is commented when a fix is ready and closed when the fix is live.</li>
-            <li><Planned /> After a release, 2 hours of watching. If the problem is gone, the issue is closed and the test stays for good. If a new loud problem starts, the old version goes back live.</li>
+            <li><Built /> After a release, 2 hours of watching. If the problem is gone, the issue is closed and the test stays for good. If a new loud problem starts, the old version goes back live.</li>
           </ul>
         </section>
 
         <section aria-labelledby="alone">
           <H2 id="alone" kicker="11">When a fix may go live on its own</H2>
-          <p>Today no fix goes live on its own: every fix waits for me. These are the rules for when one may. The first two already hold for every fix.</p>
+          <p>These are the rules for when a fix may go live on its own. They are built. While the Stop switch is on, every fix still waits for me. The first two rules hold for every fix.</p>
           <ul className="wx-points">
             <li><Built /> <strong>No failing test, no fix.</strong> The fixer must first write a test that fails the way the players’ game fails. Then the fix must make that test pass, and every other test too.</li>
             <li><Built /> <strong>The protected parts.</strong> A fix may change any file, but a fix that touches a protected part never goes live on its own, however many players have the problem.</li>
@@ -240,21 +241,23 @@ export default function WattFightersArticle() {
           <p>A fix that needs a new app build (anything native in the Windows or Android app) can’t go out on its own either.</p>
           <Figure caption="Who decides. A fix that touches a protected part always waits for me. Solid cells run today, dashed ones are planned." fits legend><DecideDiagram /></Figure>
           <ul className="wx-points">
-            <li><Built /> A fix waits for me on its own branch, ready to read and release from the admin page. Today that is every fix. Once problems are counted, it stays the rule for a quiet problem.</li>
-            <li><Planned /> A loud problem’s fix that touches no protected part sends me an email and a text, and goes live after one hour unless I tap “Let me check it first”.</li>
+            <li><Built /> A fix waits for me as a pull request on GitHub, with Claude’s summary, the test that showed the problem, the size of the change and my own words. I release it on the admin page or by merging the pull request. While the Stop switch is on, that is every fix. It stays the rule for a quiet problem.</li>
+            <li><Built /> When a fix goes live, is sent back or is left, the fixer closes its pull request and says why. A fix that touches a protected part gets a comment on its pull request: read it before you release it.</li>
+            <li><Built /> A loud problem’s fix that touches no protected part sends me an email, and goes live after one hour unless I tap “Let me check it first”. A Stop switch keeps every fix waiting for me, and it is on to begin with.</li>
             <li><Built /> A fix the fixer can’t make sends me an email saying why.</li>
-            <li><Planned /> When the problem is loud, that email is marked urgent and a text goes with it.</li>
-            <li><Planned /> After a release, the server watches the problems it fixed for 2 hours, counting only players on the new version. If a new loud problem starts with the release, the old version goes back live, a red email and a text say so, and nothing is released on its own again until I have looked.</li>
+            <li><Built /> When the problem is loud, that email is marked urgent.</li>
+            <li><Built /> After a release, the server watches the problems it fixed for 2 hours, counting only players on the new version. If a new loud problem starts with the release, the old version goes back live, a red email says so, and nothing is released on its own again until I have looked.</li>
           </ul>
-          <p>The safeguards are switches on the admin page, and each change is logged and emailed. <strong>Planned:</strong> the switches arrive with the features they control. The two that can’t be switched off are rules every fix already follows.</p>
+          <p>The safeguards are switches on the admin page, and each change is logged and emailed. They are on the admin page’s QOS tab, with the problems, the fixes and the server’s health. The two that can’t be switched off are rules every fix already follows.</p>
           <div className="wx-table-wrap"><table className="wx-table">
             <thead><tr><th scope="col">Switch</th><th scope="col">Starts</th><th scope="col">Can it change</th></tr></thead>
             <tbody>
-              <tr><th scope="row"><Planned /> A second Claude check of every fix</th><td data-label="Starts">Off</td><td data-label="Can it change">Yes</td></tr>
-              <tr><th scope="row"><Planned /> Players’ bugs to the fixer</th><td data-label="Starts">Off</td><td data-label="Can it change">Yes</td></tr>
-              <tr><th scope="row"><Planned /> A loud problem needs 5 people</th><td data-label="Starts">On</td><td data-label="Can it change">Yes</td></tr>
-              <tr><th scope="row"><Planned /> A problem counts from 3 people</th><td data-label="Starts">On</td><td data-label="Can it change">Yes</td></tr>
-              <tr><th scope="row"><Planned /> Go back to the old version on a new loud problem</th><td data-label="Starts">On</td><td data-label="Can it change">Yes</td></tr>
+              <tr><th scope="row"><Built /> Stop: every fix waits for me</th><td data-label="Starts">On</td><td data-label="Can it change">Yes</td></tr>
+              <tr><th scope="row"><Built /> A second Claude check of every fix</th><td data-label="Starts">Off</td><td data-label="Can it change">Yes</td></tr>
+              <tr><th scope="row"><Built /> Players’ bugs to the fixer</th><td data-label="Starts">Off</td><td data-label="Can it change">Yes</td></tr>
+              <tr><th scope="row"><Built /> A loud problem needs 5 people</th><td data-label="Starts">On</td><td data-label="Can it change">Yes</td></tr>
+              <tr><th scope="row"><Built /> A problem counts from 3 people</th><td data-label="Starts">On</td><td data-label="Can it change">Yes</td></tr>
+              <tr><th scope="row"><Built /> Go back to the old version on a new loud problem</th><td data-label="Starts">On</td><td data-label="Can it change">Yes</td></tr>
               <tr><th scope="row"><Built /> Protected parts wait for review</th><td data-label="Starts">On</td><td data-label="Can it change">No, it can’t be switched off</td></tr>
               <tr><th scope="row"><Built /> At most one release an hour</th><td data-label="Starts">On</td><td data-label="Can it change">No, it can’t be switched off</td></tr>
             </tbody>
@@ -266,13 +269,13 @@ export default function WattFightersArticle() {
           <p>An alert has to say enough to decide from, in one read.</p>
           <ul className="wx-points">
             <li><Built /> <strong>Emails</strong> go to support@wattfighters.com when a fix is ready, when it can’t be made, when it is live, and when it fails to go live. Each says what players see, since when, on which platform, and what happens next and when: “A fix is ready, but it changes sign-in, so it waits for you.”</li>
-            <li><Planned /> Once problems are counted, an email also says how many players have it and what share that is: “New problem: 4 riders (2%) see the race freeze on the start line.” The planned steps get theirs: “A fix goes live at 14:05 unless you stop it,” and “The fix didn’t work, so the old version is back.”</li>
-            <li><Planned /> The buttons in an email (“Release it”, “Let me check it first”) are links that work once and for 24 hours.</li>
-            <li><Planned /> <strong>A text message</strong> goes out only for a loud problem: at most one an hour per problem and 6 a day in all, with one link. Replying CHECK stops the hour.</li>
+            <li><Built /> An email also says how many players have it and what share that is: “New problem: 4 riders (2%) see the race freeze on the start line.” The later steps get theirs: “A fix goes live at 14:05 unless you stop it,” and “The fix didn’t work, so the old version is back.”</li>
+            <li><Built /> The buttons in an email (“Release it”, “Let me check it first”) are links that work once and for 24 hours.</li>
+            <li><Planned /> <strong>A text message</strong> goes out only for a loud problem: at most one an hour per problem and 6 a day in all, with one link. Replying CHECK stops the hour. The texts are written into the code; they start when the text message service is set up.</li>
             <li><Built /> <strong>Bundles.</strong> Fixes go live together, never two releases within an hour, so the players’ game reloads once.</li>
-            <li><Planned /> A fix that would join a bundle with less than 15 minutes left waits for the next one, so I always have at least 15 minutes to stop it.</li>
+            <li><Built /> A fix that would join a bundle with less than 15 minutes left waits for the next one, so I always have at least 15 minutes to stop it.</li>
           </ul>
-          <Figure caption="The hour, for a loud problem’s fix. The bundle and the rule of one release an hour run today; the rest is planned." fits legend><HourDiagram /></Figure>
+          <Figure caption="The hour, for a loud problem’s fix. Solid steps run today; the text message is planned." fits legend><HourDiagram /></Figure>
           <p><Built /> <strong>The bell, for players.</strong> The bell in the game’s top bar shows what a rider should know, in plain words: invites, reminders, a session that changed, results, categories, friends, clubs, and on this computer a new FTP or best time. Something new pops up for 8 seconds, but never over a race, its results or an online room: it waits until the rider is back. A young rider who isn’t a friend shows as “A young rider”. The game, the emails and the phone notifications use the same words, so a notice says the same thing everywhere.</p>
         </section>
 

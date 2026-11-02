@@ -25,8 +25,9 @@ export function SessionsDiagram() {
   </svg>
 }
 
-// Keeping it working (sections 10 to 12). Much of that system is written down but not built
-// yet, so every step says which, in words and in its outline: Built is solid and tinted,
+// Keeping it working (sections 10 to 12). Almost all of that system is built (as of 2 November
+// 2026); the text messages are not. Every step says which, in words and in its outline:
+// Built is solid and tinted,
 // Planned is dashed and empty (never colour alone; --d-warn stays for errors). Each diagram
 // is drawn twice, across for a desktop and stacked for a phone, as in the site write-up.
 type Status = 'built' | 'planned'
@@ -59,22 +60,22 @@ function MixedBox({ x, y, w, title, chips }: { x: number; y: number; w: number; 
 const Swatch = ({ status }: { status: Status }) => <svg aria-hidden="true" viewBox="0 0 28 14" width="28" height="14"><rect x="1" y="1" width="26" height="12" rx="3" strokeWidth="1.5" {...outline(status)} /></svg>
 export const StatusLegend = () => <p className="wx-legend"><span><Swatch status="built" />Built, working today</span><span><Swatch status="planned" />Planned, written down, not built</span></p>
 
-const today = 'Today every fix waits for my “Release it”.'
+const today = 'While the Stop switch is on, every fix waits for my “Release it”.'
 
-const sources: [string, Status][] = [['My marks in races', 'built'], ['Game errors and crashes', 'planned'], ['Server errors and health', 'planned'], ['Players’ messages', 'planned']]
-const count: Step = { status: 'planned', title: 'Count', lines: ['counts from 3 people', 'loud: 5% in an hour', 'or 10% in a day,', 'and at least 5 people'] }
+const sources: [string, Status][] = [['My marks in races', 'built'], ['Game errors and crashes', 'built'], ['Server errors and health', 'built'], ['Players’ messages', 'built']]
+const count: Step = { status: 'built', title: 'Count', lines: ['counts from 3 people', 'loud: 5% in an hour', 'or 10% in a day,', 'and at least 5 people'] }
 const fixer: Step = { status: 'built', title: 'The fixer', lines: ['every 5 minutes', 'a failing test first', 'then the fix', 'every test passes'] }
-const decision: Step = { status: 'built', title: 'The decision', lines: ['see Who decides', 'waits for my “Release it”'] }
+const decision: Step = { status: 'built', title: 'The decision', lines: ['see Who decides', 'waits for my “Release it”', 'or a merge'] }
 const release: Step = { status: 'built', title: 'The release', lines: ['bundled', 'at most one an hour', 'every test runs'] }
-const watching: Step = { status: 'planned', title: 'Watching for 2 hours', lines: ['players on the new version'] }
-const gone: Step = { status: 'planned', title: 'Problem gone', lines: ['GitHub issue closed,', 'the test stays', 'for good'] }
-const back: Step = { status: 'planned', title: 'New loud problem', lines: ['the old version', 'goes back live'] }
+const watching: Step = { status: 'built', title: 'Watching for 2 hours', lines: ['players on the new version'] }
+const gone: Step = { status: 'built', title: 'Problem gone', lines: ['GitHub issue closed,', 'the test stays', 'for good'] }
+const back: Step = { status: 'built', title: 'New loud problem', lines: ['the old version', 'goes back live'] }
 const fixTitle = 'From a problem to a fix'
-const fixDescription = 'From a problem to a fix, in order. Where problems come from: my marks in races (built); game errors and crashes, server errors and health checks, and players’ messages (planned). Count (planned): a problem counts from 3 people and is loud at 5% of players in an hour or 10% in a day, with at least 5 people. The fixer (built): a Claude Code session every 5 minutes writes a failing test first, then the fix, and every test passes. The decision (built): the fix waits for my Release it; a loud fix going live in an hour on its own is planned. The release (built): bundled, at most one an hour, every test runs. Watching for 2 hours (planned): if the problem is gone, the GitHub issue is closed and the test stays for good; if a new loud problem starts, the old version goes back live.'
-const sourcesHeight = 38 + sources.length * 30, decisionHeight = 116
+const fixDescription = 'From a problem to a fix, in order. Where problems come from: my marks in races, game errors and crashes, server errors and health checks, and players’ messages (all built). Count (built): a problem counts from 3 people and is loud at 5% of players in an hour or 10% in a day, with at least 5 people. The fixer (built): a Claude Code session every 5 minutes writes a failing test first, then the fix, and every test passes. The decision (built): the fix waits for my Release it or a merged pull request; a loud fix goes live in an hour on its own unless I stop it, but while the Stop switch is on, every fix waits for me. The release (built): bundled, at most one an hour, every test runs. Watching for 2 hours (built): if the problem is gone, the GitHub issue is closed and the test stays for good; if a new loud problem starts, the old version goes back live.'
+const sourcesHeight = 38 + sources.length * 30, decisionHeight = 132
 
-// The decision is built (it waits for me); its automatic path is a planned pill inside it.
-const DecisionBox = ({ x, y, w }: { x: number; y: number; w: number }) => <g><StatusBox x={x} y={y} w={w} h={decisionHeight} step={decision} /><g data-part=""><Chip x={x + 12} y={y + 82} w={w - 24} label="Loud: live in an hour" status="planned" /></g></g>
+// The decision is built (it waits for me); its automatic path is a pill inside it.
+const DecisionBox = ({ x, y, w }: { x: number; y: number; w: number }) => <g><StatusBox x={x} y={y} w={w} h={decisionHeight} step={decision} /><g data-part=""><Chip x={x + 12} y={y + 98} w={w - 24} label="Loud: live in an hour" status="built" /></g></g>
 
 export function FixFlowDiagram() {
   // Stacked: one column 276 wide in a 300 viewBox, 24px between the boxes for the arrows,
@@ -93,9 +94,9 @@ export function FixFlowDiagram() {
       <StatusBox x={284} y={56} w={200} step={count} /><StatusBox x={520} y={56} w={224} step={fixer} />
       <DecisionBox x={16} y={256} w={232} /><StatusBox x={280} y={256} w={200} step={release} /><StatusBox x={512} y={256} w={232} step={watching} />
       <StatusBox x={400} y={356} w={164} step={gone} /><StatusBox x={580} y={356} w={164} step={back} />
-      <g data-part="" fontSize="11.5" fill={quiet}><text x="16" y="404">Today every fix waits</text><text x="16" y="420">for my “Release it”.</text></g>
+      <g data-part="" fontSize="11.5" fill={quiet}><text x="16" y="404">While the Stop switch is on,</text><text x="16" y="420">every fix waits for my “Release it”.</text></g>
     </svg>
-    <svg className="wx-flow-tall" viewBox={`0 0 300 ${end + 44}`} role="img" aria-label={fixTitle} aria-describedby="wf-fix-tall-desc" fontSize="13" fontFamily="inherit"><Arrow id="wf-fix-tall-arrow" />
+    <svg className="wx-flow-tall" viewBox={`0 0 300 ${end + 60}`} role="img" aria-label={fixTitle} aria-describedby="wf-fix-tall-desc" fontSize="13" fontFamily="inherit"><Arrow id="wf-fix-tall-arrow" />
       <title>{fixTitle}</title><desc id="wf-fix-tall-desc">{fixDescription}</desc>
       <text x="12" y="28" fontSize="15" fontWeight="600" fill={ink}>{fixTitle}</text>
       <g data-part="" fill="none" stroke={edge} strokeWidth="1.25">
@@ -104,19 +105,19 @@ export function FixFlowDiagram() {
       </g>
       {column.map(([step], i) => step === 'sources' ? <MixedBox key="sources" x={12} y={tops[i]} w={276} title="Where problems come from" chips={sources} /> : step === 'decision' ? <DecisionBox key="decision" x={12} y={tops[i]} w={276} /> : <StatusBox key={step.title} x={12} y={tops[i]} w={276} step={step} />)}
       <StatusBox x={12} y={branchTop} w={136} step={gone} /><StatusBox x={152} y={branchTop} w={136} step={back} />
-      <g data-part=""><text x="150" y={end + 28} textAnchor="middle" fontSize="11.5" fill={quiet}>{today}</text></g>
+      <g data-part="" fontSize="11.5" fill={quiet}><text x="150" y={end + 28} textAnchor="middle">While the Stop switch is on,</text><text x="150" y={end + 44} textAnchor="middle">every fix waits for my “Release it”.</text></g>
     </svg>
   </>
 }
 
 const protectedBand: Step = { status: 'built', title: 'Touches a protected part', lines: ['always waits for me, however many players have the problem'] }
 const protectedBandTall: Step = { ...protectedBand, lines: ['always waits for me, however many', 'players have the problem'] }
-const quietReady: Step = { status: 'built', title: 'Fix ready', lines: ['waits for my “Release it”'] }
+const quietReady: Step = { status: 'built', title: 'Fix ready', lines: ['waits for my “Release it”', 'or a merge'] }
 const quietCannot: Step = { status: 'built', title: 'Can’t fix', lines: ['an email with why'] }
-const loudReady: Step = { status: 'planned', title: 'Fix ready', lines: ['email and text; live in an hour', 'unless I stop it', '(today every fix waits)'] }
-const loudCannot: [string, Status][] = [['Email with why', 'built'], ['Urgent, with a text', 'planned']]
+const loudReady: Step = { status: 'built', title: 'Fix ready', lines: ['an email; live in an hour', 'unless I stop it', 'Stop switch on: waits for me'] }
+const loudCannot: [string, Status][] = [['Urgent email with why', 'built'], ['A text with it', 'planned']]
 const decideTitle = 'Who decides'
-const decideDescription = 'Who decides. A fix that touches a protected part always waits for me (built). Quiet problem, fix ready: it waits for my Release it (built). Quiet problem, can’t fix: an email says why (built). Loud problem, fix ready: an email and a text, and it goes live in an hour unless I stop it (planned; today every fix waits). Loud problem, can’t fix: an email says why (built), marked urgent, with a text (planned).'
+const decideDescription = 'Who decides. A fix that touches a protected part always waits for me (built). Quiet problem, fix ready: it waits for my Release it or a merged pull request (built). Quiet problem, can’t fix: an email says why (built). Loud problem, fix ready: an email, and it goes live in an hour unless I stop it (built); while the Stop switch is on, every fix waits for me. Loud problem, can’t fix: an urgent email says why (built); a text goes with it once the text message service is set up (planned).'
 const cellHeight = 100
 
 export function DecideDiagram() {
@@ -133,14 +134,14 @@ export function DecideDiagram() {
       <StatusBox x={120} y={248} w={244} h={cellHeight} step={loudReady} /><MixedBox x={380} y={248} w={244} title="Can’t fix" chips={loudCannot} />
       <g data-part=""><text x="16" y="372" fontSize="11.5" fill={quiet}>{today}</text></g>
     </svg>
-    <svg className="wx-flow-tall" viewBox={`0 0 300 ${end + 40}`} role="img" aria-label={decideTitle} aria-describedby="wf-decide-tall-desc" fontSize="13" fontFamily="inherit">
+    <svg className="wx-flow-tall" viewBox={`0 0 300 ${end + 56}`} role="img" aria-label={decideTitle} aria-describedby="wf-decide-tall-desc" fontSize="13" fontFamily="inherit">
       <title>{decideTitle}</title><desc id="wf-decide-tall-desc">{decideDescription}</desc>
       <text x="12" y="28" fontSize="15" fontWeight="600" fill={ink}>{decideTitle}</text>
       <StatusBox x={12} y={48} w={276} step={protectedBandTall} />
       <g data-part="" fontWeight="600" fill={ink}><text x="12" y={quietTop - 12}>Quiet problem</text><text x="12" y={loudTop - 12}>Loud problem</text></g>
       <StatusBox x={12} y={quietTop} w={276} h={cellHeight} step={quietReady} /><StatusBox x={12} y={quietTop + cellHeight + 12} w={276} h={cellHeight} step={quietCannot} />
       <StatusBox x={12} y={loudTop} w={276} h={cellHeight} step={loudReady} /><MixedBox x={12} y={loudTop + cellHeight + 12} w={276} title="Can’t fix" chips={loudCannot} />
-      <g data-part=""><text x="150" y={end + 28} textAnchor="middle" fontSize="11.5" fill={quiet}>{today}</text></g>
+      <g data-part="" fontSize="11.5" fill={quiet}><text x="150" y={end + 28} textAnchor="middle">While the Stop switch is on,</text><text x="150" y={end + 44} textAnchor="middle">every fix waits for my “Release it”.</text></g>
     </svg>
   </>
 }
@@ -149,26 +150,27 @@ export function DecideDiagram() {
 // minutes is at 562), up or down the side its box sits on.
 type Moment = Step & { at: number; up: boolean; w: number }
 const moments: Moment[] = [
-  { at: 96, up: true, w: 156, status: 'planned', title: 'Problem turns loud', lines: [] },
-  { at: 210, up: false, w: 140, status: 'planned', title: 'Fix ready', lines: ['from the fixer'] },
-  { at: 330, up: true, w: 140, status: 'planned', title: 'Email and text', lines: ['the hour starts'] },
+  { at: 96, up: true, w: 156, status: 'built', title: 'Problem turns loud', lines: [] },
+  { at: 210, up: false, w: 140, status: 'built', title: 'Fix ready', lines: ['from the fixer'] },
+  { at: 330, up: true, w: 140, status: 'built', title: 'Email', lines: ['the hour starts'] },
   { at: 450, up: false, w: 148, status: 'built', title: 'Other fixes join', lines: ['the same bundle'] },
-  { at: 562, up: true, w: 140, status: 'planned', title: '15 minutes left', lines: ['later fixes wait'] },
-  { at: 640, up: false, w: 140, status: 'planned', title: 'Goes live', lines: ['at 60 minutes'] },
-  { at: 700, up: true, w: 112, status: 'planned', title: 'Watching', lines: ['for 2 hours'] },
+  { at: 562, up: true, w: 140, status: 'built', title: '15 minutes left', lines: ['later fixes wait'] },
+  { at: 640, up: false, w: 140, status: 'built', title: 'Goes live', lines: ['at 60 minutes'] },
+  { at: 700, up: true, w: 112, status: 'built', title: 'Watching', lines: ['for 2 hours'] },
 ]
-const stopIt: Step = { status: 'planned', title: '“Let me check it first”', lines: ['stops it at any time', 'until the bundle goes live'] }
+const stopIt: Step = { status: 'built', title: '“Let me check it first”', lines: ['stops it at any time', 'until the bundle goes live'] }
+const textMessage: Step = { status: 'planned', title: 'Text message', lines: ['starts when the text', 'message service is set up'] }
 const bundle: Step = { status: 'built', title: 'One bundle, at most one release an hour', lines: ['fixes go live together, every test runs'] }
 const bundleTall: Step = { ...bundle, title: 'At most one release an hour', lines: ['fixes go live together in a bundle,', 'every test runs'] }
 const hourTitle = 'The hour'
-const hourDescription = 'The hour, in order: a problem turns loud, its fix is ready, an email and a text go to me and the hour starts (planned). Other ready fixes join the same bundle (built), until 15 minutes before the end; a later fix waits for the next bundle (planned). “Let me check it first” stops it at any time (planned). At 60 minutes the bundle goes live, and 2 hours of watching follow (planned). Fixes going live in one bundle, never two releases within an hour, with every test run, is built.'
+const hourDescription = 'The hour, in order: a problem turns loud, its fix is ready, and an email goes to me and the hour starts (built). A text goes with the email once the text message service is set up (planned). Other ready fixes join the same bundle until 15 minutes before the end; a later fix waits for the next bundle (built). “Let me check it first” stops it at any time (built). At 60 minutes the bundle goes live, and 2 hours of watching follow (built). Fixes going live in one bundle, never two releases within an hour, with every test run, is built.'
 const dot = (cx: number, cy: number, status: Status) => <circle cx={cx} cy={cy} r="4" strokeWidth="1.5" {...outline(status)} fillOpacity={status === 'built' ? 1 : undefined} />
 
 export function HourDiagram() {
   const axis = 170
   // Stacked: the time line down the left, the moments to its right, and “Let me check it
-  // first” as a box after the hour starts, with a dashed bracket over the hour.
-  const tall: Step[] = [moments[0], moments[1], moments[2], stopIt, moments[3], moments[4], moments[5], moments[6]]
+  // first” as a box after the hour starts.
+  const tall: Step[] = [moments[0], moments[1], moments[2], textMessage, stopIt, moments[3], moments[4], moments[5], moments[6]]
   const tops: number[] = []
   let y = 48
   for (const step of tall) { tops.push(y); y += heightOf(step) + 14 }
@@ -177,17 +179,18 @@ export function HourDiagram() {
     <svg className="wx-flow-wide" viewBox="0 0 760 360" role="img" aria-label={hourTitle} aria-describedby="wf-hour-wide-desc" fontSize="13" fontFamily="inherit">
       <title>{hourTitle}</title><desc id="wf-hour-wide-desc">{hourDescription}</desc>
       <text x="16" y="24" fontSize="15" fontWeight="600" fill={ink}>{hourTitle}</text>
-      <g data-part="" data-status="planned"><path d="M330 58V50H640V58" fill="none" stroke={edge} strokeWidth="1.25" strokeDasharray="5 4" /><text x="485" y="42" textAnchor="middle" fontSize="11.5" fill={ink}><tspan fontWeight="700">Planned</tspan> · “Let me check it first” stops it at any time</text></g>
+      <g data-part="" data-status="built"><path d="M330 58V50H640V58" fill="none" stroke={accent} strokeWidth="1.25" /><text x="485" y="42" textAnchor="middle" fontSize="11.5" fill={ink}><tspan fontWeight="700">Built</tspan> · “Let me check it first” stops it at any time</text></g>
       <g data-part="" fill="none" stroke={grid} strokeWidth="1.5"><path d={`M30 ${axis}H744`} /></g>
       <g data-part="" fontSize="11" fill={quiet}><text x="336" y={axis + 18}>0 min</text><text x="568" y={axis + 18}>45 min</text><text x="646" y={axis + 18}>60 min</text></g>
       {moments.map((m) => { const h = heightOf(m), top = m.up ? 64 : 204; return <g key={m.title}><path d={m.up ? `M${m.at} ${top + h}V${axis}` : `M${m.at} ${axis}V${top}`} stroke={edge} strokeWidth="1" />{dot(m.at, axis, m.status)}<StatusBox x={m.at - m.w / 2} y={top} w={m.w} step={m} /></g> })}
+      <g data-part=""><Chip x={338} y={136} w={110} label="Text" status="planned" /></g>
       <StatusBox x={16} y={290} w={728} step={bundle} />
     </svg>
     <svg className="wx-flow-tall" viewBox={`0 0 300 ${y + heightOf(bundleTall) + 10}`} role="img" aria-label={hourTitle} aria-describedby="wf-hour-tall-desc" fontSize="13" fontFamily="inherit">
       <title>{hourTitle}</title><desc id="wf-hour-tall-desc">{hourDescription}</desc>
       <text x="12" y="28" fontSize="15" fontWeight="600" fill={ink}>{hourTitle}</text>
       <g data-part="" fill="none" stroke={grid} strokeWidth="1.5"><path d={`M32 ${mid(0)}V${mid(tall.length - 1)}`} /></g>
-      <g data-part="" data-status="planned"><path d={`M20 ${mid(2)}H12V${mid(6)}H20`} fill="none" stroke={edge} strokeWidth="1.25" strokeDasharray="5 4" /></g>
+      <g data-part="" data-status="built"><path d={`M20 ${mid(2)}H12V${mid(7)}H20`} fill="none" stroke={accent} strokeWidth="1.25" /></g>
       {tall.map((step, i) => <g key={step.title}><path d={`M32 ${mid(i)}H52`} stroke={edge} strokeWidth="1" />{dot(32, mid(i), step.status)}<StatusBox x={52} y={tops[i]} w={236} step={step} /></g>)}
       <StatusBox x={12} y={y} w={276} step={bundleTall} />
     </svg>
